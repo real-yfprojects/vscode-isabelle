@@ -77,6 +77,8 @@ npm run compile
 node test/runTest.js suite.js    # Step 1: server, diagnostics, hover
 node test/runTest.js suite2.js   # Step 2: symbols, rendering, input, save, motion
 node test/runTest.js suite3.js   # visual: holds a window open for a screenshot
+node test/runTest.js suite4.js   # reveal boundaries, selection, motion decisions
+node test/runTest.js suite5.js   # sendback arrives as LSP code actions
 ```
 
 The suites drive a real VS Code against a real Isabelle; they are integration tests,
@@ -84,8 +86,11 @@ not unit tests, and need an Isabelle distribution present.
 
 ## Status
 
-Prototype. See the gap analysis for what the official Isabelle/VSCode still does that
-this does not (jEdit-parity panels, PIDE markup colouring, Sledgehammer sendback).
+Prototype. [GAPS.md](GAPS.md) analyses this against the official Isabelle/VSCode: the
+fork exists for exactly two capabilities (a custom file encoding and bundled fonts),
+both worked around here, and everything still missing -- PIDE markup colouring, the
+Output/State/Sledgehammer panels -- is unwritten UI rather than a missing capability.
+Sledgehammer sendback already works, since Isabelle2025 exposed it as LSP code actions.
 
 ## License
 
