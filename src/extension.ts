@@ -3,7 +3,7 @@ import { LanguageClient, LanguageClientOptions, State } from 'vscode-languagecli
 import { buildServerOptions, findIsabelleHome, IsabelleNotFound } from './isabelle'
 import { SymbolTable } from './symbols'
 import { SymbolRenderer } from './decorations'
-import { registerAbbreviations } from './abbrev'
+import { AbbrevStore, registerAbbreviations } from './abbrev'
 import { registerNormalizer } from './normalize'
 import { registerAtomicMotion } from './atomic'
 import { PideDecorations } from './pide_decorations'
@@ -11,6 +11,8 @@ import { OutputPanel, StatePanel } from './panels'
 import { SymbolsPanel } from './symbols_panel'
 import { SledgehammerPanel } from './sledgehammer_panel'
 import { registerSpellChecker } from './spell_checker'
+import { DocumentationPanel } from './doc_panel'
+import { PreviewPanels } from './preview_panel'
 
 let client: LanguageClient | undefined
 let output: vscode.OutputChannel
@@ -25,6 +27,9 @@ let pide: PideDecorations | undefined
 let statePanel: StatePanel | undefined
 let outputPanel: OutputPanel | undefined
 let sledgehammer: SledgehammerPanel | undefined
+let docPanel: DocumentationPanel | undefined
+let previews: PreviewPanels | undefined
+const abbrevs = new AbbrevStore()
 
 export const ISABELLE_SELECTOR: vscode.DocumentSelector =
   [{ scheme: 'file', language: 'isabelle' }]
@@ -82,7 +87,19 @@ async function startClient(): Promise<void> {
   statePanel.register(clientScope)
   sledgehammer = new SledgehammerPanel(client, log)
   sledgehammer.register(clientScope)
+  docPanel = new DocumentationPanel(client, log)
+  docPanel.register(clientScope)
+  previews = new PreviewPanels(client, log)
+  previews.register(clientScope)
   registerSpellChecker(clientScope, client, log)
+
+  // Session abbreviations complement the static ones in etc/symbols.
+  clientScope.push(client.onNotification('PIDE/abbrevs_response',
+    (p: { abbrevs: [string, string][] }) => {
+      abbrevs.set(p.abbrevs)
+      log(`session abbreviations: ${abbrevs.size}`)
+    }))
+  void client.sendNotification('PIDE/abbrevs_request', {})
 
   sendCaretUpdate(vscode.window.activeTextEditor)
 }
@@ -95,6 +112,8 @@ async function stopClient(): Promise<void> {
   statePanel = undefined
   outputPanel = undefined
   sledgehammer = undefined
+  docPanel = undefined
+  previews = undefined
   const c = client
   client = undefined
   if (c) {
@@ -122,7 +141,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   renderer = new SymbolRenderer(table)
   renderer.register(context)
-  registerAbbreviations(context, table, ISABELLE_SELECTOR)
+  registerAbbreviations(context, table, ISABELLE_SELECTOR, abbrevs)
   registerNormalizer(context, table, log)
   registerAtomicMotion(context, table)
   new SymbolsPanel(table).register(context.subscriptions)
@@ -164,6 +183,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('isabelle.statePanelId', () => statePanel?.id),
     vscode.commands.registerCommand('isabelle.outputPanelContent', () => outputPanel?.rawContent),
     vscode.commands.registerCommand('isabelle.statePanelContent', () => statePanel?.rawContent),
+    vscode.commands.registerCommand('isabelle.jEditParityState', () => ({
+      abbrevs: abbrevs.size,
+      documentationEntries: docPanel?.entryCount ?? 0,
+      previewColumns: previews?.openColumns ?? [],
+      previewLabel: previews?.label ?? '',
+    })),
     vscode.commands.registerCommand('isabelle.sledgehammerState', () => sledgehammer && ({
       provers: sledgehammer.proverList,
       status: sledgehammer.lastStatus,

@@ -118,6 +118,30 @@ export function panelHtml(webview: vscode.Webview, body: string): string {
       vscode.postMessage({ command: 'open', link: a.getAttribute('href') });
     }
   });
+
+  // Isabelle pretty-prints server-side to a fixed margin in characters, so the panel has
+  // to tell it how wide it actually is or output wraps at the wrong column.
+  var lastMargin = 0;
+  function measureMargin() {
+    var probe = document.createElement('span');
+    probe.style.cssText =
+      'position:absolute;visibility:hidden;white-space:pre;font-family:inherit;font-size:inherit';
+    probe.textContent = new Array(81).join('0');
+    document.body.appendChild(probe);
+    var charWidth = probe.getBoundingClientRect().width / 80;
+    probe.remove();
+    if (!charWidth) return 0;
+    return Math.max(20, Math.floor(document.body.clientWidth / charWidth));
+  }
+  function reportMargin() {
+    var m = measureMargin();
+    if (m && m !== lastMargin) {
+      lastMargin = m;
+      vscode.postMessage({ command: 'resize', margin: m });
+    }
+  }
+  window.addEventListener('resize', reportMargin);
+  setTimeout(reportMargin, 250);
 </script>
 </body></html>`
 }

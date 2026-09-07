@@ -60,8 +60,10 @@ abstract class HtmlPanel implements vscode.WebviewViewProvider {
 /** Output panel: whatever PIDE reports for the command under the caret. */
 export class OutputPanel extends HtmlPanel {
   static readonly viewType = 'isabelle-output'
+  private client: LanguageClient | undefined
 
   register(disposables: vscode.Disposable[], client: LanguageClient): void {
+    this.client = client
     disposables.push(
       vscode.window.registerWebviewViewProvider(OutputPanel.viewType, this,
         { webviewOptions: { retainContextWhenHidden: true } }),
@@ -69,6 +71,14 @@ export class OutputPanel extends HtmlPanel {
         this.setContent(p.content)
       }),
     )
+  }
+
+  protected async onMessage(msg: { command?: string; link?: string; margin?: number }): Promise<void> {
+    if (msg.command === 'resize' && msg.margin && this.client) {
+      await this.client.sendNotification('PIDE/output_set_margin', { margin: msg.margin })
+      return
+    }
+    await super.onMessage(msg)
   }
 }
 
@@ -142,8 +152,14 @@ export class StatePanel extends HtmlPanel {
       </div>${this.content}`
   }
 
-  protected async onMessage(msg: { command?: string; link?: string }): Promise<void> {
+  protected async onMessage(msg: { command?: string; link?: string; margin?: number }): Promise<void> {
     switch (msg.command) {
+      case 'resize':
+        if (msg.margin && this.stateId !== undefined) {
+          await this.client.sendNotification('PIDE/state_set_margin',
+            { id: this.stateId, margin: msg.margin })
+        }
+        break
       case 'update': await this.update(); break
       case 'auto': await this.toggleAuto(); break
       case 'locate':

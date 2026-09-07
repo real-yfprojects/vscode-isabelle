@@ -13,16 +13,67 @@ import { SymbolEntry, SymbolTable } from './symbols'
 const PREFIX_RE = /\\([A-Za-z][A-Za-z0-9_^']*)$/
 
 
+/**
+ * Outer-syntax abbreviations of the loaded session, from PIDE/abbrevs_request.
+ * These are session-specific (declared by `keywords ... abbrevs` in theory headers) and
+ * complement the static `abbrev:` fields of etc/symbols.
+ */
+export class AbbrevStore {
+  private pairs: [from: string, to: string][] = []
+
+  set(abbrevs: [string, string][]): void {
+    // Longest first, so "===" wins over "==" at the same caret position.
+    this.pairs = (abbrevs ?? []).filter(p => p?.length === 2 && p[0] && p[1])
+      .sort((a, b) => b[0].length - a[0].length)
+  }
+
+  get size(): number { return this.pairs.length }
+
+  /** Abbreviations whose text ends at the caret. */
+  matching(textBeforeCaret: string): [string, string][] {
+    return this.pairs.filter(([from]) => from.length >= 2 && textBeforeCaret.endsWith(from))
+  }
+}
+
 export function registerAbbreviations(
   context: vscode.ExtensionContext,
   table: SymbolTable,
   selector: vscode.DocumentSelector,
+  abbrevs: AbbrevStore,
 ): void {
   context.subscriptions.push(
     vscode.languages.registerCompletionItemProvider(
       selector, new SymbolCompletionProvider(table), '\\'),
+    vscode.languages.registerCompletionItemProvider(
+      selector, new SessionAbbrevProvider(abbrevs)),
     vscode.workspace.onDidChangeTextDocument(e => void rewriteOnType(e, table)),
   )
+}
+
+/**
+ * Completion for session abbreviations. Deliberately has no trigger characters and
+ * requires a match of at least two characters: these are arbitrary strings like "===",
+ * and firing on a single character would be noise in the middle of a proof.
+ */
+class SessionAbbrevProvider implements vscode.CompletionItemProvider {
+  constructor(private readonly abbrevs: AbbrevStore) {}
+
+  provideCompletionItems(
+    doc: vscode.TextDocument,
+    position: vscode.Position,
+  ): vscode.CompletionItem[] {
+    const line = doc.lineAt(position.line).text.slice(0, position.character)
+    const tail = line.slice(-16)
+    return this.abbrevs.matching(tail).map(([from, to]) => {
+      const item = new vscode.CompletionItem(to, vscode.CompletionItemKind.Snippet)
+      item.detail = `abbrev ${from}`
+      item.insertText = to
+      item.filterText = from
+      item.range = new vscode.Range(position.translate(0, -from.length), position)
+      item.sortText = '0'
+      return item
+    })
+  }
 }
 
 class SymbolCompletionProvider implements vscode.CompletionItemProvider {

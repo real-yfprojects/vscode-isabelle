@@ -73,6 +73,18 @@
       {
         "command": "isabelle.reset-words",
         "title": "Reset non-permanent words"
+      },
+      {
+        "command": "isabelle.preview",
+        "title": "Isabelle: Open Preview"
+      },
+      {
+        "command": "isabelle.previewSplit",
+        "title": "Isabelle: Open Preview (Split Editor)"
+      },
+      {
+        "command": "isabelle.documentation",
+        "title": "Isabelle: Show Documentation"
       }
     ],
     "keybindings": [
@@ -239,6 +251,11 @@
         {
           "id": "isabelle-symbols",
           "name": "Symbols",
+          "type": "webview"
+        },
+        {
+          "id": "isabelle-documentation",
+          "name": "Documentation",
           "type": "webview"
         }
       ],
