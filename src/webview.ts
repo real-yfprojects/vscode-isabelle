@@ -14,14 +14,34 @@
 import * as vscode from 'vscode'
 import { ISABELLE_COLORS, colorOf } from './colors'
 
-/** Isabelle markup classes that carry a message background rather than a text colour. */
-const MESSAGE_BACKGROUNDS: Record<string, string> = {
-  writeln_message: 'writeln',
-  information_message: 'information',
-  tracing_message: 'information',
-  warning_message: 'warning',
-  legacy_message: 'warning',
-  error_message: 'error',
+/**
+ * Message styling, from VS Code's own semantic colours rather than Isabelle's palette.
+ *
+ * The palette's `writeln`/`information`/`warning`/`error` entries are *not* background
+ * colours: upstream uses them for dotted underlines and overview-ruler marks. They also
+ * carry the same value for light and dark (writeln is rgba(192,192,192,1) in both), so
+ * using them as backgrounds paints every message solid light grey and then writes the
+ * theme foreground on top -- illegible in a dark theme, and sledgehammer output is
+ * entirely writeln_message.
+ */
+const MESSAGE_STYLES: Record<string, string> = {
+  writeln_message:
+    'background-color: transparent;',
+  information_message:
+    'background-color: var(--vscode-textBlockQuote-background);' +
+    'border-left: 3px solid var(--vscode-textLink-foreground);',
+  tracing_message:
+    'background-color: var(--vscode-textBlockQuote-background);' +
+    'border-left: 3px solid var(--vscode-textLink-foreground);',
+  warning_message:
+    'background-color: var(--vscode-inputValidation-warningBackground);' +
+    'border-left: 3px solid var(--vscode-inputValidation-warningBorder);',
+  legacy_message:
+    'background-color: var(--vscode-inputValidation-warningBackground);' +
+    'border-left: 3px solid var(--vscode-inputValidation-warningBorder);',
+  error_message:
+    'background-color: var(--vscode-inputValidation-errorBackground);' +
+    'border-left: 3px solid var(--vscode-inputValidation-errorBorder);',
 }
 
 function isLight(): boolean {
@@ -39,16 +59,16 @@ export function isabelleCss(): string {
     const color = colorOf(name, light, overrides)
     if (color) rules.push(`.${name} { color: ${color}; }`)
   }
-  // Backgrounds win over the text colour of the same name.
-  for (const [cls, palette] of Object.entries(MESSAGE_BACKGROUNDS)) {
-    const color = colorOf(palette, light, overrides)
-    if (color) rules.push(`.${cls} { background-color: ${color}; display: block; padding: 2px 4px; }`)
+  for (const [cls, style] of Object.entries(MESSAGE_STYLES)) {
+    rules.push(`.${cls} { display: block; padding: 2px 6px; margin: 2px 0; ${style} }`)
   }
 
   return `
     body {
-      color: var(--vscode-editor-foreground);
-      background-color: var(--vscode-editor-background);
+      color: var(--vscode-foreground);
+      /* Transparent, so the host container supplies the background: these views live
+         both in the side bar and in the bottom panel, which are coloured differently. */
+      background-color: transparent;
       font-family: 'Isabelle DejaVu Sans Mono', var(--vscode-editor-font-family), monospace;
       font-size: var(--vscode-editor-font-size);
       margin: 0; padding: 6px;

@@ -109,11 +109,12 @@ Verified by running it:
 - `isabelle build` rejects literal Unicode, for ordinary *and* control symbols
 - `isabelle vscode_server` runs headless over stdio and drives fine from a stock client
 - the server applies `Symbol.encode` to editor text, so a Unicode buffer would also work
-- sendback arrives as LSP code actions. Notably this is the *only* path: running
-  Sledgehammer from the panel yields progress messages on `PIDE/sledgehammer_output`
-  ("verit found a proof...") but never a `<sendback>` element, while the goal line
-  simultaneously gains a `by simp` code action. The panel drives the search; the editor
-  applies the result
+- sendback arrives by *two* independent paths: as LSP code actions on the goal line
+  (a `by simp` action appears there), and as `<sendback>` elements inside
+  `PIDE/sledgehammer_output`, which the panel turns into clickable buttons. Clicking one
+  round-trips `sledgehammer_sendback` -> `sledgehammer_insert` and edits the theory.
+  An earlier note here claimed the panel stream carried progress only; that was wrong,
+  the automated poll simply gave up before the final message arrived
 - Isabelle's spell-checker underlining needs no client code: it arrives as an ordinary
   `spell_checker` decoration through `PIDE/decoration`
 - decoration cost, symbol rendering alone with no server: ~1.7 ms viewport-scoped vs

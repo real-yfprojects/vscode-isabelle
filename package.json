@@ -227,13 +227,13 @@
           "type": "webview"
         },
         {
-          "id": "isabelle-symbols",
-          "name": "Symbols",
+          "id": "isabelle-sledgehammer",
+          "name": "Sledgehammer",
           "type": "webview"
         },
         {
-          "id": "isabelle-sledgehammer",
-          "name": "Sledgehammer",
+          "id": "isabelle-symbols",
+          "name": "Symbols",
           "type": "webview"
         }
       ],

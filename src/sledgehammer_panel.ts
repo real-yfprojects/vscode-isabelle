@@ -55,6 +55,14 @@ export class SledgehammerPanel implements vscode.WebviewViewProvider {
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view
     view.webview.options = { enableScripts: true }
+    // Re-render on theme change: the stylesheet embeds the resolved palette.
+    const themeListener = vscode.window.onDidChangeActiveColorTheme(() => {
+      view.webview.html = this.html()
+      this.post({ type: 'provers', provers: this.provers })
+      this.post({ type: 'status', message: this.status })
+      if (this.output) this.post({ type: 'output', content: this.output })
+    })
+    view.onDidDispose(() => { themeListener.dispose(); this.view = undefined })
     view.webview.onDidReceiveMessage(async (m: any) => {
       switch (m?.command) {
         case 'run': await this.run(m.provers ?? '', !!m.isar, !!m.try0); break
@@ -80,15 +88,25 @@ export class SledgehammerPanel implements vscode.WebviewViewProvider {
     await this.client.sendNotification('PIDE/sledgehammer_request', { provers, isar, try0 })
   }
 
-  /** The server tells us where the proof method should go; apply it there. */
+  /**
+   * The server tells us where the proof method should go; apply it there.
+   *
+   * The position is the end of the command's core range, so inserting the text bare
+   * yields `apply (rule impI)by simp`. As upstream does, prefix a newline whenever the
+   * target line is not blank -- and additionally carry the line's indentation across, so
+   * the method lines up with the proof instead of starting at column 0.
+   */
   private async applyInsert(p: InsertParams): Promise<void> {
     try {
       const uri = vscode.Uri.parse(p.uri)
       const doc = await vscode.workspace.openTextDocument(uri)
       const editor = await vscode.window.showTextDocument(doc, { preview: false })
       const pos = new vscode.Position(p.line, p.character)
-      await editor.edit(b => b.insert(pos, p.text))
-      this.log(`sledgehammer inserted ${JSON.stringify(p.text)} at ${p.line}:${p.character}`)
+      const lineText = doc.lineAt(pos.line).text
+      const indent = lineText.slice(0, lineText.length - lineText.trimStart().length)
+      const text = lineText.trim() === '' ? p.text : `\n${indent}${p.text}`
+      await editor.edit(b => b.insert(pos, text))
+      this.log(`sledgehammer inserted ${JSON.stringify(text)} at ${p.line}:${p.character}`)
     } catch (err) {
       this.log(`sledgehammer insert failed: ${err}`)
     }

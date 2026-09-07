@@ -24,7 +24,14 @@ abstract class HtmlPanel implements vscode.WebviewViewProvider {
     this.view = view
     view.webview.options = { enableScripts: true }
     view.webview.onDidReceiveMessage(msg => void this.onMessage(msg))
-    view.onDidDispose(() => { this.view = undefined; this.onDispose() })
+    // The palette is baked into the stylesheet at render time, so a theme switch needs
+    // a re-render or the panel keeps the previous theme's colours.
+    const themeListener = vscode.window.onDidChangeActiveColorTheme(() => this.render())
+    view.onDidDispose(() => {
+      themeListener.dispose()
+      this.view = undefined
+      this.onDispose()
+    })
     this.render()
     this.onResolved()
   }

@@ -45,8 +45,8 @@ only.** Nothing can desynchronise, because there is only one representation.
   plus a Symbols palette whose entries come from `etc/symbols`. The State panel has
   Update / Auto-update / Locate.
 - **Sledgehammer** — a panel to drive the search (prover list, run, cancel, locate,
-  progress). The suggestions themselves arrive as LSP code actions under the lightbulb,
-  which is the only path Isabelle2025-2 offers: the panel stream carries progress only.
+  progress), with proof suggestions as clickable buttons that insert the method into the
+  proof. The same suggestions also appear as LSP code actions under the lightbulb.
 - **Spell checker** — Isabelle checks the prose in comments and `text ‹…›` blocks, by
   PIDE markup category rather than by syntax, so antiquotations inside prose are excluded.
   The underlining needs no client code; the five dictionary commands are registered.
