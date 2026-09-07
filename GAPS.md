@@ -110,8 +110,12 @@ Verified by running it:
 - `isabelle vscode_server` runs headless over stdio and drives fine from a stock client
 - the server applies `Symbol.encode` to editor text, so a Unicode buffer would also work
 - sendback arrives as LSP code actions
-- decoration cost: ~1.7 ms viewport-scoped vs 17 ms whole-document (5 k ranges) and
-  233 ms whole-document on a 144 k-line file; linear in range count, flat in file size
+- decoration cost, symbol rendering alone with no server: ~1.7 ms viewport-scoped vs
+  17 ms whole-document (5 k ranges) and 233 ms on a 144 k-line file; linear in range
+  count, flat in file size
+- decoration cost with the server attached and PIDE markup live, on a 9 k-line theory:
+  19.3 ms typing / 66.7 ms scroll for the shipped viewport-scoped configuration, against
+  24.3 ms / 143.1 ms unscoped. Symbol rendering is the larger share of what remains
 - a formatter or `onWillSave` participant can force ASCII onto disk, but always rewrites
   the buffer too, so it cannot serve as a round-trip encoding layer
 - PIDE markup decorations arrive and are applied (8 types, 22 ranges on a small theory)
@@ -122,9 +126,8 @@ Not verified:
 
 - **Linux and macOS.** Only the Windows/Cygwin launch path has actually run
 - the panels still listed as missing in §2
-- behaviour on very large theories with the language server attached. The decoration
-  benchmarks predate PIDE markup, which now adds its own decorations to the same
-  editors, so the measured headroom is smaller than reported there
+- whether the remaining symbol-rendering cost can be reduced further; no attempt was
+  made to cache extraction across scroll steps
 
 ## 5. If this were taken further
 

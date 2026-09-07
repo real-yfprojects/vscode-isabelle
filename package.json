@@ -166,6 +166,11 @@
             "type": "string"
           },
           "markdownDescription": "Override individual PIDE markup colours, keyed `<name>_light` / `<name>_dark` (e.g. `keyword1_dark`). Defaults come from Isabelle's own palette."
+        },
+        "isabelle.pideViewportScope": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Apply PIDE markup only to the visible part of the document (plus `#isabelle.renderMarginLines#`). The server sends markup for the whole file - over 51000 ranges on a 9000-line theory - and applying all of it costs roughly 40ms per keystroke. Disable only to compare against that behaviour."
         }
       }
     },

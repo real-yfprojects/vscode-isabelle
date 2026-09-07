@@ -64,18 +64,28 @@ Point `isabelle.home` at your distribution if it is not auto-detected.
 
 ## Performance
 
-Symbol rendering is scoped to `editor.visibleRanges` ± `isabelle.renderMarginLines`.
-Measured in VS Code 1.136 on real theories:
+Both decoration systems -- symbol rendering and PIDE markup -- are scoped to
+`editor.visibleRanges` ± `isabelle.renderMarginLines`. This matters most for PIDE:
+the server sends markup for the whole document, over 51000 ranges on a 9000-line
+theory, and applying all of it is what makes large files feel heavy.
 
-| approach | ranges | scroll / keystroke latency |
-|---|---:|---:|
-| baseline, no decorations | 0 | 0.6–1.1 ms |
-| **viewport-scoped (this extension)** | 87–152 | **1.5–2.0 ms** |
-| whole document | ~5 000 | 17 ms |
-| whole document, 144 k-line file | 79 200 | 233 ms |
+Measured in VS Code 1.136 on a synthetic 9006-line theory (12000 symbol occurrences)
+with the language server attached and identical markup across all three rows:
 
-Cost is linear in decorated range count and **independent of file size** — a 144 k-line
-theory costs the same as a 9 k-line one. Keep the range count under ~500 and it is free.
+| configuration | typing median | typing p95 | scroll median | scroll p95 |
+|---|---:|---:|---:|---:|
+| whole-document PIDE + symbols | 24.3 ms | 227.8 ms | 143.1 ms | 440.9 ms |
+| **viewport PIDE + symbols (default)** | **19.3 ms** | **34.4 ms** | **66.7 ms** | **113.0 ms** |
+| viewport PIDE only | 4.7 ms | 24.4 ms | 18.8 ms | 58.2 ms |
+
+Two caveats worth stating plainly. Symbol rendering, not PIDE markup, is the larger
+remaining cost once both are viewport-scoped -- an earlier figure of ~1.7ms measured it
+in isolation with no server attached, which flattered it considerably. And the scroll
+column is close to worst case: the benchmark awaits every viewport change individually,
+whereas real scrolling coalesces through a 20ms debounce.
+
+Set `isabelle.pideViewportScope` to `false` to compare against the unscoped behaviour,
+and `isabelle.renderSymbols` to `false` to drop symbol rendering on very large files.
 
 ## Development
 

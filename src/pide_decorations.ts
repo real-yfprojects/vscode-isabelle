@@ -8,6 +8,11 @@
  *
  * Ranges arrive in compact form as [startLine, startChar, endLine, endChar]
  * (LSP.Range.compact server-side), not as LSP Position objects.
+ *
+ * The server sends markup for the *whole* document -- 51,516 ranges on a 9k-line theory --
+ * and handing all of that to setDecorations costs ~40ms per keystroke. VS Code renders
+ * nothing outside the viewport, so the full set is kept here and only the visible slice
+ * (plus a margin) is applied, which is the same trick symbol rendering uses.
  */
 
 import * as vscode from 'vscode'
@@ -38,6 +43,7 @@ export class PideDecorations implements vscode.Disposable {
   /** uri -> decoration type -> ranges. The server sends per-type updates, so we merge. */
   private perDocument = new Map<string, Map<string, vscode.DecorationOptions[]>>()
   private disposables: vscode.Disposable[] = []
+  private timer: NodeJS.Timeout | undefined
 
   constructor(private readonly log: (m: string) => void) {
     this.createTypes()
@@ -90,6 +96,10 @@ export class PideDecorations implements vscode.Disposable {
       client.onNotification('PIDE/decoration', (params: { uri: string; entries: CompactEntry[] }) => {
         try { this.receive(params) } catch (err) { this.log(`decoration failed: ${err}`) }
       }),
+      // Scrolling changes which slice is visible, so re-apply.
+      vscode.window.onDidChangeTextEditorVisibleRanges(e => {
+        if (e.textEditor.document.languageId === 'isabelle') this.schedule(e.textEditor)
+      }),
       vscode.window.onDidChangeVisibleTextEditors(editors => {
         for (const editor of editors) {
           if (editor.document.languageId !== 'isabelle') continue
@@ -108,6 +118,12 @@ export class PideDecorations implements vscode.Disposable {
     scope.push(...this.disposables, this)
   }
 
+  /** Coalesce bursts of scroll events into one re-apply. */
+  private schedule(editor: vscode.TextEditor): void {
+    if (this.timer) clearTimeout(this.timer)
+    this.timer = setTimeout(() => this.applyTo(editor), 20)
+  }
+
   private receive(params: { uri: string; entries: CompactEntry[] }): void {
     const uri = vscode.Uri.parse(params.uri)
     const key = uri.toString()
@@ -124,11 +140,31 @@ export class PideDecorations implements vscode.Disposable {
     }
   }
 
+  /** Lines the editor could plausibly show, given its viewport plus a margin. */
+  private visibleSpan(editor: vscode.TextEditor): { first: number; last: number } | undefined {
+    const cfg = vscode.workspace.getConfiguration('isabelle')
+    if (!cfg.get<boolean>('pideViewportScope', true)) return undefined
+    if (editor.visibleRanges.length === 0) return undefined
+    const margin = cfg.get<number>('renderMarginLines') ?? 100
+    let first = Number.MAX_SAFE_INTEGER
+    let last = -1
+    for (const r of editor.visibleRanges) {
+      first = Math.min(first, r.start.line - margin)
+      last = Math.max(last, r.end.line + margin)
+    }
+    return { first: Math.max(0, first), last }
+  }
+
   private applyTo(editor: vscode.TextEditor): void {
     const byType = this.perDocument.get(editor.document.uri.toString())
     if (!byType) return
+    const span = this.visibleSpan(editor)
     for (const [name, type] of this.types) {
-      editor.setDecorations(type, byType.get(name) ?? [])
+      const all = byType.get(name)
+      if (!all || all.length === 0) { editor.setDecorations(type, []); continue }
+      editor.setDecorations(type, span
+        ? all.filter(d => d.range.end.line >= span.first && d.range.start.line <= span.last)
+        : all)
     }
   }
 
@@ -142,6 +178,7 @@ export class PideDecorations implements vscode.Disposable {
   }
 
   dispose(): void {
+    if (this.timer) clearTimeout(this.timer)
     for (const t of this.types.values()) t.dispose()
     this.types.clear()
   }

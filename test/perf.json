@@ -1,0 +1,42 @@
+{
+  "lines": 9006,
+  "occurrences": 12000,
+  "pideRanges": 9004,
+  "pideSummary": {
+    "background_unprocessed1": 6002,
+    "text_overview_unprocessed": 3002
+  },
+  "symbolRanges": 312,
+  "results": {
+    "whole-doc PIDE + symbols": {
+      "typing": {
+        "median": 24.29,
+        "p95": 227.8
+      },
+      "scroll": {
+        "median": 143.14,
+        "p95": 440.87
+      }
+    },
+    "viewport PIDE + symbols": {
+      "typing": {
+        "median": 19.3,
+        "p95": 34.37
+      },
+      "scroll": {
+        "median": 66.72,
+        "p95": 112.95
+      }
+    },
+    "viewport PIDE only": {
+      "typing": {
+        "median": 4.72,
+        "p95": 24.35
+      },
+      "scroll": {
+        "median": 18.8,
+        "p95": 58.16
+      }
+    }
+  }
+}
