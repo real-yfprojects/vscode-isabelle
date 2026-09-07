@@ -86,3 +86,11 @@ not unit tests, and need an Isabelle distribution present.
 
 Prototype. See the gap analysis for what the official Isabelle/VSCode still does that
 this does not (jEdit-parity panels, PIDE markup colouring, Sledgehammer sendback).
+
+## License
+
+[BSD 3-Clause](LICENSE), the same license Isabelle itself uses.
+
+No Isabelle sources are vendored here: `etc/symbols` is read at runtime from whichever
+distribution `isabelle.home` points at, so nothing in this repository is a derivative
+work of Isabelle. Matching its license is a convenience for reuse, not an obligation.
