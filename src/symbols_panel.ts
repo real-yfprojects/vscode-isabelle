@@ -55,11 +55,18 @@ export class SymbolsPanel implements vscode.WebviewViewProvider {
       groups.set(group, list)
     }
 
-    const sections = [...groups.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
+    const ordered = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))
+    const sections = ordered
       .map(([group, cells]) =>
-        `<section><h3>${escapeHtml(group)}</h3><div class="grid">${cells.join('')}</div></section>`)
+        `<section id="sec-${escapeHtml(group)}"><h3>${escapeHtml(group)}</h3>` +
+        `<div class="grid">${cells.join('')}</div></section>`)
       .join('')
+    // The table has hundreds of entries across a dozen groups; jumping beats scrolling.
+    const jump = `<select id="jump" title="Jump to category">` +
+      `<option value="">Jump to category…</option>` +
+      ordered.map(([group, cells]) =>
+        `<option value="sec-${escapeHtml(group)}">${escapeHtml(group)} (${cells.length})</option>`).join('') +
+      `</select>`
 
     const nonce = Math.random().toString(36).slice(2)
     return `<!DOCTYPE html>
@@ -69,7 +76,11 @@ export class SymbolsPanel implements vscode.WebviewViewProvider {
       content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <style>
 ${isabelleCss()}
-  #filter { width: 100%; box-sizing: border-box; margin-bottom: 8px; padding: 4px;
+  #jump { width: 100%; box-sizing: border-box; margin-bottom: 8px; padding: 3px;
+          font-family: var(--vscode-font-family); font-size: 12px;
+          color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background);
+          border: 1px solid var(--vscode-dropdown-border, transparent); }
+  #filter { width: 100%; box-sizing: border-box; margin-bottom: 6px; padding: 4px;
             font-family: var(--vscode-font-family);
             color: var(--vscode-input-foreground); background: var(--vscode-input-background);
             border: 1px solid var(--vscode-input-border, transparent); }
@@ -84,12 +95,20 @@ ${isabelleCss()}
 </style>
 </head><body>
 <input id="filter" type="text" placeholder="Filter symbols…" autocomplete="off">
+${jump}
 ${sections}
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
   document.addEventListener('click', e => {
     const b = e.target.closest('button.sym');
     if (b) vscode.postMessage({ command: 'insert', arg: b.getAttribute('data-name') });
+  });
+  document.getElementById('jump').addEventListener('change', e => {
+    const id = e.target.value;
+    if (!id) return;
+    const section = document.getElementById(id);
+    if (section) section.scrollIntoView({ block: 'start' });
+    e.target.value = '';
   });
   document.getElementById('filter').addEventListener('input', e => {
     const q = e.target.value.trim().toLowerCase();

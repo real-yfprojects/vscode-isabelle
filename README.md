@@ -50,6 +50,12 @@ only.** Nothing can desynchronise, because there is only one representation.
 - **Spell checker** — Isabelle checks the prose in comments and `text ‹…›` blocks, by
   PIDE markup category rather than by syntax, so antiquotations inside prose are excluded.
   The underlining needs no client code; the five dictionary commands are registered.
+  Set `isabelle.spellChecker` to `false` to turn it off and use a general spell-checking
+  extension instead.
+- **Syntax highlighting** — a TextMate grammar generated from the distribution's own
+  keyword table, so colouring appears before the prover attaches. PIDE markup layers on
+  top where it has information. The scopes (`comment.block.isabelle`, `string.quoted.*`)
+  are also what general spell-checking extensions need to target prose.
 
 ## Setup
 

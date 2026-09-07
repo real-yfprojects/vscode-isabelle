@@ -88,6 +88,8 @@ export function serverArguments(): string[] {
   for (const opt of cfg.get<string[]>('serverOptions') ?? []) {
     if (opt.trim()) args.push('-o', opt.trim())
   }
+  // A dedicated setting rather than making users hand-write an -o override.
+  if (cfg.get<boolean>('spellChecker') === false) args.push('-o', 'spell_checker=false')
   if (cfg.get<boolean>('verbose')) args.push('-v')
   args.push(...(cfg.get<string[]>('serverArgs') ?? []))
   return args

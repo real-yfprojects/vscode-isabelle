@@ -200,6 +200,11 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Apply PIDE markup (syntax colouring and processing status) as editor decorations."
+        },
+        "isabelle.spellChecker": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Use Isabelle's own spell checker, which checks prose in comments and `text ‹…›` blocks by PIDE markup category (so antiquotations inside prose are excluded). Turn this off to avoid double underlining if you prefer a general spell-checking extension such as Code Spell Checker; the bundled TextMate grammar gives those extensions `comment.block.isabelle` and `string.quoted.*` scopes to target."
         }
       }
     },
@@ -244,7 +249,14 @@
           "type": "webview"
         }
       ]
-    }
+    },
+    "grammars": [
+      {
+        "language": "isabelle",
+        "scopeName": "source.isabelle",
+        "path": "./syntaxes/isabelle-grammar.json"
+      }
+    ]
   },
   "scripts": {
     "compile": "tsc -p ./",
