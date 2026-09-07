@@ -49,6 +49,30 @@
       {
         "command": "isabelle.stateToggleAutoUpdate",
         "title": "Isabelle: Toggle Proof State Auto-Update"
+      },
+      {
+        "command": "isabelle.sledgehammer",
+        "title": "Isabelle: Run Sledgehammer"
+      },
+      {
+        "command": "isabelle.include-word",
+        "title": "Include word"
+      },
+      {
+        "command": "isabelle.include-word-permanently",
+        "title": "Include word permanently"
+      },
+      {
+        "command": "isabelle.exclude-word",
+        "title": "Exclude word"
+      },
+      {
+        "command": "isabelle.exclude-word-permanently",
+        "title": "Exclude word permanently"
+      },
+      {
+        "command": "isabelle.reset-words",
+        "title": "Reset non-permanent words"
       }
     ],
     "keybindings": [
@@ -171,6 +195,11 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Apply PIDE markup only to the visible part of the document (plus `#isabelle.renderMarginLines#`). The server sends markup for the whole file - over 51000 ranges on a 9000-line theory - and applying all of it costs roughly 40ms per keystroke. Disable only to compare against that behaviour."
+        },
+        "isabelle.pideMarkup": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Apply PIDE markup (syntax colouring and processing status) as editor decorations."
         }
       }
     },
@@ -200,6 +229,11 @@
         {
           "id": "isabelle-symbols",
           "name": "Symbols",
+          "type": "webview"
+        },
+        {
+          "id": "isabelle-sledgehammer",
+          "name": "Sledgehammer",
           "type": "webview"
         }
       ],

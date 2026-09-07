@@ -65,6 +65,13 @@ export function isabelleCss(): string {
 /**
  * Wrap server HTML in a themed document. Scripts are enabled only to forward link
  * clicks back to the extension; the CSP pins them to a single nonce.
+ *
+ * `body` is markup produced by Isabelle's own Browser_Info and has to be inserted as
+ * markup -- that is the whole point of vscode_html_output. It can contain text echoed
+ * from theory files, so the CSP is what keeps that safe: `default-src 'none'` blocks
+ * every external load, and `script-src 'nonce-...'` means an injected <script> cannot
+ * run. The webview is also sandboxed from the extension host, whose only channel is the
+ * postMessage handler below.
  */
 export function panelHtml(webview: vscode.Webview, body: string): string {
   const nonce = Math.random().toString(36).slice(2) + Date.now().toString(36)

@@ -10,6 +10,7 @@
 
 import * as vscode from 'vscode'
 import { SYMBOL_RE, SymbolTable } from './symbols'
+import { stickyLines } from './viewport'
 
 /** Control symbols that restyle the single character following them. */
 const SCRIPT_SINGLE: Record<string, 'sub' | 'sup' | 'bold'> = {
@@ -129,10 +130,18 @@ export class SymbolRenderer implements vscode.Disposable {
     const reveal = config<boolean>('revealSymbolAtCursor', true)
     const out: Ranges = { hidden: [], sub: [], sup: [], bold: [] }
 
+    // Sticky-header lines sit above the viewport but are still painted, so scan them too.
+    const first = editor.visibleRanges[0]?.start.line ?? 0
+    const spans: vscode.Range[] = stickyLines(doc, first)
+      .filter(line => line < first - margin)
+      .map(line => new vscode.Range(line, 0, line, doc.lineAt(line).text.length))
     for (const visible of editor.visibleRanges) {
       const startLine = Math.max(0, visible.start.line - margin)
       const endLine = Math.min(doc.lineCount - 1, visible.end.line + margin)
-      const span = new vscode.Range(startLine, 0, endLine, doc.lineAt(endLine).text.length)
+      spans.push(new vscode.Range(startLine, 0, endLine, doc.lineAt(endLine).text.length))
+    }
+
+    for (const span of spans) {
       const text = doc.getText(span)
       const base = doc.offsetAt(span.start)
 

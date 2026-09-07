@@ -49,6 +49,8 @@ corrupt" banner. Building a fork is the only stable way to get the encoding in.
 | **Output panel** | webview over `PIDE/dynamic_output` |
 | **State panel** | webview over `PIDE/state_*`, with Update / Auto / Locate |
 | **Symbols palette** | webview over the `etc/symbols` table; click inserts the escape |
+| **Sledgehammer panel** | webview over `PIDE/sledgehammer_*`: prover list, run, cancel, locate, status |
+| **Spell checker** | underlining arrives as a `spell_checker` decoration; the five dictionary commands are registered |
 
 Sendback deserves emphasis because the original brief listed it as a gap. Isabelle2025
 exposed it as LSP code actions, so it arrives for free. Asking for code actions on a
@@ -58,14 +60,12 @@ exposed it as LSP code actions, so it arrives for free. Asking for code actions 
 ### Missing, but plainly feasible as a normal extension
 
 None of these need a fork. They are unwritten UI over PIDE messages the server already
-sends. This extension now uses **10 of the 32** `PIDE/*` protocol messages.
+sends. This extension now uses **22 of the 32** `PIDE/*` protocol messages.
 
 | Feature | Protocol | Notes |
 |---|---|---|
-| Sledgehammer *panel* | `PIDE/sledgehammer_request`, `_provers_request`, `_status`, `_output`, `_cancel`, `_locate`, `_sendback`, `_insert` | the panel is missing; sendback itself already works |
 | Documentation browser | `PIDE/documentation_request/_response` | webview over the doc index |
 | Preview panel | `PIDE/preview_request/_response` | rendered theory preview |
-| Spell checker | `PIDE/include_word`, `_permanently`, `exclude_word`, `reset_words` | four commands; the `spell_checker` decoration type is already wired |
 | Server-side abbreviations | `PIDE/abbrevs_request/_response` | the session's outer-syntax abbrevs, complementing `etc/symbols` |
 | Panel margins | `PIDE/output_set_margin`, `state_set_margin` | re-wrap output on panel resize |
 
@@ -109,13 +109,20 @@ Verified by running it:
 - `isabelle build` rejects literal Unicode, for ordinary *and* control symbols
 - `isabelle vscode_server` runs headless over stdio and drives fine from a stock client
 - the server applies `Symbol.encode` to editor text, so a Unicode buffer would also work
-- sendback arrives as LSP code actions
+- sendback arrives as LSP code actions. Notably this is the *only* path: running
+  Sledgehammer from the panel yields progress messages on `PIDE/sledgehammer_output`
+  ("verit found a proof...") but never a `<sendback>` element, while the goal line
+  simultaneously gains a `by simp` code action. The panel drives the search; the editor
+  applies the result
+- Isabelle's spell-checker underlining needs no client code: it arrives as an ordinary
+  `spell_checker` decoration through `PIDE/decoration`
 - decoration cost, symbol rendering alone with no server: ~1.7 ms viewport-scoped vs
   17 ms whole-document (5 k ranges) and 233 ms on a 144 k-line file; linear in range
   count, flat in file size
-- decoration cost with the server attached and PIDE markup live, on a 9 k-line theory:
-  19.3 ms typing / 66.7 ms scroll for the shipped viewport-scoped configuration, against
-  24.3 ms / 143.1 ms unscoped. Symbol rendering is the larger share of what remains
+- decoration cost with the server attached, 9 k-line theory, interleaved rounds: only
+  one difference exceeds the noise floor -- whole-document PIDE markup (29-55 ms typing,
+  41-63 ms scroll) against everything else (~4-18 ms). Viewport scoping is a real win;
+  the remaining differences, symbol rendering included, are not measurable here
 - a formatter or `onWillSave` participant can force ASCII onto disk, but always rewrites
   the buffer too, so it cannot serve as a round-trip encoding layer
 - PIDE markup decorations arrive and are applied (8 types, 22 ranges on a small theory)
@@ -126,21 +133,17 @@ Not verified:
 
 - **Linux and macOS.** Only the Windows/Cygwin launch path has actually run
 - the panels still listed as missing in §2
-- whether the remaining symbol-rendering cost can be reduced further; no attempt was
-  made to cache extraction across scroll steps
+- any decoration cost below ~20 ms. The language server processes in the background
+  throughout, moving the baseline by more than the effects being compared; resolving
+  finer differences would need a quiesced server, which this harness cannot guarantee
 
 ## 5. If this were taken further
 
 In rough order of value per effort:
 
-1. **Sledgehammer panel** — the largest remaining piece: prover selection, run/cancel,
-   and results. Sendback already lands as code actions, so the panel is about driving
-   the search rather than applying the result.
-2. **Documentation and Preview panels** — one request/response each, over the same
-   webview scaffolding the Output and State panels already use.
-3. **Spell checker** — four notifications; the `spell_checker` decoration type is
-   already created and applied.
-4. **A `.vsix` and CI** — plus testing the non-Windows launch path.
+1. **Documentation and Preview panels** — one request/response each, over the same
+   webview scaffolding the Output, State and Sledgehammer panels already use.
+2. **A `.vsix` and CI** — plus testing the non-Windows launch path.
 5. **Upstream `Content.recode_symbols`** — the server already computes exactly the edits
    the save normaliser needs, but the method is dead code, referenced nowhere. Exposing
    it over LSP would let clients share one implementation.

@@ -9,6 +9,8 @@ import { registerAtomicMotion } from './atomic'
 import { PideDecorations } from './pide_decorations'
 import { OutputPanel, StatePanel } from './panels'
 import { SymbolsPanel } from './symbols_panel'
+import { SledgehammerPanel } from './sledgehammer_panel'
+import { registerSpellChecker } from './spell_checker'
 
 let client: LanguageClient | undefined
 let output: vscode.OutputChannel
@@ -22,6 +24,7 @@ let clientScope: vscode.Disposable[] = []
 let pide: PideDecorations | undefined
 let statePanel: StatePanel | undefined
 let outputPanel: OutputPanel | undefined
+let sledgehammer: SledgehammerPanel | undefined
 
 export const ISABELLE_SELECTOR: vscode.DocumentSelector =
   [{ scheme: 'file', language: 'isabelle' }]
@@ -77,6 +80,9 @@ async function startClient(): Promise<void> {
   outputPanel.register(clientScope, client)
   statePanel = new StatePanel(client, log)
   statePanel.register(clientScope)
+  sledgehammer = new SledgehammerPanel(client, log)
+  sledgehammer.register(clientScope)
+  registerSpellChecker(clientScope, client, log)
 
   sendCaretUpdate(vscode.window.activeTextEditor)
 }
@@ -88,6 +94,7 @@ async function stopClient(): Promise<void> {
   pide = undefined
   statePanel = undefined
   outputPanel = undefined
+  sledgehammer = undefined
   const c = client
   client = undefined
   if (c) {
@@ -157,6 +164,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('isabelle.statePanelId', () => statePanel?.id),
     vscode.commands.registerCommand('isabelle.outputPanelContent', () => outputPanel?.rawContent),
     vscode.commands.registerCommand('isabelle.statePanelContent', () => statePanel?.rawContent),
+    vscode.commands.registerCommand('isabelle.sledgehammerState', () => sledgehammer && ({
+      provers: sledgehammer.proverList,
+      status: sledgehammer.lastStatus,
+      output: sledgehammer.lastOutput,
+    })),
     vscode.window.onDidChangeTextEditorSelection(e => sendCaretUpdate(e.textEditor)),
     vscode.window.onDidChangeActiveTextEditor(editor => sendCaretUpdate(editor)),
   )

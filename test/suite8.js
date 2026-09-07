@@ -111,21 +111,57 @@ async function run() {
   const cfg = vscode.workspace.getConfiguration('isabelle')
   const results = {}
 
-  const measure = async (label, viewportScope, renderSymbols) => {
-    await cfg.update('pideViewportScope', viewportScope, vscode.ConfigurationTarget.Global)
-    await cfg.update('renderSymbols', renderSymbols, vscode.ConfigurationTarget.Global)
-    await wait(2500)
-    const typing = await typingRun(editor, 30)
-    const scroll = await scrollRun(editor, 40, 40)
-    results[label] = { typing, scroll }
-    console.log(`  ${label.padEnd(32)} typing ${String(typing.median).padStart(6)} (p95 ${String(typing.p95).padStart(6)})` +
-                `   scroll ${String(scroll.median).padStart(6)} (p95 ${String(scroll.p95).padStart(6)})`)
+  // Configurations are interleaved across rounds rather than measured once each.
+  // A single pass through them is not trustworthy: the language server keeps processing
+  // in the background, so run-to-run drift exceeded the effects being compared and
+  // produced impossible readings (a configuration "faster" than doing nothing, and a
+  // negative cost for enabling a feature).
+  const CONFIGS = [
+    ['neither', false, true, false],
+    ['symbols only', false, true, true],
+    ['PIDE viewport only', true, true, false],
+    ['PIDE viewport + symbols', true, true, true],
+    ['PIDE whole-doc + symbols', true, false, true],
+  ]
+  const ROUNDS = 3
+  const samples = new Map(CONFIGS.map(c => [c[0], { typing: [], scroll: [] }]))
+
+  for (let round = 0; round < ROUNDS; round++) {
+    console.log(`\nround ${round + 1}/${ROUNDS}`)
+    for (const [label, pideMarkup, viewportScope, renderSymbols] of CONFIGS) {
+      await cfg.update('pideMarkup', pideMarkup, vscode.ConfigurationTarget.Global)
+      await cfg.update('pideViewportScope', viewportScope, vscode.ConfigurationTarget.Global)
+      await cfg.update('renderSymbols', renderSymbols, vscode.ConfigurationTarget.Global)
+      await wait(2000)
+      const t = await typingRun(editor, 20)
+      const s = await scrollRun(editor, 25, 40)
+      samples.get(label).typing.push(t.median)
+      samples.get(label).scroll.push(s.median)
+      console.log(`  ${label.padEnd(28)} typing ${String(t.median).padStart(6)}   scroll ${String(s.median).padStart(6)}`)
+    }
   }
 
-  console.log('\n=== latency (ms), identical markup throughout ===')
-  await measure('whole-doc PIDE + symbols', false, true)
-  await measure('viewport PIDE + symbols', true, true)
-  await measure('viewport PIDE only', true, false)
+  console.log(`\n=== median of ${ROUNDS} interleaved rounds (ms) ===`)
+  for (const [label] of CONFIGS) {
+    const s = samples.get(label)
+    const typing = f2(median(s.typing))
+    const scroll = f2(median(s.scroll))
+    results[label] = { typing, scroll, typingSamples: s.typing, scrollSamples: s.scroll }
+    console.log(`  ${label.padEnd(28)} typing ${String(typing).padStart(6)} ${JSON.stringify(s.typing)}` +
+                `   scroll ${String(scroll).padStart(6)} ${JSON.stringify(s.scroll)}`)
+  }
+
+  const d = (a, b, k) => +(results[a][k] - results[b][k]).toFixed(2)
+  console.log('\n=== marginal cost of symbol rendering ===')
+  console.log(`  typing: ${d('symbols only', 'neither', 'typing')} ms alone,` +
+              ` ${d('PIDE viewport + symbols', 'PIDE viewport only', 'typing')} ms alongside PIDE`)
+  console.log(`  scroll: ${d('symbols only', 'neither', 'scroll')} ms alone,` +
+              ` ${d('PIDE viewport + symbols', 'PIDE viewport only', 'scroll')} ms alongside PIDE`)
+  console.log('\n=== marginal cost of PIDE markup (viewport-scoped) ===')
+  console.log(`  typing: ${d('PIDE viewport only', 'neither', 'typing')} ms   ` +
+              `scroll: ${d('PIDE viewport only', 'neither', 'scroll')} ms`)
+
+  await cfg.update('pideMarkup', true, vscode.ConfigurationTarget.Global)
   await cfg.update('renderSymbols', true, vscode.ConfigurationTarget.Global)
   await cfg.update('pideViewportScope', true, vscode.ConfigurationTarget.Global)
 

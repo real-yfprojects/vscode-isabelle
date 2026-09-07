@@ -44,8 +44,12 @@ only.** Nothing can desynchronise, because there is only one representation.
 - **Panels** — Output and State as webviews over `PIDE/dynamic_output` and `PIDE/state_*`,
   plus a Symbols palette whose entries come from `etc/symbols`. The State panel has
   Update / Auto-update / Locate.
-- **Sledgehammer sendback** — works with no extra code: Isabelle2025 exposes it as LSP
-  code actions, so `try0` and `sledgehammer` suggestions appear under the lightbulb.
+- **Sledgehammer** — a panel to drive the search (prover list, run, cancel, locate,
+  progress). The suggestions themselves arrive as LSP code actions under the lightbulb,
+  which is the only path Isabelle2025-2 offers: the panel stream carries progress only.
+- **Spell checker** — Isabelle checks the prose in comments and `text ‹…›` blocks, by
+  PIDE markup category rather than by syntax, so antiquotations inside prose are excluded.
+  The underlining needs no client code; the five dictionary commands are registered.
 
 ## Setup
 
@@ -65,27 +69,36 @@ Point `isabelle.home` at your distribution if it is not auto-detected.
 ## Performance
 
 Both decoration systems -- symbol rendering and PIDE markup -- are scoped to
-`editor.visibleRanges` ± `isabelle.renderMarginLines`. This matters most for PIDE:
-the server sends markup for the whole document, over 51000 ranges on a 9000-line
-theory, and applying all of it is what makes large files feel heavy.
+`editor.visibleRanges` ± `isabelle.renderMarginLines`. This matters most for PIDE: the
+server sends markup for the whole document, over 51000 ranges on a 9000-line theory.
 
-Measured in VS Code 1.136 on a synthetic 9006-line theory (12000 symbol occurrences)
-with the language server attached and identical markup across all three rows:
+Measured on a synthetic 9006-line theory with the language server attached, five
+configurations interleaved across three rounds (VS Code 1.136):
 
-| configuration | typing median | typing p95 | scroll median | scroll p95 |
-|---|---:|---:|---:|---:|
-| whole-document PIDE + symbols | 24.3 ms | 227.8 ms | 143.1 ms | 440.9 ms |
-| **viewport PIDE + symbols (default)** | **19.3 ms** | **34.4 ms** | **66.7 ms** | **113.0 ms** |
-| viewport PIDE only | 4.7 ms | 24.4 ms | 18.8 ms | 58.2 ms |
+| configuration | typing median | scroll median |
+|---|---:|---:|
+| no decorations at all | ~4–17 ms | ~1–16 ms |
+| symbol rendering only | ~3–16 ms | ~1–13 ms |
+| viewport PIDE only | ~6–18 ms | ~3–18 ms |
+| **viewport PIDE + symbols (default)** | ~4–16 ms | ~2–20 ms |
+| whole-document PIDE + symbols | **29–55 ms** | **41–63 ms** |
 
-Two caveats worth stating plainly. Symbol rendering, not PIDE markup, is the larger
-remaining cost once both are viewport-scoped -- an earlier figure of ~1.7ms measured it
-in isolation with no server attached, which flattered it considerably. And the scroll
-column is close to worst case: the benchmark awaits every viewport change individually,
-whereas real scrolling coalesces through a 20ms debounce.
+Read those as ranges, not point estimates. Only one conclusion survives the noise, and
+it survives cleanly -- every sample of the last row is worse than every sample of every
+other row:
 
-Set `isabelle.pideViewportScope` to `false` to compare against the unscoped behaviour,
-and `isabelle.renderSymbols` to `false` to drop symbol rendering on very large files.
+> **Viewport-scoping PIDE markup is a large, real win. Every other difference here is
+> below the measurement noise floor.**
+
+In particular symbol rendering has no measurable cost once PIDE is scoped. An earlier
+version of this file claimed it was the dominant remaining cost; that was a misreading of
+a single noisy run. The noise comes from the language server processing in the background
+throughout, which moves the baseline by more than the effects being compared -- the
+much-quoted 1.7 ms figure for symbol rendering was measured with no server attached at
+all, and is not comparable.
+
+`isabelle.pideMarkup`, `isabelle.pideViewportScope` and `isabelle.renderSymbols` each turn
+one piece off, which is how the table above was produced.
 
 ## Development
 
@@ -110,10 +123,10 @@ Prototype. [GAPS.md](GAPS.md) analyses this against the official Isabelle/VSCode
 fork exists for exactly two capabilities (a custom file encoding and bundled fonts),
 both worked around here.
 
-PIDE markup colouring and the Output, State and Symbols panels are now implemented, so
-this uses 10 of the 32 `PIDE/*` protocol messages. Still missing, and all ordinary
-extension work rather than missing capability: the Sledgehammer panel (sendback itself
-already works), the Documentation and Preview panels, and the spell checker.
+PIDE markup colouring and the Output, State, Symbols and Sledgehammer panels are now
+implemented, along with the spell-checker commands, so this uses 22 of the 32 `PIDE/*`
+protocol messages. Still missing, and ordinary extension work rather than missing
+capability: the Documentation and Preview panels.
 
 ## License
 
