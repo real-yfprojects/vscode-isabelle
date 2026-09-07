@@ -9,11 +9,21 @@ This documents tracks features and tasks that might already be tracked in other 
   - the grammar also buys instant highlighting before the prover attaches; verified that
     it composes with PIDE markup rather than fighting it (grammar is the base layer,
     PIDE decorations override where they have markup)
-- [ ] feature equality with isabelle/jedit
-  - done: PIDE markup, Output, State, Sledgehammer, Symbols, spell checker, sendback
-  - missing: Documentation panel, Preview panel, Query panel (find_theorems /
-    find_consts), Theories/session status, Timing, Monitor
-  - 22 of the 32 `PIDE/*` protocol messages are in use; see GAPS.md
+- [~] feature equality with isabelle/jedit
+  - done: PIDE markup, Output, State, Sledgehammer, Symbols, Documentation, Preview,
+    spell checker, sendback, session abbrevs, panel margins
+  - **all 32 of the 32 `PIDE/*` messages are now in use**, so the LSP surface is exhausted
+  - the premise that jEdit features run through the LSP turns out to be wrong:
+    `src/Tools/jEdit/` contains no reference to LSP anywhere. jEdit embeds PIDE directly
+    in its own JVM; the language server is a peer front end that re-exposes a subset. So
+    each remaining panel needs protocol messages written by hand
+  - Query (find_theorems / find_consts) is the cheapest and most useful: jEdit builds
+    `Query_Operation(..., "find_theorems", ...)` and the server already builds
+    `Query_Operation(..., "sledgehammer", ...)`. Implemented on the `vscode-query-panel`
+    branch of mirror-isabelle; client side ships behind `isabelle.queryPanel`, off by
+    default. Not built -- the tree will not compile against a released Isabelle classpath
+  - still needing new protocol design: Theories, Timing, Monitor, Debugger, Simplifier
+    trace, Syslog, Raw output, Protocol, Info, Graphview
 - [ ] compare to lean extension and see if we can use any of their UX
   - not started. Candidates seen while reading vscode-lean4 during the spike:
     gutter progress bars (`taskgutter.ts`) for per-command elaboration status, and its

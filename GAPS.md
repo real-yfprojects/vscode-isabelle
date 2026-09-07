@@ -57,20 +57,61 @@ exposed it as LSP code actions, so it arrives for free. Asking for code actions 
 `try0` line returned six: `by simp`, `by presburger`, `by fastforce`, `by force`,
 `by auto`, `by linarith`, each carrying a `newText` that rewrites the line.
 
-### Missing, but plainly feasible as a normal extension
+### The LSP surface is now fully consumed
 
-None of these need a fork. They are unwritten UI over PIDE messages the server already
-sends. This extension now uses **22 of the 32** `PIDE/*` protocol messages.
+**All 32 of the 32** `PIDE/*` messages the server defines are in use. Verified
+mechanically by diffing the message names in `lsp.scala` against those in `src/*.ts`.
 
-| Feature | Protocol | Notes |
-|---|---|---|
-| Documentation browser | `PIDE/documentation_request/_response` | webview over the doc index |
-| Preview panel | `PIDE/preview_request/_response` | rendered theory preview |
-| Server-side abbreviations | `PIDE/abbrevs_request/_response` | the session's outer-syntax abbrevs, complementing `etc/symbols` |
-| Panel margins | `PIDE/output_set_margin`, `state_set_margin` | re-wrap output on panel resize |
+Nothing further is reachable from a client without changing the server, which brings us
+to the next section.
 
 For reference, the official extension contributes 8 commands, 4 views, 3 configuration
 properties, and **0 keybindings**.
+
+### What jEdit still has, and why it is out of reach
+
+The natural assumption is that Isabelle/jEdit is an LSP client and its panels therefore
+ought to be reachable. It is not. **`src/Tools/jEdit/` contains no reference to LSP at
+all.** jEdit is a Scala application that embeds PIDE in its own JVM and drives it through
+`PIDE.session` directly. The language server in `src/Tools/VSCode/src/` is a *peer* front
+end that embeds PIDE the same way and re-exposes a chosen subset over LSP.
+
+So jEdit features do not "run through the LSP"; each one someone wanted in VS Code had to
+be given protocol messages by hand. The underlying machinery is shared, which is what makes
+the remaining work small rather than deep:
+
+| jEdit dockable | Mechanism it uses | What exposing it would take |
+|---|---|---|
+| Query (find_theorems, find_consts) | `Query_Operation(PIDE.editor, view, "find_theorems", ...)` | **the same class the server already uses for Sledgehammer**, with a different operation name. Implemented on the `vscode-query-panel` branch of mirror-isabelle |
+| Theories | `PIDE.session.phase`, per-node status | new messages for session phase and node status |
+| Timing | timing data off `Document.Snapshot` | new messages; snapshot data is already server-side |
+| Monitor | ML statistics plus `session.protocol_command("ML_Heap.full_gc")` | protocol plumbing and a chart; the largest of these |
+| Debugger, Simplifier trace, Syslog, Raw output, Protocol, Info, Graphview | assorted direct PIDE APIs | one set of messages each |
+
+Query is the one worth having, and the cheapest: `Query_Dockable` builds
+`new Query_Operation(PIDE.editor, view, "find_theorems", ...)` while `VSCode_Sledgehammer`
+builds `new Query_Operation(server.editor, (), "sledgehammer", ...)`. Only the name differs.
+The branch adds one generic set of messages, so further operations cost a list entry:
+
+```
+PIDE/query_operations_request -> _response { operations }
+PIDE/query_request  { operation, args }
+PIDE/query_cancel   { operation }
+PIDE/query_locate   { operation }
+PIDE/query_status   { operation, message }
+PIDE/query_output   { operation, content }
+```
+
+The client half ships behind `isabelle.queryPanel` (default off), so a stock distribution
+does not get a view that silently does nothing; enabled against released Isabelle, it
+reports the server as unsupported rather than waiting.
+
+That branch is **not built**. This tree's VSCode module does not compile against a released
+Isabelle2025-2 classpath -- 76 errors from unrelated API drift (`Delay_Ops`, `Output.Kind`,
+`Isabelle_Platform.Bash_Context`, `Doc.Entry.print(style = ...)`) -- and building Pure from
+the checkout needs a component environment the repository does not carry. Type-checking
+attributes none of those errors to the files the branch touches, and `vscode_query.scala`
+reports none at all, but that is evidence rather than proof.
 
 ### Genuinely needs the fork — or a workaround
 
@@ -142,8 +183,9 @@ Not verified:
 
 In rough order of value per effort:
 
-1. **Documentation and Preview panels** — one request/response each, over the same
-   webview scaffolding the Output, State and Sledgehammer panels already use.
+1. **Build and test the `vscode-query-panel` branch**, then turn `isabelle.queryPanel`
+   on by default. Everything else on the jEdit list needs new protocol messages designed
+   from scratch; this one is already written and only needs a build environment.
 2. **A `.vsix` and CI** — plus testing the non-Windows launch path.
 5. **Upstream `Content.recode_symbols`** — the server already computes exactly the edits
    the save normaliser needs, but the method is dead code, referenced nowhere. Exposing

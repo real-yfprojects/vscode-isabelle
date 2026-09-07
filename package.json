@@ -85,6 +85,10 @@
       {
         "command": "isabelle.documentation",
         "title": "Isabelle: Show Documentation"
+      },
+      {
+        "command": "isabelle.findTheorems",
+        "title": "Isabelle: Find Theorems / Constants"
       }
     ],
     "keybindings": [
@@ -217,6 +221,11 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Use Isabelle's own spell checker, which checks prose in comments and `text ‹…›` blocks by PIDE markup category (so antiquotations inside prose are excluded). Turn this off to avoid double underlining if you prefer a general spell-checking extension such as Code Spell Checker; the bundled TextMate grammar gives those extensions `comment.block.isabelle` and `string.quoted.*` scopes to target."
+        },
+        "isabelle.queryPanel": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Show the Query panel (find_theorems / find_consts). Requires an Isabelle whose language server exposes the `PIDE/query_*` messages; released versions do not. See the `vscode-query-panel` branch of mirror-isabelle."
         }
       }
     },
@@ -257,6 +266,12 @@
           "id": "isabelle-documentation",
           "name": "Documentation",
           "type": "webview"
+        },
+        {
+          "id": "isabelle-query",
+          "name": "Query",
+          "type": "webview",
+          "when": "config.isabelle.queryPanel"
         }
       ],
       "isabelle-panel": [

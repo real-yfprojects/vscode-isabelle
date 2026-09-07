@@ -13,6 +13,7 @@ import { SledgehammerPanel } from './sledgehammer_panel'
 import { registerSpellChecker } from './spell_checker'
 import { DocumentationPanel } from './doc_panel'
 import { PreviewPanels } from './preview_panel'
+import { QueryPanel } from './query_panel'
 
 let client: LanguageClient | undefined
 let output: vscode.OutputChannel
@@ -29,6 +30,7 @@ let outputPanel: OutputPanel | undefined
 let sledgehammer: SledgehammerPanel | undefined
 let docPanel: DocumentationPanel | undefined
 let previews: PreviewPanels | undefined
+let queryPanel: QueryPanel | undefined
 const abbrevs = new AbbrevStore()
 
 export const ISABELLE_SELECTOR: vscode.DocumentSelector =
@@ -91,6 +93,12 @@ async function startClient(): Promise<void> {
   docPanel.register(clientScope)
   previews = new PreviewPanels(client, log)
   previews.register(clientScope)
+  // Off by default: the PIDE/query_* messages exist only on the vscode-query-panel
+  // branch of mirror-isabelle, so a stock distribution would show a dead view.
+  if (vscode.workspace.getConfiguration('isabelle').get<boolean>('queryPanel', false)) {
+    queryPanel = new QueryPanel(client, log)
+    queryPanel.register(clientScope)
+  }
   registerSpellChecker(clientScope, client, log)
 
   // Session abbreviations complement the static ones in etc/symbols.
@@ -114,6 +122,7 @@ async function stopClient(): Promise<void> {
   sledgehammer = undefined
   docPanel = undefined
   previews = undefined
+  queryPanel = undefined
   const c = client
   client = undefined
   if (c) {
@@ -188,6 +197,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       documentationEntries: docPanel?.entryCount ?? 0,
       previewColumns: previews?.openColumns ?? [],
       previewLabel: previews?.label ?? '',
+      queryPanelEnabled: queryPanel !== undefined,
+      querySupported: queryPanel?.serverSupported,
     })),
     vscode.commands.registerCommand('isabelle.sledgehammerState', () => sledgehammer && ({
       provers: sledgehammer.proverList,

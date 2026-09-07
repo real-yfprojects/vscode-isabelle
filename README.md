@@ -129,10 +129,15 @@ Prototype. [GAPS.md](GAPS.md) analyses this against the official Isabelle/VSCode
 fork exists for exactly two capabilities (a custom file encoding and bundled fonts),
 both worked around here.
 
-PIDE markup colouring and the Output, State, Symbols and Sledgehammer panels are now
-implemented, along with the spell-checker commands, so this uses 22 of the 32 `PIDE/*`
-protocol messages. Still missing, and ordinary extension work rather than missing
-capability: the Documentation and Preview panels.
+PIDE markup colouring and the Output, State, Symbols, Sledgehammer, Documentation and
+Preview panels are implemented, along with the spell-checker commands, session
+abbreviations and panel margins. **All 32 of the 32 `PIDE/*` protocol messages the server
+defines are in use**, so nothing further is reachable without changing Isabelle itself.
+
+What jEdit still has beyond this -- Query, Theories, Timing, Monitor and others -- is out
+of reach for a different reason than the encoding was: jEdit is not an LSP client at all,
+but a peer front end embedding PIDE directly, so each panel needs protocol messages written
+by hand. [GAPS.md](GAPS.md) works through what each would cost.
 
 ## License
 
