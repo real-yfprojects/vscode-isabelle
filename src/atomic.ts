@@ -12,7 +12,9 @@
  */
 
 import * as vscode from 'vscode'
-import { SYMBOL_RE } from './symbols'
+import { SYMBOL_RE, SymbolTable } from './symbols'
+
+let table: SymbolTable | undefined
 
 /** All symbol escapes on the given line. */
 function escapesOnLine(doc: vscode.TextDocument, line: number): vscode.Range[] {
@@ -26,16 +28,31 @@ function escapesOnLine(doc: vscode.TextDocument, line: number): vscode.Range[] {
   return out
 }
 
+/**
+ * Only escapes that are actually drawn as a glyph behave atomically. Navigation must
+ * match what the user sees: an escape shown as raw text - because etc/symbols gives it
+ * no codepoint (`\<notasymbol>`, and 140 of List.thy's 5097 occurrences), or because the
+ * caret is inside it and it has been revealed - must be walked one character at a time,
+ * or it would be visible but unreachable.
+ */
+function isRendered(doc: vscode.TextDocument, range: vscode.Range, caret: vscode.Position): boolean {
+  if (!table?.glyphOf(doc.getText(range))) return false
+  if (range.start.isBefore(caret) && caret.isBefore(range.end)) return false
+  return true
+}
+
 /** The escape ending exactly at `pos`, or strictly containing it. */
 function escapeBefore(doc: vscode.TextDocument, pos: vscode.Position): vscode.Range | undefined {
   return escapesOnLine(doc, pos.line).find(r =>
-    r.end.character === pos.character || (r.start.character < pos.character && pos.character < r.end.character))
+    (r.end.character === pos.character || (r.start.character < pos.character && pos.character < r.end.character)) &&
+    isRendered(doc, r, pos))
 }
 
 /** The escape starting exactly at `pos`, or strictly containing it. */
 function escapeAfter(doc: vscode.TextDocument, pos: vscode.Position): vscode.Range | undefined {
   return escapesOnLine(doc, pos.line).find(r =>
-    r.start.character === pos.character || (r.start.character < pos.character && pos.character < r.end.character))
+    (r.start.character === pos.character || (r.start.character < pos.character && pos.character < r.end.character)) &&
+    isRendered(doc, r, pos))
 }
 
 function singleEmptySelection(editor: vscode.TextEditor): vscode.Position | undefined {
@@ -89,9 +106,31 @@ async function remove(
   await editor.edit(b => b.delete(range))
 }
 
-export function registerAtomicMotion(context: vscode.ExtensionContext): void {
+export function registerAtomicMotion(context: vscode.ExtensionContext, symbols: SymbolTable): void {
+  table = symbols
   const reg = (id: string, fn: () => Promise<void>) =>
     context.subscriptions.push(vscode.commands.registerCommand(id, fn))
+
+  // Test hook: report the decision (jump or delegate) without moving anything.
+  // Asserting on a built-in's *effect* is unreliable when the test window is unfocused;
+  // this exposes the logic that is actually ours.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('isabelle.atomicProbe', (direction: 'left' | 'right') => {
+      const editor = vscode.window.activeTextEditor
+      if (!editor) return undefined
+      const caret = editor.selection.active
+      const range = direction === 'left'
+        ? escapeBefore(editor.document, caret)
+        : escapeAfter(editor.document, caret)
+      return range
+        ? {
+            delegate: false,
+            target: direction === 'left' ? range.start.character : range.end.character,
+            text: editor.document.getText(range),
+          }
+        : { delegate: true }
+    }),
+  )
 
   reg('isabelle.cursorLeft', () => move('cursorLeft', escapeBefore, 'start', false))
   reg('isabelle.cursorRight', () => move('cursorRight', escapeAfter, 'end', false))

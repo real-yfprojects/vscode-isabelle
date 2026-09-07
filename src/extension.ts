@@ -94,7 +94,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   renderer.register(context)
   registerAbbreviations(context, table, ISABELLE_SELECTOR)
   registerNormalizer(context, table, log)
-  registerAtomicMotion(context)
+  registerAtomicMotion(context, table)
 
   context.subscriptions.push(
     vscode.commands.registerCommand('isabelle.restartServer', async () => {
