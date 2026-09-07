@@ -145,7 +145,7 @@ export class SymbolRenderer implements vscode.Disposable {
         const range = new vscode.Range(doc.positionAt(from), doc.positionAt(to))
 
         // Leave the symbol the caret is inside as raw text so it can be edited.
-        if (reveal && editor.selections.some(s => !!s.intersection(range))) continue
+        if (reveal && editor.selections.some(s => entersInterior(s, range))) continue
 
         const single = SCRIPT_SINGLE[name]
         if (single) {
@@ -200,6 +200,23 @@ export class SymbolRenderer implements vscode.Disposable {
     if (this.timer) clearTimeout(this.timer)
     this.disposeTypes()
   }
+}
+
+/**
+ * Whether a selection reaches strictly *into* a symbol, as opposed to merely resting
+ * against one of its ends.
+ *
+ * Touching a boundary must not count. The caret sits on the end boundary immediately
+ * after `\forall` auto-expands, and revealing there would show the raw escape for one
+ * keystroke before the glyph appeared. It would also make the rest of the line jump
+ * sideways every time the caret passed a symbol.
+ */
+function entersInterior(sel: vscode.Selection, range: vscode.Range): boolean {
+  if (sel.isEmpty) {
+    return range.start.isBefore(sel.active) && sel.active.isBefore(range.end)
+  }
+  const overlap = sel.intersection(range)
+  return !!overlap && !overlap.isEmpty
 }
 
 function config<T>(key: string, fallback: T): T {
