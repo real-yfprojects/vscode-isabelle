@@ -1,0 +1,117 @@
+{
+  "name": "isabelle-pide-stock",
+  "displayName": "Isabelle/PIDE (stock VS Code)",
+  "description": "Isabelle proof assistant support for unmodified VS Code, driving `isabelle vscode_server` over LSP.",
+  "version": "0.0.1",
+  "publisher": "spike",
+  "license": "BSD-3-Clause",
+  "categories": ["Programming Languages"],
+  "engines": { "vscode": "^1.85.0" },
+  "main": "./out/extension.js",
+  "activationEvents": ["onLanguage:isabelle"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "isabelle",
+        "aliases": ["Isabelle", "isabelle"],
+        "extensions": [".thy"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "commands": [
+      { "command": "isabelle.restartServer", "title": "Isabelle: Restart Language Server" },
+      { "command": "isabelle.normalizeDocument", "title": "Isabelle: Normalize Symbols to ASCII" },
+      { "command": "isabelle.toggleSymbolRendering", "title": "Isabelle: Toggle Unicode Symbol Rendering" }
+    ],
+    "keybindings": [
+      { "command": "isabelle.cursorLeft", "key": "left", "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols" },
+      { "command": "isabelle.cursorRight", "key": "right", "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols" },
+      { "command": "isabelle.cursorLeftSelect", "key": "shift+left", "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols" },
+      { "command": "isabelle.cursorRightSelect", "key": "shift+right", "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols" },
+      { "command": "isabelle.deleteLeft", "key": "backspace", "when": "editorTextFocus && !editorReadonly && editorLangId == isabelle && config.isabelle.renderSymbols" },
+      { "command": "isabelle.deleteRight", "key": "delete", "when": "editorTextFocus && !editorReadonly && editorLangId == isabelle && config.isabelle.renderSymbols" }
+    ],
+    "configurationDefaults": {
+      "[isabelle]": {
+        "editor.wordSeparators": "`~!@#$%^&*()-=+[{]}|;:'\",./?"
+      }
+    },
+    "configuration": {
+      "title": "Isabelle",
+      "properties": {
+        "isabelle.home": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the Isabelle distribution (the directory containing `bin/isabelle`). Empty: use `$ISABELLE_HOME`, then well-known install locations."
+        },
+        "isabelle.logic": {
+          "type": "string",
+          "default": "HOL",
+          "description": "Logic session image the language server should load (isabelle vscode_server -l)."
+        },
+        "isabelle.sessionDirs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Extra session directories (isabelle vscode_server -d)."
+        },
+        "isabelle.serverOptions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["vscode_unicode_symbols_output=true"],
+          "markdownDescription": "Isabelle system options passed as `-o NAME=VALUE`.\n\n`vscode_unicode_symbols_output` makes hovers and panels render real glyphs, which is display-only and safe. Do **not** enable `vscode_unicode_symbols_edits`: code-action edits are inserted into the buffer, which must stay ASCII."
+        },
+        "isabelle.serverArgs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Additional raw arguments appended to isabelle vscode_server."
+        },
+        "isabelle.verbose": {
+          "type": "boolean",
+          "default": false,
+          "description": "Verbose language-server logging (-v)."
+        },
+        "isabelle.renderSymbols": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Render `\\<forall>`-style symbol escapes as Unicode glyphs using editor decorations. The file on disk stays ASCII."
+        },
+        "isabelle.renderMarginLines": {
+          "type": "number",
+          "default": 100,
+          "markdownDescription": "How many lines above and below the viewport to decorate. Cost is linear in decorated ranges; keep the resulting count well under ~1500."
+        },
+        "isabelle.revealSymbolAtCursor": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show the raw `\\<name>` escape instead of the glyph for the symbol the cursor is inside, so it can be edited."
+        },
+        "isabelle.normalizeOnSave": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Before saving, rewrite any literal Unicode symbols back to `\\<name>` escapes. `isabelle build` rejects literal Unicode, so this keeps files loadable."
+        },
+        "isabelle.expandAbbreviations": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Expand `\\forall` into `\\<forall>` as you type."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "node ./out/test/runTest.js"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^2.3.9",
+    "typescript": "^5.4.0"
+  }
+}
