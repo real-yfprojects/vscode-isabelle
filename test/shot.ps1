@@ -1,6 +1,6 @@
 # Capture only the VS Code window showing Render.thy (a window this test launched),
 # not the whole desktop.
-param([string]$OutFile)
+param([string]$OutFile, [string]$Title = "*.thy*")
 
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 Add-Type @"
@@ -14,9 +14,9 @@ public class Win {
 "@
 
 $proc = Get-Process -Name Code -ErrorAction SilentlyContinue |
-  Where-Object { $_.MainWindowTitle -like '*Render.thy*' } | Select-Object -First 1
+  Where-Object { $_.MainWindowTitle -like $Title } | Select-Object -First 1
 if (-not $proc) {
-  Write-Output "NO_WINDOW: no Code process titled *Render.thy*"
+  Write-Output "NO_WINDOW: no Code process titled $Title"
   Get-Process -Name Code -ErrorAction SilentlyContinue |
     Where-Object { $_.MainWindowTitle } | ForEach-Object { Write-Output ("  title: " + $_.MainWindowTitle) }
   exit 1

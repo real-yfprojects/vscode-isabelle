@@ -38,6 +38,14 @@ only.** Nothing can desynchronise, because there is only one representation.
 - **Atomic motion** — arrow keys, shift-arrows, backspace and delete treat `\<forall>` as
   one unit; `wordPattern` and a per-language `editor.wordSeparators` cover double-click
   selection and Ctrl+arrow declaratively.
+- **PIDE markup** — syntax colouring and processing status from `PIDE/decoration`, using
+  the palette from Isabelle's own `text_color` defaults (override via
+  `isabelle.textColorOverrides`).
+- **Panels** — Output and State as webviews over `PIDE/dynamic_output` and `PIDE/state_*`,
+  plus a Symbols palette whose entries come from `etc/symbols`. The State panel has
+  Update / Auto-update / Locate.
+- **Sledgehammer sendback** — works with no extra code: Isabelle2025 exposes it as LSP
+  code actions, so `try0` and `sledgehammer` suggestions appear under the lightbulb.
 
 ## Setup
 
@@ -79,6 +87,8 @@ node test/runTest.js suite2.js   # Step 2: symbols, rendering, input, save, moti
 node test/runTest.js suite3.js   # visual: holds a window open for a screenshot
 node test/runTest.js suite4.js   # reveal boundaries, selection, motion decisions
 node test/runTest.js suite5.js   # sendback arrives as LSP code actions
+node test/runTest.js suite6.js   # PIDE markup, Output panel, State panel
+node test/runTest.js suite7.js   # visual: panels and palette, for a screenshot
 ```
 
 The suites drive a real VS Code against a real Isabelle; they are integration tests,
@@ -88,9 +98,12 @@ not unit tests, and need an Isabelle distribution present.
 
 Prototype. [GAPS.md](GAPS.md) analyses this against the official Isabelle/VSCode: the
 fork exists for exactly two capabilities (a custom file encoding and bundled fonts),
-both worked around here, and everything still missing -- PIDE markup colouring, the
-Output/State/Sledgehammer panels -- is unwritten UI rather than a missing capability.
-Sledgehammer sendback already works, since Isabelle2025 exposed it as LSP code actions.
+both worked around here.
+
+PIDE markup colouring and the Output, State and Symbols panels are now implemented, so
+this uses 10 of the 32 `PIDE/*` protocol messages. Still missing, and all ordinary
+extension work rather than missing capability: the Sledgehammer panel (sendback itself
+already works), the Documentation and Preview panels, and the spell checker.
 
 ## License
 

@@ -6,6 +6,9 @@ import { SymbolRenderer } from './decorations'
 import { registerAbbreviations } from './abbrev'
 import { registerNormalizer } from './normalize'
 import { registerAtomicMotion } from './atomic'
+import { PideDecorations } from './pide_decorations'
+import { OutputPanel, StatePanel } from './panels'
+import { SymbolsPanel } from './symbols_panel'
 
 let client: LanguageClient | undefined
 let output: vscode.OutputChannel
@@ -13,6 +16,12 @@ let isabelleHome: string | undefined
 let table: SymbolTable | undefined
 let renderer: SymbolRenderer | undefined
 let lastError: string | undefined
+/* Panels and PIDE decorations subscribe to a specific LanguageClient, so their
+   registrations live and die with it rather than with the extension. */
+let clientScope: vscode.Disposable[] = []
+let pide: PideDecorations | undefined
+let statePanel: StatePanel | undefined
+let outputPanel: OutputPanel | undefined
 
 export const ISABELLE_SELECTOR: vscode.DocumentSelector =
   [{ scheme: 'file', language: 'isabelle' }]
@@ -61,10 +70,24 @@ async function startClient(): Promise<void> {
     throw err
   }
   log('Language server started.')
+
+  pide = new PideDecorations(log)
+  pide.register(clientScope, client)
+  outputPanel = new OutputPanel()
+  outputPanel.register(clientScope, client)
+  statePanel = new StatePanel(client, log)
+  statePanel.register(clientScope)
+
   sendCaretUpdate(vscode.window.activeTextEditor)
 }
 
 async function stopClient(): Promise<void> {
+  for (const d of clientScope.splice(0)) {
+    try { d.dispose() } catch { /* a provider may already be gone */ }
+  }
+  pide = undefined
+  statePanel = undefined
+  outputPanel = undefined
   const c = client
   client = undefined
   if (c) {
@@ -95,6 +118,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registerAbbreviations(context, table, ISABELLE_SELECTOR)
   registerNormalizer(context, table, log)
   registerAtomicMotion(context, table)
+  new SymbolsPanel(table).register(context.subscriptions)
 
   context.subscriptions.push(
     vscode.commands.registerCommand('isabelle.restartServer', async () => {
@@ -125,6 +149,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         glyphs: r.hidden.map(d => d.renderOptions?.before?.contentText).filter(Boolean).slice(0, 12),
       }
     }),
+    // Test hooks for the PIDE panels.
+    vscode.commands.registerCommand('isabelle.pideDecorationSummary', () => {
+      const editor = vscode.window.activeTextEditor
+      return editor && pide ? pide.summary(editor.document.uri) : undefined
+    }),
+    vscode.commands.registerCommand('isabelle.statePanelId', () => statePanel?.id),
+    vscode.commands.registerCommand('isabelle.outputPanelContent', () => outputPanel?.rawContent),
+    vscode.commands.registerCommand('isabelle.statePanelContent', () => statePanel?.rawContent),
     vscode.window.onDidChangeTextEditorSelection(e => sendCaretUpdate(e.textEditor)),
     vscode.window.onDidChangeActiveTextEditor(editor => sendCaretUpdate(editor)),
   )

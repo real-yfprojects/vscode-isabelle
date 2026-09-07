@@ -5,31 +5,83 @@
   "version": "0.0.1",
   "publisher": "spike",
   "license": "BSD-3-Clause",
-  "categories": ["Programming Languages"],
-  "engines": { "vscode": "^1.85.0" },
+  "categories": [
+    "Programming Languages"
+  ],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
   "main": "./out/extension.js",
-  "activationEvents": ["onLanguage:isabelle"],
+  "activationEvents": [
+    "onLanguage:isabelle"
+  ],
   "contributes": {
     "languages": [
       {
         "id": "isabelle",
-        "aliases": ["Isabelle", "isabelle"],
-        "extensions": [".thy"],
+        "aliases": [
+          "Isabelle",
+          "isabelle"
+        ],
+        "extensions": [
+          ".thy"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
     "commands": [
-      { "command": "isabelle.restartServer", "title": "Isabelle: Restart Language Server" },
-      { "command": "isabelle.normalizeDocument", "title": "Isabelle: Normalize Symbols to ASCII" },
-      { "command": "isabelle.toggleSymbolRendering", "title": "Isabelle: Toggle Unicode Symbol Rendering" }
+      {
+        "command": "isabelle.restartServer",
+        "title": "Isabelle: Restart Language Server"
+      },
+      {
+        "command": "isabelle.normalizeDocument",
+        "title": "Isabelle: Normalize Symbols to ASCII"
+      },
+      {
+        "command": "isabelle.toggleSymbolRendering",
+        "title": "Isabelle: Toggle Unicode Symbol Rendering"
+      },
+      {
+        "command": "isabelle.stateUpdate",
+        "title": "Isabelle: Update Proof State"
+      },
+      {
+        "command": "isabelle.stateToggleAutoUpdate",
+        "title": "Isabelle: Toggle Proof State Auto-Update"
+      }
     ],
     "keybindings": [
-      { "command": "isabelle.cursorLeft", "key": "left", "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols" },
-      { "command": "isabelle.cursorRight", "key": "right", "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols" },
-      { "command": "isabelle.cursorLeftSelect", "key": "shift+left", "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols" },
-      { "command": "isabelle.cursorRightSelect", "key": "shift+right", "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols" },
-      { "command": "isabelle.deleteLeft", "key": "backspace", "when": "editorTextFocus && !editorReadonly && editorLangId == isabelle && config.isabelle.renderSymbols" },
-      { "command": "isabelle.deleteRight", "key": "delete", "when": "editorTextFocus && !editorReadonly && editorLangId == isabelle && config.isabelle.renderSymbols" }
+      {
+        "command": "isabelle.cursorLeft",
+        "key": "left",
+        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols"
+      },
+      {
+        "command": "isabelle.cursorRight",
+        "key": "right",
+        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols"
+      },
+      {
+        "command": "isabelle.cursorLeftSelect",
+        "key": "shift+left",
+        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols"
+      },
+      {
+        "command": "isabelle.cursorRightSelect",
+        "key": "shift+right",
+        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols"
+      },
+      {
+        "command": "isabelle.deleteLeft",
+        "key": "backspace",
+        "when": "editorTextFocus && !editorReadonly && editorLangId == isabelle && config.isabelle.renderSymbols"
+      },
+      {
+        "command": "isabelle.deleteRight",
+        "key": "delete",
+        "when": "editorTextFocus && !editorReadonly && editorLangId == isabelle && config.isabelle.renderSymbols"
+      }
     ],
     "configurationDefaults": {
       "[isabelle]": {
@@ -51,19 +103,29 @@
         },
         "isabelle.sessionDirs": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Extra session directories (isabelle vscode_server -d)."
         },
         "isabelle.serverOptions": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": ["vscode_unicode_symbols_output=true"],
-          "markdownDescription": "Isabelle system options passed as `-o NAME=VALUE`.\n\n`vscode_unicode_symbols_output` makes hovers and panels render real glyphs, which is display-only and safe. Do **not** enable `vscode_unicode_symbols_edits`: code-action edits are inserted into the buffer, which must stay ASCII."
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "vscode_pide_extensions=true",
+            "vscode_html_output=true",
+            "vscode_unicode_symbols_output=true"
+          ],
+          "markdownDescription": "Isabelle system options passed as `-o NAME=VALUE`.\n\n`vscode_pide_extensions` enables PIDE markup decorations and the Output/State panels. `vscode_html_output` makes those panels deliver HTML, and also avoids an Isabelle2025-2 bug where the non-HTML branch fails to serialise decorations. `vscode_unicode_symbols_output` renders glyphs in panels and hovers.\n\nDo **not** enable `vscode_unicode_symbols_edits`: those edits are inserted into the buffer, which must stay ASCII."
         },
         "isabelle.serverArgs": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Additional raw arguments appended to isabelle vscode_server."
         },
@@ -96,8 +158,53 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Expand `\\forall` into `\\<forall>` as you type."
+        },
+        "isabelle.textColorOverrides": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          },
+          "markdownDescription": "Override individual PIDE markup colours, keyed `<name>_light` / `<name>_dark` (e.g. `keyword1_dark`). Defaults come from Isabelle's own palette."
         }
       }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "isabelle",
+          "title": "Isabelle",
+          "icon": "media/isabelle.svg"
+        }
+      ],
+      "panel": [
+        {
+          "id": "isabelle-panel",
+          "title": "Isabelle",
+          "icon": "media/isabelle.svg"
+        }
+      ]
+    },
+    "views": {
+      "isabelle": [
+        {
+          "id": "isabelle-state",
+          "name": "State",
+          "type": "webview"
+        },
+        {
+          "id": "isabelle-symbols",
+          "name": "Symbols",
+          "type": "webview"
+        }
+      ],
+      "isabelle-panel": [
+        {
+          "id": "isabelle-output",
+          "name": "Output",
+          "type": "webview"
+        }
+      ]
     }
   },
   "scripts": {

@@ -45,6 +45,10 @@ corrupt" banner. Building a fork is the only stable way to get the encoding in.
 | Symbol input (`\forall` → `\<forall>`) | rewriter + completion, table from `etc/symbols` |
 | Unicode-safe saving | `onWillSaveTextDocument` normaliser |
 | Symbol-atomic caret motion | rebound motion commands + `wordSeparators`/`wordPattern` |
+| **PIDE markup colouring and status** | `PIDE/decoration` → editor decorations, palette ported from Isabelle's own `text_color` defaults |
+| **Output panel** | webview over `PIDE/dynamic_output` |
+| **State panel** | webview over `PIDE/state_*`, with Update / Auto / Locate |
+| **Symbols palette** | webview over the `etc/symbols` table; click inserts the escape |
 
 Sendback deserves emphasis because the original brief listed it as a gap. Isabelle2025
 exposed it as LSP code actions, so it arrives for free. Asking for code actions on a
@@ -53,22 +57,19 @@ exposed it as LSP code actions, so it arrives for free. Asking for code actions 
 
 ### Missing, but plainly feasible as a normal extension
 
-None of these need a fork. They are unwritten UI, mostly webviews over PIDE messages
-the server already sends. This extension uses **1 of the 32** `PIDE/*` protocol messages.
+None of these need a fork. They are unwritten UI over PIDE messages the server already
+sends. This extension now uses **10 of the 32** `PIDE/*` protocol messages.
 
 | Feature | Protocol | Notes |
 |---|---|---|
-| PIDE markup colouring, processing status | `PIDE/decoration`, `decoration_request` | needs `vscode_pide_extensions=true`. **Blocked on Isabelle2025-2** — see §3 |
-| Output panel | `PIDE/dynamic_output`, `output_set_margin` | webview |
-| State panel | `PIDE/state_init`, `state_output`, `state_update`, `state_auto_update`, `state_locate`, `state_exit`, `state_set_margin` | webview |
 | Sledgehammer *panel* | `PIDE/sledgehammer_request`, `_provers_request`, `_status`, `_output`, `_cancel`, `_locate`, `_sendback`, `_insert` | the panel is missing; sendback itself already works |
-| Symbols palette | none | pure UI; the table is already parsed |
-| Documentation browser | `PIDE/documentation_request/_response` | webview |
-| Preview panel | `PIDE/preview_request/_response` | webview |
-| Spell checker | `PIDE/include_word`, `_permanently`, `exclude_word`, `reset_words` | four commands |
+| Documentation browser | `PIDE/documentation_request/_response` | webview over the doc index |
+| Preview panel | `PIDE/preview_request/_response` | rendered theory preview |
+| Spell checker | `PIDE/include_word`, `_permanently`, `exclude_word`, `reset_words` | four commands; the `spell_checker` decoration type is already wired |
+| Server-side abbreviations | `PIDE/abbrevs_request/_response` | the session's outer-syntax abbrevs, complementing `etc/symbols` |
+| Panel margins | `PIDE/output_set_margin`, `state_set_margin` | re-wrap output on panel resize |
 
-For reference, the official extension contributes 8 commands, 4 views (Symbols,
-Documentation, Sledgehammer in the activity bar; Output in the panel), 3 configuration
+For reference, the official extension contributes 8 commands, 4 views, 3 configuration
 properties, and **0 keybindings**.
 
 ### Genuinely needs the fork — or a workaround
@@ -78,9 +79,11 @@ properties, and **0 keybindings**.
 | **Custom `UTF-8-Isabelle` file encoding** | `vscode.d.ts` documents a closed list of 50 encodings and states an unsupported name silently falls back to the default. There is no `registerEncoding`, `EncodingProvider`, or contribution point. The implementation is compiled into the checksummed `workbench.desktop.main.js`. | keep the buffer ASCII and render Unicode with decorations, so no second representation exists to desynchronise |
 | **Bundled fonts** | extensions cannot ship fonts (microsoft/vscode#181157, closed as not-planned) | install Isabelle's own TTFs system-wide and set `editor.fontFamily`. Fonts, unlike encodings, *are* an OS-level resource — this is a real fix, not a hack. It is also mandatory: 102 of the 439 codepoints in `etc/symbols` are above U+FFFF |
 
-## 3. One upstream bug in the way
+## 3. One upstream bug, and how it is avoided
 
-Enabling `vscode_pide_extensions=true` on Isabelle2025-2 makes every output event fail:
+`PIDE/decoration` itself is **not** affected — markup colouring works on Isabelle2025-2.
+(An earlier draft of this document claimed otherwise; that was wrong.) What breaks is the
+*panel* path: with `vscode_html_output=false`, every output event fails with
 
 ```
 *** Session consumer failure: "isabelle.vscode.Dynamic_Output"
@@ -95,8 +98,9 @@ Already fixed upstream by `c1a8c7bcf2`, which splits `json_entries` (a value) fr
 "required for unproven Neovim experiments" — i.e. for exactly this class of
 non-VSCodium client.
 
-Until that release, either target Isabelle dev or set `vscode_html_output=true`, which
-takes the branch that passes `None` for decorations.
+This extension therefore defaults to `vscode_html_output=true`, which takes the branch
+passing `None` for decorations. That both avoids the bug and hands the panels ready-made
+HTML, which is what a webview wants anyway — so the workaround costs nothing.
 
 ## 4. What is measured vs. inferred
 
@@ -110,26 +114,29 @@ Verified by running it:
   233 ms whole-document on a 144 k-line file; linear in range count, flat in file size
 - a formatter or `onWillSave` participant can force ASCII onto disk, but always rewrites
   the buffer too, so it cannot serve as a round-trip encoding layer
-- the extension's own behaviour, in the four integration suites
+- PIDE markup decorations arrive and are applied (8 types, 22 ranges on a small theory)
+- the Output and State panels receive content; the State panel reports `1. P ⟹ P`
+- the extension's own behaviour, in the six integration suites
 
 Not verified:
 
 - **Linux and macOS.** Only the Windows/Cygwin launch path has actually run
-- the panels in §2, none of which are written
-- behaviour on very large theories with the language server attached (the decoration
-  benchmarks ran without PIDE markup competing for the same editor)
+- the panels still listed as missing in §2
+- behaviour on very large theories with the language server attached. The decoration
+  benchmarks predate PIDE markup, which now adds its own decorations to the same
+  editors, so the measured headroom is smaller than reported there
 
 ## 5. If this were taken further
 
 In rough order of value per effort:
 
-1. **PIDE markup decorations** — the largest visible gap. Needs the §3 fix and a
-   decoration type per `text_color` key. The `isabelle.text_color` map in the official
-   extension supplies the light/dark palette.
-2. **Output and State panels** — two webviews over `PIDE/dynamic_output` and
-   `PIDE/state_*`. Set `vscode_unicode_symbols_output=true` (this extension already does)
-   so the panels render glyphs.
-3. **Symbols palette** — cheapest of all; the table is parsed already.
+1. **Sledgehammer panel** — the largest remaining piece: prover selection, run/cancel,
+   and results. Sendback already lands as code actions, so the panel is about driving
+   the search rather than applying the result.
+2. **Documentation and Preview panels** — one request/response each, over the same
+   webview scaffolding the Output and State panels already use.
+3. **Spell checker** — four notifications; the `spell_checker` decoration type is
+   already created and applied.
 4. **A `.vsix` and CI** — plus testing the non-Windows launch path.
 5. **Upstream `Content.recode_symbols`** — the server already computes exactly the edits
    the save normaliser needs, but the method is dead code, referenced nowhere. Exposing
