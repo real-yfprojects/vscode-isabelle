@@ -87,11 +87,23 @@ Point `isabelle.home` at your distribution if it is not auto-detected.
 
 ### Not re-checking your imports on every start
 
-Isabelle caches whole sessions as heap images, not individual proofs, so anything not in
-an image is re-elaborated each time the server starts. To keep a project's imports out of
-that, point `isabelle.logic` at the session whose theories you are editing and set
-`isabelle.logicRequirements`, which starts the server with `-R`: an image is built of that
-session's *requirements*, so its imports load from a heap while your own files stay live.
+Isabelle caches whole sessions as heap images, not individual proofs. There is no cache
+of checked theories at all: an import already in the image resolves to a nodeless name
+and is never re-checked, and everything else is elaborated from source on every start.
+The stock default `-l HOL` therefore re-checks every theory in a project workspace, each
+time. jEdit behaves the same way -- it just makes you choose a session at launch.
+
+Run **Isabelle: Select Session Image** (or click the session in the status bar). It reads
+the ROOT files in the workspace and offers their sessions in dependency order, then
+restarts the server with `-R` and registers the ROOT's directory so the session resolves.
+
+Which one to pick is not "the session owning the file I have open". `-R S` bakes S's whole
+import closure into an immutable heap, so anything you edit down there is checked in
+isolation while every theory above it keeps the stale copy. **The frontier must sit below
+everything you intend to edit**, so the picker recommends the *lowest* session you have
+open, and warns if you edit a theory that is inside the current image.
+
+The equivalent settings, if you would rather write them yourself:
 
 ```jsonc
 "isabelle.logic": "ViperCommon",
@@ -99,10 +111,12 @@ session's *requirements*, so its imports load from a heap while your own files s
 "isabelle.sessionDirs": ["/path/to/project"]
 ```
 
-The first start builds the image and takes a while; later ones reuse it. Note that this
-needs the `vscode-requirements-build` branch of mirror-isabelle -- released Isabelle
-builds the wrong session under `-R` and fails with a missing heap image. See
-[GAPS.md](GAPS.md).
+The first start builds the image and takes a while; later ones reuse it. Whether a build
+is needed depends on the image `Sessions.background` computes -- a synthetic
+`S_requirements(PARENT)` whenever S imports beyond its parent, otherwise the parent's own
+heap, which is often already built. The server reports the build when it starts. Note
+that the synthetic case needs the `-R` fix from mirror-isabelle: released Isabelle builds
+the wrong session under `-R` and fails with a missing heap image. See [GAPS.md](GAPS.md).
 
 ## Performance
 

@@ -96,6 +96,10 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "isabelle.selectSession",
+        "title": "Isabelle: Select Session Image"
+      },
+      {
         "command": "isabelle.toggleContinuousChecking",
         "title": "Isabelle: Toggle Continuous Checking"
       },
@@ -152,7 +156,7 @@
         "isabelle.logic": {
           "type": "string",
           "default": "HOL",
-          "description": "Logic session image the language server should load (isabelle vscode_server -l)."
+          "description": "Session image the language server boots with (isabelle vscode_server -l/-R). Imports already in this image load from a heap and are never re-checked; every other theory is elaborated from source on each start. The default \"HOL\" caches no project theory. Use \"Isabelle: Select Session Image\" to pick one from the ROOT files in the workspace."
         },
         "isabelle.sessionDirs": {
           "type": "array",
@@ -259,7 +263,8 @@
         "isabelle.logicRequirements": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Start from an image built of `#isabelle.logic#`'s **requirements** (`-R`) rather than the session itself (`-l`). Use this when the theories you are editing belong to that session: everything they import is then loaded from a prebuilt heap and is never re-checked, while your own files stay live."
+          "markdownDescription": "Start from an image built of `#isabelle.logic#`'s **requirements** (`-R`) rather than the session itself (`-l`). Use this when the theories you are editing belong to that session: everything they import is then loaded from a prebuilt heap and is never re-checked, while your own files stay live.",
+          "description": "Boot with the chosen session's *requirements* (-R) rather than the session itself (-l). This is what you want while editing that session: everything it imports comes from a heap, while its own theories stay live and editable. With -l the session's own theories are in the image too, so they are not checked at all."
         },
         "isabelle.markupColors": {
           "type": "string",

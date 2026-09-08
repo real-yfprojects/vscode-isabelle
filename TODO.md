@@ -63,6 +63,38 @@ This documents tracks features and tasks that might already be tracked in other 
     Protocol, Graphview
   - note: the client targets the **development** tree, not Isabelle2025-2, which has no
     `PIDE/goto_command` at all (see GAPS.md for the four divergences found by building)
+- [x] reported: viper-roots re-verifies every theory on startup. Measured: of its 123
+    theory files, exactly **1** was in the heap image. Two causes, one per side.
+  - the client never asked for a project session: `isabelle.logic` defaults to `HOL` and
+    nothing overrode it, so the server booted `-l HOL`. All heaps were built and current
+    and the seven component directories were already registered -- only the name was wrong
+  - the obvious workaround was itself broken: `-R` selected the *named* session for the
+    pre-build check, whose heap exists, so the check passed and `session_heaps` then
+    demanded the synthetic `S_requirements(PARENT)` nobody built. Merged from
+    `vscode-requirements-build` into `vscode-theories-panel`
+  - measured frontiers for viper-roots: `-R ViperAbstract` caches 17 theories,
+    `-R SimpleViperFrontEnd` 25, `-R ViperAbstractRefinesTotal` 47, `-R MainResults` 52.
+    Three of those resolve to a *real* prebuilt heap rather than a synthetic image, so
+    they need no build and work even without the `-R` fix
+- [x] session picker: status bar item + **Isabelle: Select Session Image**, ROOT files
+    parsed in-process (`isabelle sessions` prints only names, and every route to the
+    directories and parents costs ~20s of JVM start -- too slow for a picker)
+  - the recommendation is the **lowest** open session, not the one owning the focused
+    file. `-R S` bakes S's closure into an immutable heap, so editing below the frontier
+    is checked in isolation while everything above keeps the stale copy
+  - editing a theory inside the image is warned about, since it is the one failure with
+    no other signal: `find_theory` resolves a path without consulting `loaded_theory`, so
+    the file opens as a normal live node and checks as you type -- only the results above
+    it are quietly stale
+  - the chosen session's ROOT directory is registered in `sessionDirs`: two of
+    viper-roots' own sessions sit in subdirectories of a component and are invisible to
+    Isabelle without `-d`. Redundant entries are safe (`load_root_files` dedupes by
+    canonical file)
+  - not done: flagging which choices need a heap build. It depends on the image
+    `Sessions.background` computes, and nothing short of a full session-structure load
+    says whether that heap exists -- `isabelle build -n -R S` answers a different question
+    (it builds ancestors) and takes 23s. The server reports its own build via
+    `build_started`, which is honest and costs nothing
 - [ ] compare to lean extension and see if we can use any of their UX
   - not started. Candidates seen while reading vscode-lean4 during the spike:
     gutter progress bars (`taskgutter.ts`) for per-command elaboration status, and its

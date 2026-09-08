@@ -18,6 +18,8 @@ import { registerCaretUpdates, isApplyingCaretUpdate } from './caret'
 import { TheoriesPanel } from './theories_panel'
 import { registerOutline } from './outline'
 import { registerSemanticTokens } from './semantic_tokens'
+import { SessionPicker } from './session_picker'
+import { stalenessWarning } from './sessions'
 
 let client: LanguageClient | undefined
 let output: vscode.OutputChannel
@@ -36,6 +38,7 @@ let docPanel: DocumentationPanel | undefined
 let previews: PreviewPanels | undefined
 let queryPanel: QueryPanel | undefined
 let theoriesPanel: TheoriesPanel | undefined
+let sessionPicker: SessionPicker | undefined
 const abbrevs = new AbbrevStore()
 
 export const ISABELLE_SELECTOR: vscode.DocumentSelector =
@@ -196,6 +199,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Outline, breadcrumbs and folding: plain LSP features the server does not provide.
   registerOutline(context, ISABELLE_SELECTOR)
 
+  /* The session image decides what is cached: imports already in the heap are never
+     re-checked, everything else is elaborated from source on every start. The stock
+     default is HOL, which caches nothing in a project workspace. */
+  sessionPicker = new SessionPicker(msg => output.appendLine(msg))
+  context.subscriptions.push(sessionPicker)
+
   context.subscriptions.push(
     vscode.commands.registerCommand('isabelle.restartServer', async () => {
       await stopClient()
@@ -253,6 +262,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       querySupported: queryPanel?.serverSupported,
       theoriesSupported: theoriesPanel?.serverSupported ?? false,
     })),
+    vscode.commands.registerCommand('isabelle.selectSession', () => sessionPicker?.pick()),
+    vscode.commands.registerCommand('isabelle.staleEditCheck', (file: string) => {
+      const cfg = vscode.workspace.getConfiguration('isabelle')
+      return stalenessWarning(sessionPicker?.scan() ?? [], file,
+        cfg.get<string>('logic')?.trim() || 'HOL',
+        cfg.get<boolean>('logicRequirements') === true)
+    }),
+    // Test hook: the picker's view of the workspace, without opening the quick pick.
+    vscode.commands.registerCommand('isabelle.sessionState', () => {
+      const sessions = sessionPicker?.scan() ?? []
+      const cfg = vscode.workspace.getConfiguration('isabelle')
+      return {
+        sessions: sessions.map(s => s.name),
+        logic: cfg.get<string>('logic'),
+        requirements: cfg.get<boolean>('logicRequirements') === true,
+      }
+    }),
     vscode.commands.registerCommand('isabelle.toggleContinuousChecking', async () => {
       const cfg = vscode.workspace.getConfiguration('isabelle')
       const on = !cfg.get<boolean>('continuousChecking')
@@ -272,6 +298,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       status: sledgehammer.lastStatus,
       output: sledgehammer.lastOutput,
     })),
+    /* Editing a theory that sits inside the heap image checks the file but changes
+       nothing above it, and looks entirely normal while doing so. This is the only
+       place that signal comes from. */
+    vscode.workspace.onDidChangeTextDocument(e => {
+      if (e.contentChanges.length === 0) return
+      if (e.document.languageId !== 'isabelle' && !e.document.fileName.endsWith('.thy')) return
+      void sessionPicker?.checkStaleEdit(e.document.fileName)
+    }),
     vscode.window.onDidChangeTextEditorSelection(e => sendCaretUpdate(e.textEditor)),
     vscode.window.onDidChangeActiveTextEditor(editor => sendCaretUpdate(editor)),
   )
