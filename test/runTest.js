@@ -31,9 +31,12 @@ async function main() {
         ISABELLE_QUERY_HOME: process.env.ISABELLE_QUERY_HOME || '',
         ISABELLE_PATCHED_HOME: process.env.ISABELLE_PATCHED_HOME || '',
         ISABELLE_TEST_PROJECT: process.env.ISABELLE_TEST_PROJECT || '',
+        ISABELLE_TEST_WORKSPACE: process.env.ISABELLE_TEST_WORKSPACE || '',
       },
       launchArgs: [
-        path.join(__dirname, 'workspace'),
+        // Overridable so several suites can run at once: most of them write into the
+        // workspace, so sharing one directory across concurrent editors races.
+        process.env.ISABELLE_TEST_WORKSPACE || path.join(__dirname, 'workspace'),
         '--disable-extensions',
         '--user-data-dir', userDataDir,
         '--skip-welcome',

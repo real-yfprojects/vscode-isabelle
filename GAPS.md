@@ -422,6 +422,19 @@ Three things that were not obvious:
   structured progress channel: `Channel.progress` writes through `window/logMessage` into
   the output channel. `src/build_progress.ts` therefore wraps that channel, forwards every
   line unchanged, and relays the few that say what is happening into a notification.
+- **And the build emitted nothing to relay.** `Language_Server.build_session` takes
+  `build_progress: Progress = new Progress` -- the base class, whose `output` is a no-op --
+  and `init` never passed it, even though it had already built
+  `channel.progress(verbose = true)` for the `build_started`/`build_failed` one-liners. So
+  `Build.build` ran with a silent sink and the per-theory `progress.theory` calls in
+  `Pure/Build/build_job.scala` went nowhere. A cold `-R MainResults` was ~20 minutes
+  showing one line, then either success or `prover process remains inactive!`, with no way
+  to tell a slow proof from a hang. Fixed by passing `build_progress = progress`. Because
+  that progress is a `Progress.Status`, the fix also brings in the long-running-command
+  lines (`command "..." running for 45s (line N of theory T)`), which are the actual
+  stuck-vs-slow signal. `-v` is unrelated: it only sets `Channel`'s JSON-RPC message
+  logging. Per-theory lines stay out of the *notification* on purpose -- see `suite26.js`,
+  which pins that chatter rewritten every few milliseconds is worse than none.
 
 What the picker deliberately does **not** show is whether a choice needs a heap build.
 That depends on the image `Sessions.background` computes, and nothing short of a full
