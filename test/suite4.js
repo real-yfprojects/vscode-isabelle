@@ -161,6 +161,51 @@ async function run() {
   assert.strictEqual(d.target, os)
   pass('decision: a rendered escape on the same line remains atomic')
 
+  // Ctrl+hover underline. The editor draws the "this is clickable" underline on the
+  // *text*, which for a rendered symbol is collapsed to nothing, so it never reached the
+  // glyph. The glyph is now moved onto its own decoration whose attachment carries the
+  // underline, while the editor is offering to navigate from it.
+  const ranges = () => vscode.commands.executeCommand('isabelle.decorationRanges')
+  const mark = (line, ch) => vscode.commands.executeCommand('isabelle.markLinkAt', line, ch)
+
+  let r = await ranges()
+  assert.strictEqual(r.linked, 0, 'nothing is offered as a link to start with')
+
+  // Somewhere strictly inside the rendered escape, but not at its boundaries.
+  await mark(4, os + 2)
+  await wait(200)
+  r = await ranges()
+  assert.strictEqual(r.linked, 1, 'the hovered glyph moves to the linked decoration')
+  assert.deepStrictEqual(r.linkedGlyphs.length, 1, JSON.stringify(r.linkedGlyphs))
+  pass('a glyph offered as a link is drawn underlined rather than left unmarked')
+
+  // A position outside any escape must take the offer away again.
+  await mark(4, 0)
+  await wait(200)
+  r = await ranges()
+  assert.strictEqual(r.linked, 0, 'moving off the glyph withdraws the underline')
+  pass('the underline is withdrawn when the offer moves elsewhere')
+
+  // Symbolic operators must be words too. Isabelle's server answers a definition request
+  // with a plain Location and no originSelectionRange, so VS Code derives the Ctrl+hover
+  // underline from the *word* at that position. The wordPattern matched escapes and
+  // alphanumeric identifiers only, so `=` and `+` were navigable by Ctrl+click -- which
+  // needs a position -- while nothing underlined, because there was no word to mark.
+  const wordDoc = await vscode.workspace.openTextDocument(
+    { content: 'lemma w: "hov n = n + 1 --> True"', language: 'isabelle' })
+  const wordAt = ch => {
+    const r = wordDoc.getWordRangeAtPosition(new vscode.Position(0, ch))
+    return r ? wordDoc.getText(r) : undefined
+  }
+  const wline = 'lemma w: "hov n = n + 1 --> True"'
+  assert.strictEqual(wordAt(wline.indexOf('=')), '=', 'an operator must be a word')
+  assert.strictEqual(wordAt(wline.indexOf('+')), '+')
+  assert.strictEqual(wordAt(wline.indexOf('-->')), '-->', 'and a multi-character one')
+  // ...without swallowing the identifiers on either side of it.
+  assert.strictEqual(wordAt(wline.indexOf('hov')), 'hov')
+  assert.strictEqual(wordAt(wline.indexOf('True')), 'True')
+  pass('symbolic operators are words, so the editor can underline them on Ctrl+hover')
+
   console.log(`\n${passed} checks passed`)
   console.log('SUITE4_OK')
 }

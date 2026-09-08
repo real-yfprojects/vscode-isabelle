@@ -47,7 +47,17 @@ This documents tracks features and tasks that might already be tracked in other 
     carry Isabelle's palette and a decoration colour overrides the theme. Now served as
     semantic tokens (`src/semantic_tokens.ts`) with custom types mapped to TextMate
     scopes, so themes apply; `isabelle.markupColors: isabelle` restores the palette
-  - [x] reported: Theories rows truncated. Grouped by session, so the label loses its
+  - [x] reported: a failure shown right after opening a workspace, clearing once the
+    dependencies had loaded. Not a wrong status -- PIDE really does report a failed
+    command, because dependency resolution is asynchronous and a theory opened before
+    its imports are loaded has a *failing header* (`imports Mid` cannot be resolved).
+    Reproduced with a same-session import chain: `Work.Top=10% FAILED:1` at 32.6s,
+    `Work.Top=100%` at 33.7s; on a large project that window is long
+  - the response now carries `loading` (server still resolving) and per-node
+    `initialized`. Both are needed: `loading` is temporal so a genuinely bad import
+    still surfaces once resolution settles, and `initialized` is per node so a real
+    proof failure elsewhere is never suppressed
+- [x] reported: Theories rows truncated. Grouped by session, so the label loses its
     redundant prefix, and the bar moved to the tooltip where there is room
   - still needing new protocol design: Monitor, Debugger, Simplifier trace, Raw output,
     Protocol, Graphview
@@ -84,7 +94,28 @@ This documents tracks features and tasks that might already be tracked in other 
     editor draws over a symbol
   - fixed by starting the string with `;`, which makes the text-decoration declaration
     empty so the CSS parser drops just that one and keeps the rest
-
+  - that was necessary but not sufficient: the glyph lives in an *attachment span*, which
+    another decoration cannot style, so the editor's underline was landing on the
+    zero-width text beneath it
+  - the trigger turned out to exist after all. VS Code asks the definition provider for a
+    location exactly when deciding whether to draw the Ctrl+hover link, so the
+    `provideDefinition` middleware is the signal. The glyph moves onto a second decoration
+    whose own attachment carries the underline, and only when the server actually answers
+    with a location -- otherwise a glyph would advertise a jump that is not there
+  - underlining in place rather than expanding the escape: expanding reflows the line
+    under the pointer, moving the character being hovered
+  - `test/workspace/Hover.thy` is there to check it by hand
+  - confirmed working for glyphs, but **not** for `=` or `+`, which Ctrl+click still
+    navigated. Those are plain ASCII, so none of the above touches them -- the underline
+    there is the editor's own. Isabelle answers a definition request with a bare
+    `Location` and no `originSelectionRange`, so VS Code derives the highlight from the
+    *word* at that position, and our `wordPattern` matched only escapes and alphanumeric
+    identifiers. Click needs a position and worked; underline needs a range and had none.
+    Fixed by adding a symbolic-operator alternative, which also makes double-click select
+    `-->` and `::` sensibly
+- [ ] expose isabelle cygwin terminal in vscode
+- [ ] in theory view parent items should also have the update spinner animation if chilren are running
+- [ ] delimiters (e.g. \<open>...\<close>) shouldn't be part of the word (e.g. when double clicking or using ctrl+left/right to jump between words)
 
 ### To be decided
 

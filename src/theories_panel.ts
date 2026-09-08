@@ -31,6 +31,7 @@ export type NodeStatus = {
   finished: number
   canceled: boolean
   consolidated: boolean
+  initialized: boolean
   percentage: number
 }
 
@@ -38,6 +39,8 @@ export type CommandTiming = { id: number; name: string; time: number }
 
 export type TheoriesResponse = {
   phase: string
+  /** The server is still resolving theory imports; see `settling` below. */
+  loading: boolean
   threshold: number
   current?: string
   nodes: NodeStatus[]
@@ -65,7 +68,25 @@ export function splitTheory(qualified: string): { session: string; base: string 
     : { session: qualified.slice(0, dot), base: qualified.slice(dot + 1) }
 }
 
-export function statusIcon(node: NodeStatus): vscode.ThemeIcon {
+/**
+ * Whether a node's failures are only the symptom of imports that are not loaded yet.
+ *
+ * Dependency resolution is asynchronous, so a theory opened before its imports have been
+ * loaded has a *failing header* -- `imports Mid` cannot be resolved -- and PIDE reports
+ * that as a failed command like any other. On a large project that window is long enough
+ * to look like a real failure, which is what it was mistaken for.
+ *
+ * The two conditions together are what make this safe. `loading` is temporal, so a
+ * genuinely broken import surfaces as soon as resolution settles rather than being hidden
+ * forever; `initialized` is per node, so a proof that actually failed in a theory whose
+ * header did go through is never suppressed.
+ */
+export function settling(node: NodeStatus, loading: boolean): boolean {
+  return loading && !node.initialized && node.failed > 0
+}
+
+export function statusIcon(node: NodeStatus, loading = false): vscode.ThemeIcon {
+  if (settling(node, loading)) return new vscode.ThemeIcon('sync~spin')
   if (node.failed > 0) return new vscode.ThemeIcon('error', new vscode.ThemeColor('charts.red'))
   if (node.canceled) return new vscode.ThemeIcon('circle-slash', new vscode.ThemeColor('charts.orange'))
   if (node.running > 0) return new vscode.ThemeIcon('sync~spin')
@@ -80,7 +101,8 @@ export function statusIcon(node: NodeStatus): vscode.ThemeIcon {
  * VS Code truncates, and empty for a theory that finished cleanly -- the icon already
  * says so, and a row ending in "0 failed" is noise.
  */
-export function statusDescription(node: NodeStatus): string {
+export function statusDescription(node: NodeStatus, loading = false): string {
+  if (settling(node, loading)) return 'resolving imports'
   const parts: string[] = []
   if (node.percentage < 100) parts.push(`${node.percentage}%`)
   if (node.failed > 0) parts.push(`${node.failed} failed`)
@@ -91,9 +113,9 @@ export function statusDescription(node: NodeStatus): string {
 }
 
 /** Roll a session's theories up into one row. */
-export function sessionDescription(nodes: readonly NodeStatus[]): string {
+export function sessionDescription(nodes: readonly NodeStatus[], loading = false): string {
   const done = nodes.filter(n => n.percentage === 100).length
-  const failed = nodes.reduce((n, x) => n + (x.failed > 0 ? 1 : 0), 0)
+  const failed = nodes.reduce((n, x) => n + (x.failed > 0 && !settling(x, loading) ? 1 : 0), 0)
   const parts = [`${done}/${nodes.length}`]
   if (failed > 0) parts.push(`${failed} failed`)
   return parts.join(' · ')
@@ -159,9 +181,11 @@ class TheoriesProvider implements vscode.TreeDataProvider<TheoryItem> {
   private readonly emitter = new vscode.EventEmitter<void>()
   readonly onDidChangeTreeData = this.emitter.event
   nodes: NodeStatus[] = []
+  loading = false
 
-  refresh(nodes: NodeStatus[]): void {
+  refresh(nodes: NodeStatus[], loading: boolean): void {
     this.nodes = nodes
+    this.loading = loading
     this.emitter.fire()
   }
 
@@ -180,7 +204,7 @@ class TheoriesProvider implements vscode.TreeDataProvider<TheoryItem> {
         busy ? vscode.TreeItemCollapsibleState.Expanded
              : vscode.TreeItemCollapsibleState.Collapsed)
       item.id = 'session:' + element.session
-      item.description = sessionDescription(element.nodes)
+      item.description = sessionDescription(element.nodes, this.loading)
       item.iconPath = new vscode.ThemeIcon('library')
       item.contextValue = 'isabelleSession'
       return item
@@ -189,8 +213,8 @@ class TheoriesProvider implements vscode.TreeDataProvider<TheoryItem> {
     const item = new vscode.TreeItem(splitTheory(node.theory).base,
       vscode.TreeItemCollapsibleState.None)
     item.id = node.uri
-    item.description = statusDescription(node)
-    item.iconPath = statusIcon(node)
+    item.description = statusDescription(node, this.loading)
+    item.iconPath = statusIcon(node, this.loading)
     item.tooltip = tooltip(node)
     item.resourceUri = vscode.Uri.parse(node.uri)
     item.contextValue = 'isabelleTheory'
@@ -288,9 +312,13 @@ export class TheoriesPanel {
       this.client.onNotification('PIDE/theories_response', (p: TheoriesResponse) => {
         this.supported = true
         this.last = p
-        this.theories.refresh(p.nodes ?? [])
+        this.theories.refresh(p.nodes ?? [], p.loading === true)
         this.timing.refresh(p.nodes ?? [], p.commands ?? [], p.current)
-        if (this.theoriesView) this.theoriesView.description = `Prover: ${p.phase}`
+        if (this.theoriesView) {
+          // Say why nothing is failing yet, rather than leaving a wall of spinners.
+          this.theoriesView.description =
+            p.loading ? `Prover: ${p.phase} · resolving imports` : `Prover: ${p.phase}`
+        }
         timingView.description = `Threshold: ${p.threshold}s`
       }),
       vscode.commands.registerCommand('isabelle.theoriesRefresh', () => this.request()),

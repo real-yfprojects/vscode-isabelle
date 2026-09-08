@@ -84,6 +84,20 @@ async function startClient(): Promise<void> {
   const clientOptions: LanguageClientOptions = {
     documentSelector: ISABELLE_SELECTOR as any,
     outputChannel: output,
+    middleware: {
+      /* There is no API for "the user is holding Ctrl", but VS Code asks for a definition
+         exactly when it is deciding whether to draw the Ctrl+hover link -- so this is
+         where we learn that a glyph is being offered as clickable, and can underline it.
+         The request is passed through untouched. */
+      provideDefinition: async (document, position, token, next) => {
+        const result = await next(document, position, token)
+        // Only mark what is actually navigable: the editor draws its link the same way,
+        // so underlining on the mere *request* would promise a jump that is not there.
+        const found = Array.isArray(result) ? result.length > 0 : !!result
+        renderer?.markLink(document, position, found)
+        return result
+      },
+    },
   }
 
   client = new LanguageClient('isabelle', 'Isabelle/PIDE', serverOptions, clientOptions)
@@ -204,17 +218,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const r = renderer.computeRanges(editor)
       return {
         hidden: r.hidden.length,
-        withGlyph: r.hidden.filter(d => !!d.renderOptions?.after?.contentText).length,
+        linked: r.linked.length,
+        linkedGlyphs: r.linked.map(d => d.renderOptions?.before?.contentText).filter(Boolean),
+        withGlyph: r.hidden.filter(d => !!d.renderOptions?.before?.contentText).length,
         sub: r.sub.length,
         sup: r.sup.length,
         bold: r.bold.length,
-        glyphs: r.hidden.map(d => d.renderOptions?.after?.contentText).filter(Boolean).slice(0, 12),
+        glyphs: r.hidden.map(d => d.renderOptions?.before?.contentText).filter(Boolean).slice(0, 12),
       }
     }),
     // Test hooks for the PIDE panels.
     vscode.commands.registerCommand('isabelle.pideDecorationSummary', () => {
       const editor = vscode.window.activeTextEditor
       return editor && pide ? pide.summary(editor.document.uri) : undefined
+    }),
+    /* Test hook for the Ctrl+hover underline. The real trigger is the definition
+       middleware, which needs a running server and a held modifier; this drives the same
+       entry point directly so the decision can be asserted. */
+    vscode.commands.registerCommand('isabelle.markLinkAt', (line: number, character: number) => {
+      const editor = vscode.window.activeTextEditor
+      if (!editor || !renderer) return false
+      renderer.markLink(editor.document, new vscode.Position(line, character), true)
+      return true
     }),
     vscode.commands.registerCommand('isabelle.statePanelId', () => statePanel?.id),
     vscode.commands.registerCommand('isabelle.outputPanelContent', () => outputPanel?.rawContent),

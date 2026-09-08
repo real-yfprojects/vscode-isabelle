@@ -27,6 +27,8 @@ const SCRIPT_BLOCK: Record<string, { close: string; kind: 'sub' | 'sup' }> = {
 
 interface Ranges {
   hidden: vscode.DecorationOptions[]
+  /** Glyphs drawn underlined, because the editor is offering to navigate from them. */
+  linked: vscode.DecorationOptions[]
   sub: vscode.Range[]
   sup: vscode.Range[]
   bold: vscode.Range[]
@@ -34,6 +36,10 @@ interface Ranges {
 
 export class SymbolRenderer implements vscode.Disposable {
   private hide!: vscode.TextEditorDecorationType
+  private link!: vscode.TextEditorDecorationType
+  /** The escape the editor is currently offering as a link, if any. */
+  private linked: { uri: string; range: vscode.Range } | undefined
+  private linkTimer: NodeJS.Timeout | undefined
   private sub!: vscode.TextEditorDecorationType
   private sup!: vscode.TextEditorDecorationType
   private bold!: vscode.TextEditorDecorationType
@@ -63,8 +69,24 @@ export class SymbolRenderer implements vscode.Disposable {
     this.hide = vscode.window.createTextEditorDecorationType({
       textDecoration: '; font-size: 0.001em',
       rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
-      after: {
+      before: {
         textDecoration: `; font-size: ${fontSize}px; letter-spacing: normal`,
+      },
+    })
+    /* Ctrl+hover marks a name as clickable by underlining it, and that never reached a
+       glyph: the underline is a decoration on the *text*, which here is collapsed to
+       nothing, while the glyph lives in an attachment span the editor's own decoration
+       cannot style. So the underline is drawn onto the same attachment instead, and
+       `markLink` swaps an escape onto this type while the offer stands. Underlining in
+       place rather than expanding the escape avoids reflowing the line under the mouse,
+       which would move the very character being hovered. */
+    this.link = vscode.window.createTextEditorDecorationType({
+      textDecoration: '; font-size: 0.001em',
+      rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
+      before: {
+        textDecoration:
+          `; font-size: ${fontSize}px; letter-spacing: normal;` +
+          ' text-decoration: underline; cursor: pointer',
       },
     })
     this.sub = vscode.window.createTextEditorDecorationType({
@@ -79,7 +101,7 @@ export class SymbolRenderer implements vscode.Disposable {
   }
 
   private disposeTypes(): void {
-    for (const t of [this.hide, this.sub, this.sup, this.bold]) t.dispose()
+    for (const t of [this.hide, this.link, this.sub, this.sup, this.bold]) t.dispose()
   }
 
   register(context: vscode.ExtensionContext): void {
@@ -126,6 +148,7 @@ export class SymbolRenderer implements vscode.Disposable {
   private clearAll(): void {
     for (const editor of vscode.window.visibleTextEditors) {
       editor.setDecorations(this.hide, [])
+      editor.setDecorations(this.link, [])
       editor.setDecorations(this.sub, [])
       editor.setDecorations(this.sup, [])
       editor.setDecorations(this.bold, [])
@@ -137,7 +160,7 @@ export class SymbolRenderer implements vscode.Disposable {
     const doc = editor.document
     const margin = config<number>('renderMarginLines', 100)
     const reveal = config<boolean>('revealSymbolAtCursor', true)
-    const out: Ranges = { hidden: [], sub: [], sup: [], bold: [] }
+    const out: Ranges = { hidden: [], linked: [], sub: [], sup: [], bold: [] }
 
     // Sticky-header lines sit above the viewport but are still painted, so scan them too.
     const first = editor.visibleRanges[0]?.start.line ?? 0
@@ -197,16 +220,26 @@ export class SymbolRenderer implements vscode.Disposable {
 
         const glyph = this.table.glyphOf(name)
         if (glyph) {
-          /* `after`, not `before`. Attachment content is laid out inside the span of
-             the character it is attached to, and VS Code measures a column's x by
-             measuring the DOM up to that point -- so a `before` glyph on the range start
-             counts towards the *preceding* boundary. The caret for the escape's start
-             was then drawn to the right of the glyph, one press of Left appeared to do
-             nothing, and the next appeared to skip the glyph and the space in front of
-             it together. Selecting just that space visibly highlighted the glyph too,
-             which is how this was pinned down. Attaching at the end keeps the glyph
-             inside the range from both sides. */
-          out.hidden.push({ range, renderOptions: { after: { contentText: glyph } } })
+          /* The glyph has to sit *inside* the escape's own columns, and an attachment on
+             the whole range cannot do that.
+
+             VS Code derives a column's x by measuring the line's DOM up to that column,
+             and attachment content is emitted outside the boundary it names: a `before`
+             glyph on the range start is measured into the *preceding* boundary, so the
+             caret for the escape's start was drawn to the right of the glyph and Left
+             looked like it crossed the glyph and the space in front of it at once.
+             Moving to `after` simply mirrored the fault onto the space behind it.
+
+             So the range is split. Everything but the final character is hidden outright,
+             and the glyph is attached *before* that final character. Columns start..end-1
+             then all collapse to the left edge, ahead of the glyph, while end lands after
+             it -- the glyph occupies the escape's own width from both sides. The interior
+             columns are only reachable when the symbol is revealed, at which point this
+             decoration is not applied at all. */
+          const last = new vscode.Range(doc.positionAt(to - 1), range.end)
+          out.hidden.push({ range: new vscode.Range(range.start, last.start) })
+          const target = this.isLinked(doc, range) ? out.linked : out.hidden
+          target.push({ range: last, renderOptions: { before: { contentText: glyph } } })
         }
       }
     }
@@ -218,12 +251,66 @@ export class SymbolRenderer implements vscode.Disposable {
     if (editor.document.languageId !== 'isabelle') return
     const r = this.computeRanges(editor)
     editor.setDecorations(this.hide, r.hidden)
+    editor.setDecorations(this.link, r.linked)
     editor.setDecorations(this.sub, r.sub)
     editor.setDecorations(this.sup, r.sup)
     editor.setDecorations(this.bold, r.bold)
   }
 
+  private isLinked(doc: vscode.TextDocument, range: vscode.Range): boolean {
+    const l = this.linked
+    return !!l && l.uri === doc.uri.toString() && l.range.isEqual(range)
+  }
+
+  /**
+   * The editor is offering to navigate from `position`; underline the glyph there.
+   *
+   * Called from the definition middleware, because VS Code asks for a definition exactly
+   * when it is deciding whether to draw the Ctrl+hover link, and there is no API for the
+   * modifier itself. `navigable` says whether the server actually answered with a
+   * location: the editor underlines only what it can jump to, and so must this, or the
+   * glyph would advertise a jump that does not exist.
+   *
+   * Requests arrive continuously while the pointer moves, so the offer is cleared a short
+   * while after the last one rather than on an event that does not exist.
+   */
+  markLink(doc: vscode.TextDocument, position: vscode.Position, navigable: boolean): void {
+    if (!this.enabled || doc.languageId !== 'isabelle') return
+    const range = navigable ? this.escapeAt(doc, position) : undefined
+    const uri = doc.uri.toString()
+    const changed = !range
+      ? this.linked !== undefined
+      : !this.isLinked(doc, range)
+    this.linked = range ? { uri, range } : undefined
+
+    if (this.linkTimer) clearTimeout(this.linkTimer)
+    this.linkTimer = setTimeout(() => this.clearLink(), 400)
+    if (changed) this.schedule(vscode.window.activeTextEditor)
+  }
+
+  private clearLink(): void {
+    if (!this.linked) return
+    this.linked = undefined
+    this.schedule(vscode.window.activeTextEditor)
+  }
+
+  /** The rendered escape containing `position`, if any. */
+  private escapeAt(doc: vscode.TextDocument, position: vscode.Position): vscode.Range | undefined {
+    const text = doc.lineAt(position.line).text
+    SYMBOL_RE.lastIndex = 0
+    let m: RegExpExecArray | null
+    while ((m = SYMBOL_RE.exec(text)) !== null) {
+      const from = m.index
+      const to = from + m[0].length
+      if (from <= position.character && position.character < to && this.table.glyphOf(m[0])) {
+        return new vscode.Range(position.line, from, position.line, to)
+      }
+    }
+    return undefined
+  }
+
   dispose(): void {
+    if (this.linkTimer) clearTimeout(this.linkTimer)
     if (this.timer) clearTimeout(this.timer)
     this.disposeTypes()
   }

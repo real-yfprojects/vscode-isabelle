@@ -236,6 +236,48 @@ but `'none; font-size: ...'` also *sets* `text-decoration: none`, on the very el
 Code underlines to show a name is clickable. Starting the string with `;` leaves that
 declaration empty, so the parser drops it and keeps the rest.
 
+### A failure that is not one: unresolved imports
+
+Opening a workspace briefly showed a theory as *failed*, which then cleared once its
+dependencies loaded. The status was not wrong. Dependency resolution is asynchronous, so a
+theory opened before its imports are loaded has a failing **header** -- `imports Mid`
+cannot be resolved -- and PIDE reports that as a failed command like any other. Reproduced
+with a same-session import chain:
+
+```
+25.6s  loading=true   (no nodes yet)
+26.3s  loading=true   Work.Top=10% FAILED:1 init:false tot:10
+27.3s  loading=false  Work.Mid=100% init:true | Work.Top=100% init:true
+```
+
+On a large project the middle state lasts long enough to look like a real failure. Nothing
+in the protocol let a client tell the two apart, so `PIDE/theories_response` now carries
+`loading` (resolution still in flight) and each node carries `initialized` (did the header
+go through). A node counts as *settling* only when both hold, which is what makes the
+suppression safe in each direction: `loading` is temporal, so a genuinely bad import
+surfaces as soon as resolution finishes rather than being hidden for the session, and
+`initialized` is per node, so a proof that really failed elsewhere is never suppressed.
+
+### Ctrl+hover over a glyph
+
+The editor marks a name as clickable by underlining it, and that never reached a rendered
+symbol. The underline is a decoration on the *text*, which here is collapsed to nothing,
+while the glyph lives in an attachment span that another decoration cannot style -- so the
+underline was drawn, invisibly, under a zero-width string.
+
+There is no API for "the user is holding Ctrl". But VS Code asks the definition provider
+for a location precisely when deciding whether to draw that link, so the
+`provideDefinition` middleware is the signal, and it carries the exact position. The glyph
+is then moved onto a second decoration type whose own attachment carries the underline.
+The mark is applied only when the server actually answers with a location, so a glyph is
+never made to advertise a jump that does not exist, and it is withdrawn shortly after the
+last request -- there is no "hover ended" event.
+
+Underlining in place was chosen over expanding the escape to raw text. Expanding would
+also work, and would show what you are jumping from, but `\<and>` is eight columns wider
+than the glyph: the line reflows under the pointer, the character being hovered moves, and
+the next request arrives for a different position.
+
 ### Colour themes and checked text
 
 PIDE markup was painted with decorations whose colours come from `src/colors.ts` --

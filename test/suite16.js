@@ -6,7 +6,7 @@ const assert = require('assert')
 const path = require('path')
 
 const { progressBar, statusIcon, statusDescription, splitTheory, groupBySession,
-        sessionDescription, sessionIsBusy } =
+        sessionDescription, sessionIsBusy, settling } =
   require(path.join(__dirname, '..', 'out', 'theories_panel.js'))
 const { documentBody } = require(path.join(__dirname, '..', 'out', 'webview.js'))
 
@@ -18,7 +18,7 @@ function node(over) {
     uri: 'file:///t/T.thy', theory: 'T', overall: 'pending',
     cumulated_time: 0, max_time: 0, ok: true, total: 100,
     unprocessed: 0, running: 0, warned: 0, failed: 0, finished: 100,
-    canceled: false, consolidated: true, percentage: 100,
+    canceled: false, consolidated: true, initialized: true, percentage: 100,
   }, over)
 }
 
@@ -112,6 +112,27 @@ async function run() {
   // A fragment (or anything unparsable) must pass through rather than vanish.
   assert.strictEqual(documentBody('<p class="free">x</p>'), '<p class="free">x</p>')
   pass('preview leaves a plain fragment alone')
+
+  // A theory opened before its imports are loaded has a *failing header*: PIDE reports
+  // the unresolved `imports` as a failed command. Shown as a failure it looks alarming
+  // and is wrong -- nothing about the proof has been judged yet.
+  const unresolved = node({ initialized: false, failed: 1, finished: 0, percentage: 10, total: 10 })
+  assert.strictEqual(settling(unresolved, true), true)
+  assert.strictEqual(statusIcon(unresolved, true).id, 'sync~spin',
+    'while imports are resolving it must not read as an error')
+  assert.strictEqual(statusDescription(unresolved, true), 'resolving imports')
+  // Both conditions are needed, and each on its own must not suppress anything.
+  assert.strictEqual(settling(unresolved, false), false,
+    'once resolution settles, a genuinely bad import must surface')
+  assert.strictEqual(statusIcon(unresolved, false).id, 'error')
+  const realFailure = node({ initialized: true, failed: 2, finished: 8, percentage: 100 })
+  assert.strictEqual(settling(realFailure, true), false,
+    'a proof failure in an initialized theory is never hidden')
+  assert.strictEqual(statusIcon(realFailure, true).id, 'error')
+  // ...and the session roll-up must not count a settling node as failed either.
+  assert.strictEqual(sessionDescription([unresolved], true), '0/1')
+  assert.strictEqual(sessionDescription([unresolved], false), '0/1 · 1 failed')
+  pass('unresolved imports read as settling, not as a failure')
 
   console.log(`${passed} checks passed`)
   console.log('SUITE16_OK')
