@@ -16,7 +16,7 @@
 
 import * as vscode from 'vscode'
 import { LanguageClient } from 'vscode-languageclient/node'
-import { isabelleCss } from './webview'
+import { isabelleCss, scriptNonce } from './webview'
 
 interface InsertParams { uri: string; line: number; character: number; text: string }
 
@@ -113,7 +113,7 @@ export class SledgehammerPanel implements vscode.WebviewViewProvider {
   }
 
   private html(): string {
-    const nonce = Math.random().toString(36).slice(2)
+    const nonce = scriptNonce()
     return `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">

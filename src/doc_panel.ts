@@ -9,7 +9,7 @@
 
 import * as vscode from 'vscode'
 import { LanguageClient } from 'vscode-languageclient/node'
-import { isabelleCss } from './webview'
+import { isabelleCss, scriptNonce } from './webview'
 
 interface DocEntry { print_html: string; platform_path: string }
 interface DocSection { title: string; important: boolean; entries: DocEntry[] }
@@ -85,7 +85,7 @@ export class DocumentationPanel implements vscode.WebviewViewProvider {
                  `${escapeHtml(section.title)}</h3>${entries}</section>`
         }).join('')
 
-    const nonce = Math.random().toString(36).slice(2)
+    const nonce = scriptNonce()
     return `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">

@@ -20,7 +20,7 @@
 
 import * as vscode from 'vscode'
 import { LanguageClient } from 'vscode-languageclient/node'
-import { isabelleCss } from './webview'
+import { isabelleCss, scriptNonce } from './webview'
 import { TraceAnswer, TraceEntry, TraceQuestion, TraceResponse, answerButtons, statusLine }
   from './simplifier_trace_view'
 
@@ -130,7 +130,7 @@ export class SimplifierTracePanel implements vscode.WebviewViewProvider {
        into a trace question, and `script-src 'nonce-...'` means an injected <script> is
        refused because it cannot know the nonce. The meta only binds inside <head>, hence
        the full document rather than the fragment this used to return. */
-    const nonce = Math.random().toString(36).slice(2)
+    const nonce = scriptNonce()
     return `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">

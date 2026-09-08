@@ -19,7 +19,7 @@
 
 import * as vscode from 'vscode'
 import { LanguageClient } from 'vscode-languageclient/node'
-import { isabelleCss } from './webview'
+import { isabelleCss, scriptNonce } from './webview'
 
 const FIND_THEOREMS = 'find_theorems'
 const FIND_CONSTS = 'find_consts'
@@ -111,7 +111,7 @@ export class QueryPanel implements vscode.WebviewViewProvider {
   get lastStatus(): string { return this.status }
 
   private html(): string {
-    const nonce = Math.random().toString(36).slice(2)
+    const nonce = scriptNonce()
     return `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">

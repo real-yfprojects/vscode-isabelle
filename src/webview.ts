@@ -11,6 +11,7 @@
  * unapplied method, producing "Bad JSON value: ...$$Lambda" on every output event.
  */
 
+import { randomBytes } from 'crypto'
 import * as vscode from 'vscode'
 import { ISABELLE_COLORS, colorOf } from './colors'
 
@@ -120,12 +121,25 @@ export type PanelOptions = {
   background?: string
 }
 
+/**
+ * A CSP script nonce.
+ *
+ * Must be unpredictable, not merely unique. These panels interpolate prover output --
+ * which is derived from theory text, and a theory can come from anywhere -- straight into
+ * the webview, so the nonce is the only thing standing between injected markup and script
+ * execution with acquireVsCodeApi() in reach. Math.random is seeded predictably enough
+ * that a guessed nonce would defeat exactly that.
+ */
+export function scriptNonce(): string {
+  return randomBytes(16).toString('base64')
+}
+
 export function panelHtml(
   webview: vscode.Webview,
   body: string,
   options: PanelOptions = {},
 ): string {
-  const nonce = Math.random().toString(36).slice(2) + Date.now().toString(36)
+  const nonce = scriptNonce()
   return `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">

@@ -7,7 +7,7 @@
 
 import * as vscode from 'vscode'
 import { SymbolTable } from './symbols'
-import { isabelleCss } from './webview'
+import { isabelleCss, scriptNonce } from './webview'
 
 const escapeHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -68,7 +68,7 @@ export class SymbolsPanel implements vscode.WebviewViewProvider {
         `<option value="sec-${escapeHtml(group)}">${escapeHtml(group)} (${cells.length})</option>`).join('') +
       `</select>`
 
-    const nonce = Math.random().toString(36).slice(2)
+    const nonce = scriptNonce()
     return `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
