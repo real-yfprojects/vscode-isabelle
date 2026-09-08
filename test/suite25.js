@@ -205,23 +205,45 @@ async function run() {
     'a project session is only useful with -R; -l would bake its own theories in too')
   const rec = items.find(i => i.session === 'ViperCommon')
   assert.ok(rec.detail && rec.detail.includes('recommended'))
+  // The star is the marker: exactly one row carries it, so it cannot read as decoration.
+  assert.strictEqual(rec.icon, 'recommended')
+  assert.strictEqual(items.filter(i => i.icon === 'recommended').length, 1)
   const other = items.find(i => i.session === 'MainResults')
   assert.ok(other.detail && other.detail.includes('open in an editor'))
   assert.ok(!other.detail.includes('recommended'), 'only one session is recommended')
-  pass('the pick list is dependency-ordered and marks the recommended frontier')
+  assert.strictEqual(other.icon, 'session')
+  // Labels are plain names now that the icon carries the marking; a leftover inline
+  // codicon would draw a second glyph next to the real one.
+  assert.ok(items.every(i => !i.label.includes('$(')),
+    'the icon is iconPath, not a codicon baked into the label')
+  pass('the pick list is dependency-ordered and stars exactly the recommended frontier')
 
   // HOL must stay reachable, and must say plainly that it caches nothing.
   const hol = items[items.length - 1]
   assert.strictEqual(hol.session, 'HOL')
   assert.strictEqual(hol.requirements, false)
+  // This list was built with HOL in force, so HOL carries the check rather than the
+  // circle-slash; the slash is for when some project session is the current one.
+  assert.strictEqual(hol.icon, 'current')
+  assert.strictEqual(
+    pickItems(sessions, [], 'ViperAbstract').find(i => i.session === 'HOL').icon, 'uncached')
   assert.ok(/checked from source/.test(hol.detail))
   pass('the uncached HOL image stays selectable and is labelled as caching nothing')
 
   // The current session is marked wherever it sits in the order.
   const marked = pickItems(sessions, [], 'ViperAbstract').find(i => i.session === 'ViperAbstract')
-  assert.ok(marked.label.includes('$(check)'))
+  assert.strictEqual(marked.icon, 'current')
   assert.ok(marked.detail.includes('current'))
   pass('the session in force is marked in the list')
+
+  // Precedence: a session that is both recommended and current keeps the star, because
+  // "this is the one to choose" is the only thing the row adds -- the status bar and the
+  // detail both already say which session is in force.
+  const both = pickItems(sessions, ['ViperCommon'], 'ViperCommon')
+    .find(i => i.session === 'ViperCommon')
+  assert.strictEqual(both.icon, 'recommended')
+  assert.ok(both.detail.includes('recommended') && both.detail.includes('current'))
+  pass('the star outranks the check when a session is both')
 
   // --- status bar -----------------------------------------------------------------
   assert.ok(statusText('MainResults', true).includes('MainResults'))

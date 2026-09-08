@@ -20,9 +20,40 @@
 
 import * as vscode from 'vscode'
 import { Session, readSessions, sessionDirsFor, stalenessWarning } from './sessions'
-import { pickItems, openSessions, statusText, statusTooltip } from './session_items'
+import { IconKind, PickItem, pickItems, openSessions, statusText, statusTooltip }
+  from './session_items'
 
-export { PickItem, pickItems, openSessions, statusText, statusTooltip } from './session_items'
+export { PickItem, IconKind, pickItems, openSessions, statusText, statusTooltip }
+  from './session_items'
+
+/**
+ * Icon for a row.
+ *
+ * A gold star marks the recommended session, the pattern VS Code itself uses for a
+ * preferred entry in a quick pick. The colour is `extensionIcon.starForeground`, the
+ * theme colour defined for exactly this star, so it tracks the theme rather than being a
+ * hardcoded yellow.
+ *
+ * Caveat worth knowing: the API documents ThemeIcon.color as "currently only used in
+ * TreeItem" (vscode.d.ts), so a build that honours it only there will draw the star in
+ * the default foreground. The star itself still renders, so the marker survives either
+ * way -- only its colour is at the editor's discretion.
+ */
+export function icon(kind: IconKind): vscode.ThemeIcon {
+  switch (kind) {
+    case 'recommended':
+      return new vscode.ThemeIcon(
+        'star-full', new vscode.ThemeColor('extensionIcon.starForeground'))
+    case 'current': return new vscode.ThemeIcon('check')
+    case 'uncached': return new vscode.ThemeIcon('circle-slash')
+    default: return new vscode.ThemeIcon('library')
+  }
+}
+
+/** Attach real icons to the pure rows. */
+export function withIcons(items: PickItem[]): PickItem[] {
+  return items.map(i => ({ ...i, iconPath: icon(i.icon) }))
+}
 
 export function workspaceRoots(): string[] {
   return (vscode.workspace.workspaceFolders ?? []).map(f => f.uri.fsPath)
@@ -105,7 +136,7 @@ export class SessionPicker {
     const cfg = vscode.workspace.getConfiguration('isabelle')
     const current = cfg.get<string>('logic')?.trim() || 'HOL'
     const chosen = await vscode.window.showQuickPick(
-      pickItems(sessions, this.editingSessions(), current),
+      withIcons(pickItems(sessions, this.editingSessions(), current)),
       {
         title: 'Isabelle session image',
         placeHolder: 'Imports of the chosen session load from a heap instead of being re-checked',

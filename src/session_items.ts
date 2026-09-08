@@ -8,9 +8,18 @@
 import type * as vscode from 'vscode'
 import { Session, depth, orderSessions, recommendedSession, sessionForFile } from './sessions'
 
+/**
+ * Which icon a row carries. A name rather than a ThemeIcon so this module stays free of
+ * the vscode runtime -- session_picker.ts turns these into real icons. The star is the
+ * recommendation marker, following the pattern VS Code uses for a preferred choice in a
+ * quick pick.
+ */
+export type IconKind = 'recommended' | 'current' | 'session' | 'uncached'
+
 export interface PickItem extends vscode.QuickPickItem {
   session?: string
   requirements: boolean
+  icon: IconKind
 }
 
 /** Sessions owning any theory currently open in an editor. */
@@ -43,12 +52,19 @@ export function pickItems(
     else if (editing.includes(s.name)) marks.push('open in an editor')
     if (s.name === current) marks.push('current')
 
+    /* The star outranks the check: which session is in force is already on the status
+       bar and repeated in the detail, whereas the recommendation is the one thing the
+       row is here to tell you. */
+    const icon: IconKind =
+      s.name === recommended ? 'recommended' : s.name === current ? 'current' : 'session'
+
     items.push({
-      label: (s.name === current ? '$(check) ' : '$(library) ') + s.name,
+      label: s.name,
       description: s.parent !== undefined ? `extends ${s.parent}` : 'base session',
       detail: marks.length > 0 ? marks.join(' · ') : undefined,
       session: s.name,
       requirements: true,
+      icon,
       // Children below parents, so the list reads as the dependency order it is.
       alwaysShow: depth(sessions, s.name) === 0,
     })
@@ -57,11 +73,12 @@ export function pickItems(
   /* Escape hatch. Someone reading only distribution theories wants the plain image, and
      it must stay reachable once a project session has been chosen. */
   items.push({
-    label: '$(circle-slash) HOL',
+    label: 'HOL',
     description: 'distribution image only',
     detail: 'no project theory is cached; every theory you open is checked from source',
     session: 'HOL',
     requirements: false,
+    icon: current === 'HOL' ? 'current' : 'uncached',
   })
 
   return items
