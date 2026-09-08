@@ -134,10 +134,15 @@ Preview panels are implemented, along with the spell-checker commands, session
 abbreviations and panel margins. **All 32 of the 32 `PIDE/*` protocol messages the server
 defines are in use**, so nothing further is reachable without changing Isabelle itself.
 
-What jEdit still has beyond this -- Query, Theories, Timing, Monitor and others -- is out
-of reach for a different reason than the encoding was: jEdit is not an LSP client at all,
-but a peer front end embedding PIDE directly, so each panel needs protocol messages written
-by hand. [GAPS.md](GAPS.md) works through what each would cost.
+What jEdit still has beyond this -- Theories, Timing, Monitor and others -- is out of reach
+for a different reason than the encoding was: jEdit is not an LSP client at all, but a peer
+front end embedding PIDE directly, so each panel needs protocol messages written by hand.
+[GAPS.md](GAPS.md) works through what each would cost.
+
+The Query panel (find_theorems / find_consts) is the exception: the server-side messages
+exist on the `vscode-query-panel` branch of mirror-isabelle, built and verified, and the
+client ships behind `isabelle.queryPanel` (off by default, since released Isabelle does not
+answer them).
 
 ## License
 

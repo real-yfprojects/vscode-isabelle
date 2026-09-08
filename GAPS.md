@@ -106,12 +106,34 @@ The client half ships behind `isabelle.queryPanel` (default off), so a stock dis
 does not get a view that silently does nothing; enabled against released Isabelle, it
 reports the server as unsupported rather than waiting.
 
-That branch is **not built**. This tree's VSCode module does not compile against a released
-Isabelle2025-2 classpath -- 76 errors from unrelated API drift (`Delay_Ops`, `Output.Kind`,
-`Isabelle_Platform.Bash_Context`, `Doc.Entry.print(style = ...)`) -- and building Pure from
-the checkout needs a component environment the repository does not carry. Type-checking
-attributes none of those errors to the files the branch touches, and `vscode_query.scala`
-reports none at all, but that is evidence rather than proof.
+That branch is **built and verified**. The dev tree as a whole still does not compile
+against a released classpath, but the branch's own files do, and they were exercised
+against a real prover:
+
+```
+PIDE/query_operations_request -> { operations: [find_theorems, find_consts] }
+PIDE/query_request { operation: find_theorems, args: ["5", "false", "\"_ + _\""] }
+PIDE/query_status  { message: "Finished" }
+PIDE/query_output  -> find_theorems "_ + _" found 1239 theorem(s) (5 displayed)
+```
+
+### Reproducing the build
+
+No Mercurial and no component downloads are needed. The APIs the branch uses
+(`Query_Operation`, `JSON.strings`, `Notification0`) all exist in Isabelle2025-2, so it
+backports onto a released distribution, which already has every component:
+
+1. Copy the distribution (about 2.3 GB) and clear the read-only attributes robocopy
+   preserves, or the sources cannot be edited.
+2. Apply the branch's three source changes plus the `etc/build.props` entry. That entry is
+   easy to miss and is what the source list is taken from; without it the module is not
+   compiled at all and `language_server.scala` fails with `Not found: type VSCode_Query`.
+3. `isabelle scala_build -f` in the copy.
+4. Point `isabelle.home` at the copy, set `isabelle.queryPanel`, and run `test/suite15.js`
+   with `ISABELLE_QUERY_HOME` set to it. The suite skips itself when that is unset.
+
+Pin `ISABELLE_IDENTIFIER` for the copy so `ISABELLE_HOME_USER` does not overlap with the
+working installation's settings, preferences and heaps.
 
 ### Genuinely needs the fork — or a workaround
 

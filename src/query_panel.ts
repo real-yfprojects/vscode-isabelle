@@ -60,6 +60,13 @@ export class QueryPanel implements vscode.WebviewViewProvider {
       vscode.commands.registerCommand('isabelle.findTheorems', async () => {
         await vscode.commands.executeCommand('isabelle-query.focus')
       }),
+      // Test hook: run a query without going through the webview.
+      vscode.commands.registerCommand('isabelle.runQuery',
+        async (operation: string, args: string[]) => {
+          this.output = ''
+          this.status = ''
+          await this.client.sendNotification('PIDE/query_request', { operation, args })
+        }),
     )
   }
 
@@ -101,6 +108,7 @@ export class QueryPanel implements vscode.WebviewViewProvider {
   /** Test hooks. */
   get serverSupported(): boolean | undefined { return this.supported }
   get lastOutput(): string { return this.output }
+  get lastStatus(): string { return this.status }
 
   private html(): string {
     const nonce = Math.random().toString(36).slice(2)

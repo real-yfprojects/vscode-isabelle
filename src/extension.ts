@@ -62,7 +62,15 @@ function sendCaretUpdate(editor: vscode.TextEditor | undefined): void {
 
 async function startClient(): Promise<void> {
   lastError = undefined
-  const home = isabelleHome ?? findIsabelleHome()
+  // Re-resolve on every start rather than reusing the value cached at activation:
+  // otherwise changing isabelle.home and restarting the server silently keeps using
+  // the old distribution.
+  const home = findIsabelleHome()
+  if (home !== isabelleHome) {
+    if (isabelleHome !== undefined) log(`Isabelle home changed to ${home}, reloading symbols`)
+    isabelleHome = home
+    table = SymbolTable.load(home)
+  }
   const serverOptions = buildServerOptions(home)
   log(`Launching: ${serverOptions.command} ${(serverOptions.args ?? []).join(' ')}`)
 
@@ -199,6 +207,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       previewLabel: previews?.label ?? '',
       queryPanelEnabled: queryPanel !== undefined,
       querySupported: queryPanel?.serverSupported,
+    })),
+    vscode.commands.registerCommand('isabelle.queryState', () => queryPanel && ({
+      supported: queryPanel.serverSupported,
+      output: queryPanel.lastOutput,
+      status: queryPanel.lastStatus,
     })),
     vscode.commands.registerCommand('isabelle.sledgehammerState', () => sledgehammer && ({
       provers: sledgehammer.proverList,
