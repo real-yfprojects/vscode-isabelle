@@ -92,8 +92,9 @@ the remaining work small rather than deep:
 | Timing | timing data off `Document.Snapshot` | **done** -- the same message; both dockables are views of one `Nodes_Status`. Same branch |
 | Syslog | `PIDE.session.syslog.content()` | **nothing: already delivered.** The server's `syslog_messages` consumer calls `channel.log_writeln`, which is `window/logMessage`, which VS Code shows in the Isabelle output channel |
 | Info | shows tooltip content in a dockable | **nothing: VS Code hovers already do this**, and unlike jEdit they need no dedicated panel |
-| Monitor | ML statistics plus `session.protocol_command("ML_Heap.full_gc")` | protocol plumbing and a chart; the largest of these |
-| Debugger, Simplifier trace | interactive ML-level protocols, not just a data feed | one substantial set of messages each, plus UI with state |
+| Monitor | ML statistics plus `session.protocol_command("ML_Heap.full_gc")` | **declined** -- see below |
+| Debugger | breakpoints and frame evaluation for Isabelle/ML | **declined** -- see below |
+| Simplifier trace | an interactive question/answer protocol, not a data feed | messages plus a panel with state |
 | Raw output, Protocol | `session.raw_output_messages`, `session.all_messages` | messages, but these debug Isabelle itself; `isabelle vscode_server -L FILE -v` already logs the protocol |
 | Graphview | a Swing graph renderer over `Graph_Display` | messages plus a graph renderer in a webview |
 
@@ -125,6 +126,33 @@ PIDE/query_request { operation: find_theorems, args: ["5", "false", "\"_ + _\""]
 PIDE/query_status  { message: "Finished" }
 PIDE/query_output  -> find_theorems "_ + _" found 1239 theorem(s) (5 displayed)
 ```
+
+### Two dockables deliberately not implemented
+
+**Monitor** is a live chart of ML runtime statistics -- future tasks, worker threads, GC
+counts, heap size, program code and stack, thread states, times (`ML_Statistics`'s field
+groups) -- plus buttons firing `ML_Heap.full_gc` and `ML_Heap.share_common_data`.
+
+It diagnoses *the prover's* health, not the user's proof. It answers "why is this machine
+thrashing" and lets you reclaim memory on a large session, which matters to someone tuning
+Isabelle itself and almost never to someone writing Isar. Against that it wants a
+statistics stream plus a charting UI: the largest effort here for the smallest audience.
+Anyone who needs the numbers can get them from the session's own logs.
+
+**Debugger** is a real breakpoint debugger for **Isabelle/ML** -- `toggle_breakpoint`,
+thread contexts, stack frames, and evaluating ML expressions inside a suspended frame.
+
+The distinction that decides it: this debugs the ML implementing tactics, methods and
+commands. It does *not* debug proofs. A user whose `simp` misbehaves is served by the
+simplifier trace, not by this; the audience is people writing new proof methods or working
+on Isabelle internals. It is also the most stateful UI of the set, needing a stack view, a
+variables view, breakpoint gutter decorations and an evaluation console.
+
+Worth recording for whoever revisits this: VS Code implements the Debug Adapter Protocol,
+so it is the one gap where the editor would supply most of the UI. That lowers the cost
+without changing who wants it. If Isabelle/ML development in VS Code ever becomes a goal,
+this is the entry point, and mapping `Debugger` onto DAP is the design to reach for rather
+than a bespoke panel.
 
 ### Reproducing the build
 
@@ -627,11 +655,11 @@ In rough order of value per effort:
 2. **Turn `isabelle.queryPanel` on by default** once the branch it needs is upstream or
    routinely built. The client half is written and verified; it stays off so a stock
    distribution does not get a view that silently does nothing.
-3. **Monitor** — ML statistics plus `ML_Heap.full_gc`. The largest remaining jEdit
-   dockable: protocol plumbing and a chart.
-4. **Debugger and Simplifier trace** — interactive ML-level protocols rather than data
-   feeds, so each is a substantial message set plus stateful UI.
-5. **Graphview** — messages plus a graph renderer in a webview.
+3. **Simplifier trace** — the one jEdit dockable that addresses a problem a user hits
+   routinely, and which nothing else in this client addresses.
+4. **Graphview** — messages plus a graph renderer in a webview.
+
+Monitor and Debugger are declined; see "Two dockables deliberately not implemented".
 6. **Upstream `Content.recode_symbols`** — the server already computes exactly the edits
    the save normaliser needs, but the method is dead code, referenced nowhere. Exposing
    it over LSP would let clients share one implementation.
