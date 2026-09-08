@@ -148,6 +148,7 @@ This documents tracks features and tasks that might already be tracked in other 
 - [ ] expose isabelle cygwin terminal in vscode
 - [ ] in theory view parent items should also have the update spinner animation if chilren are running
 - [ ] delimiters (e.g. \<open>...\<close>) shouldn't be part of the word (e.g. when double clicking or using ctrl+left/right to jump between words)
+- [ ] VSCode Getting Started Guide for the extension, including how to install and configure Isabelle, how to use the extension, and how to troubleshoot common issues.
 
 ### To be decided
 

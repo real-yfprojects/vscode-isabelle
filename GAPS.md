@@ -54,6 +54,8 @@ corrupt" banner. Building a fork is the only stable way to get the encoding in.
 | **Theories / Timing panels** | native TreeViews over `PIDE/theories_*` (`vscode-theories-panel` branch) |
 | **Navigating to a command** | `PIDE/goto_command` out, `PIDE/caret_update` back in |
 | **Outline, breadcrumbs, folding, `Ctrl+T`** | client-side, from a lexical scan of the theory |
+| **Session picker** | ROOT files parsed client-side; sets `logic`/`logicRequirements`/`sessionDirs` and restarts |
+| **Startup and heap-build progress** | the server's own build output relayed into a notification |
 
 Sendback deserves emphasis because the original brief listed it as a gap. Isabelle2025
 exposed it as LSP code actions, so it arrives for free. Asking for code actions on a
@@ -85,9 +87,9 @@ the remaining work small rather than deep:
 
 | jEdit dockable | Mechanism it uses | What exposing it would take |
 |---|---|---|
-| Query (find_theorems, find_consts) | `Query_Operation(PIDE.editor, view, "find_theorems", ...)` | **the same class the server already uses for Sledgehammer**, with a different operation name. Implemented on the `vscode-query-panel` branch of mirror-isabelle |
-| Theories | `PIDE.session.phase`, per-node status | one message carrying `Document_Status.Nodes_Status`. Implemented on the `vscode-theories-panel` branch |
-| Timing | timing data off `Document.Snapshot` | **the same message** -- both dockables are views of one `Nodes_Status`. Same branch |
+| Query (find_theorems, find_consts) | `Query_Operation(PIDE.editor, view, "find_theorems", ...)` | **done** -- the same class the server already uses for Sledgehammer, with a different operation name. `vscode-query-panel` branch, built and verified |
+| Theories | `PIDE.session.phase`, per-node status | **done** -- one message carrying `Document_Status.Nodes_Status`. `vscode-theories-panel` branch |
+| Timing | timing data off `Document.Snapshot` | **done** -- the same message; both dockables are views of one `Nodes_Status`. Same branch |
 | Syslog | `PIDE.session.syslog.content()` | **nothing: already delivered.** The server's `syslog_messages` consumer calls `channel.log_writeln`, which is `window/logMessage`, which VS Code shows in the Isabelle output channel |
 | Info | shows tooltip content in a dockable | **nothing: VS Code hovers already do this**, and unlike jEdit they need no dedicated panel |
 | Monitor | ML statistics plus `session.protocol_command("ML_Heap.full_gc")` | protocol plumbing and a chart; the largest of these |
@@ -228,7 +230,15 @@ escape's start was drawn to the right of the glyph. One press of Left appeared t
 nothing and the next appeared to skip the glyph and the space in front of it together.
 
 Selecting only the space before a glyph made it visible: the highlight covered the glyph
-too. Attaching the glyph as `after` puts it inside the range from both sides.
+too. Moving to an `after` attachment simply mirrored the fault -- the glyph then counted
+towards the *following* boundary, and the space after a glyph was swallowed instead.
+
+Neither attachment can be right, because the content is emitted outside whichever
+boundary it names. The fix is to stop asking one attachment to cover the whole escape:
+the range is split, all but its final character is hidden, and the glyph attaches
+`before` that last character. Columns `start..end-1` then collapse ahead of the glyph and
+`end` lands after it, so selecting the space on either side highlights one blank cell with
+the glyph outside it. It took three attempts, which is why the geometry is written down.
 
 The same file had a second latent defect. `textDecoration` is the only decoration option
 that takes raw CSS, so it is how one smuggles in a property the API does not expose --
@@ -304,36 +314,144 @@ One caveat is honest to state: `editor.semanticHighlighting.enabled` defaults to
 free/bound/schematic distinctions. `isabelle.markupColors: isabelle` restores the palette
 for anyone who prefers it.
 
-### What is cached between restarts, and the -R bug
+### What is cached between restarts
 
-Isabelle's cache is the heap image. On startup the server runs
-`Build.build(build_heap = true)` for the session named by `-l`: if that image is current
-nothing is rebuilt, and every theory inside it is loaded rather than re-checked. Anything
-*above* the image is re-elaborated on every start -- PIDE keeps no on-disk cache of
-command results.
+**There is no theory cache.** The whole mechanism is one line of `Resources.import_name`:
 
-So to stop your imports being re-checked you want them inside an image. Plain `-l NAME`
-is the wrong tool for that when you are editing NAME's own theories: they are then in the
-image too, and PIDE treats them as loaded rather than editable. `-R NAME` is the right
-one -- it builds an image of NAME's *requirements*, so imports come from a heap while
-your files stay live. That is `isabelle.logicRequirements`.
+```scala
+if (loaded_theory(theory)) Document.Node.Name.loaded_theory(theory)
+```
 
-`-R` did not work at all. `Language_Server.build_session` built
+An import already in the heap image resolves to a *nodeless* name, so the document model
+has nothing to check. Everything else resolves to a file and becomes a live node,
+elaborated from source on every start. Timestamps and the build database play no part.
+jEdit is identical -- it just makes you choose a session at launch, which is the step this
+client used to skip.
+
+Reported as "the LSP reverifies all theories on startup although they didn't change".
+Measured against viper-roots by probing `Sessions.background` with the real options: of
+its **123** theory files, exactly **one** was in the image. Two independent causes.
+
+**The client never asked for a project session.** `isabelle.logic` defaulted to `HOL` and
+nothing overrode it, so the server ran `-l HOL`. Every project heap was built and current,
+and all seven component directories were already registered in `etc/components`, so no
+`-d` was even needed. Only the logic name was wrong.
+
+**And `-R`, the obvious fix, was broken.** `Language_Server.build_session` built
 `Sessions.Selection.session(logic)` -- the name asked for -- while `init` loaded heaps for
 `session_background.session_name`, which under `session_requirements` is a synthetic
-`NAME_requirements(ANCESTOR)` session holding exactly the imported theories. So it built
-one session and looked for the heap of another:
+`NAME_requirements(ANCESTOR)` holding exactly the imported theories. The named session's
+heap already existed, so the pre-build check reported "nothing to do" and `session_heaps`
+then demanded a heap nobody had built:
 
 ```
-REQS  session_name = Work_requirements(HOL)
-REQS  heaps wanted = FAILED: Missing heap image for session "Work_requirements(HOL)"
-build_session builds Selection.session(logic) = Work
+REQS  session_name = MainResults_requirements(ViperAbstract)
+REQS  heaps wanted = FAILED: Missing heap image for session "..."
+build_session builds Selection.session(logic) = MainResults
 ```
 
-Isabelle/jEdit is unaffected because `Session.build` selects
-`resources.session_base.session_name`. The `vscode-requirements-build` branch of
-mirror-isabelle makes `build_session` do the same; the server then reports
-`Welcome to Isabelle/Work_requirements(HOL)` and the imports really are cached.
+jEdit is unaffected because `Session.build` selects `resources.session_base.session_name`.
+Fixed on `vscode-requirements-build`, now merged into `vscode-theories-panel`.
+
+#### Choosing the frontier
+
+`-R S` caches S's import closure and leaves S's own theories live. Measured for
+viper-roots:
+
+| `-R` | image | project theories cached | prebuilt? |
+|---|---|---:|---|
+| `ViperCommon` | `ViperCommon_requirements(HOL)` | 1 | no |
+| `ViperAbstract` | `ViperCommon` | 17 | **yes** |
+| `SimpleViperFrontEnd` | `ViperAbstract` | 25 | **yes** |
+| `TotalViperSemantics` | `TotalViperSemantics_requirements(TotalViperDeps)` | 30 | no |
+| `ViperAbstractRefinesTotal` | `ViperAbstractRefinesTotalDeps` | 47 | **yes** |
+| `MainResults` | `MainResults_requirements(ViperAbstract)` | 52 | no |
+
+Three resolve to a *real* prebuilt heap rather than a synthetic requirements image, so
+they need no build and work even without the `-R` fix.
+
+The choice is **not** "the session owning the file you have open". A heap is an immutable
+snapshot compiled against the text as it stood. Edit something inside it and your edit is
+checked in isolation while every theory above keeps the stale copy. **The frontier must
+sit below everything you intend to edit**, so the recommendation is the *lowest* session
+currently open.
+
+#### Editing into the heap is invisible
+
+`Resources.find_theory` resolves a path through `sessions_structure.session_directories`
+and **never consults `loaded_theory`**. So a theory inside the image still opens as an
+ordinary live, file-backed node and re-checks as you type. It looks completely normal.
+What does not happen is anything downstream noticing.
+
+That makes it the one failure here with no signal at all, so the client supplies one: on
+the first edit to such a file it says so and offers the frontier that fixes it, chosen to
+clear every open session at once rather than warn again on the next file. Computing "what
+is in the image" follows **both** edges `Sessions.background` follows -- the parent chain
+*and* the `sessions` clause. `MainResults` reaches `SimpleViperFrontEnd` only through the
+latter, so a parent-only walk would call it live and never warn.
+
+#### The picker
+
+The session is fixed for the life of the process: `session_name` and
+`session_requirements` are constructor fields of `Language_Server` read once in `init`,
+LSP `initialize` happens once per process, and `shutdown` clears the session with no path
+back. Changing session therefore means restarting the server.
+
+`src/sessions.ts` parses the ROOT files in the workspace directly rather than asking
+Isabelle. `isabelle sessions` prints only names, and every route to the directories and
+parents -- `isabelle sessions -D`, a dry-run build -- costs a JVM start plus a full
+structure load, measured at ~20s. No picker can spend that. The grammar subset needed is
+small and `Sessions.session_entry` fixes the clause order, which is what makes a linear
+scan sound. Validated against the real tree: 14 sessions, cross-checked clean against
+`isabelle sessions -a`.
+
+Three things that were not obvious:
+
+- **A ROOT in the workspace is not necessarily visible to Isabelle.** Two of viper-roots'
+  own sessions live in subdirectories of a component rather than in the component itself,
+  so they are absent from `isabelle sessions -a` entirely. Offering them unregistered
+  would hand over a choice that fails at startup, so the picker adds the chosen session's
+  ROOT directory to `sessionDirs`. A redundant `-d` is harmless: `load_root_files` keys
+  `seen_roots` by canonical file and drops the repeat.
+- **`-d` must be converted to Cygwin form on Windows.** Isabelle's `Path.explode` rejects
+  a native path, and `vscode_server` exits 1 before replying to `initialize`. Only the
+  launcher path had ever been converted; the `-d` list had not, which stayed invisible for
+  as long as nobody had `sessionDirs` set.
+- **The build happens inside `initialize`**, so `client.start()` does not resolve until it
+  finishes -- a first start against a missing image is minutes of silence. There is no
+  structured progress channel: `Channel.progress` writes through `window/logMessage` into
+  the output channel. `src/build_progress.ts` therefore wraps that channel, forwards every
+  line unchanged, and relays the few that say what is happening into a notification.
+
+What the picker deliberately does **not** show is whether a choice needs a heap build.
+That depends on the image `Sessions.background` computes, and nothing short of a full
+structure load says whether it exists. `isabelle build -n -R S` answers a different
+question -- it builds *ancestors*, reports "nothing to build" for a session whose
+requirements image is missing, and takes 23s. The server reports its own build through
+`build_started`, which is honest and free.
+
+#### `-i` does not do what its name suggests
+
+`include_sessions` (`-i`) only widens the *selection* so those sessions are known for name
+resolution and completion: `selected_sessions1` is built from `session1 :: session ::
+include_sessions`, but the background base stays `deps1(session1)`. It makes sessions
+visible; it does not cache them.
+
+#### A superseding ROOT cannot widen the live set
+
+Defining a second session that re-claims an existing session's directory fails on a global
+check -- `Duplicate use of directory`, raised while building the session structure over
+**every** session in **every** loaded ROOT, not just the selected ones. A directory belongs
+to exactly one session, globally. `-A` (`session_ancestor`) moves the cut point, and a
+scratch session in a *new* directory works, but neither makes an already-owned theory
+editable and cached at once -- those are opposites by construction.
+
+#### Multiple sessions in one server
+
+Not an LSP-layer question. One `Session` is one ML process is one heap, and two heaps
+cannot coexist in a process. Supporting N would mean N prover processes plus routing, and
+it still would not help: session A's ML process cannot see live edits to a theory in
+session B. The constraint is that a heap is an immutable snapshot of an entire ML state.
 
 ### Which Isabelle this client targets
 
@@ -408,11 +526,28 @@ Verified by running it:
   the buffer too, so it cannot serve as a round-trip encoding layer
 - PIDE markup decorations arrive and are applied (8 types, 22 ranges on a small theory)
 - the Output and State panels receive content; the State panel reports `1. P ⟹ P`
-- the extension's own behaviour, in the six integration suites
+- the extension's own behaviour, in the integration and unit suites
+- **session caching, by probe rather than inference**: `Sessions.background` loaded with
+  the real options reports 1 project theory in the image under the shipped default and
+  17-52 under the various `-R` frontiers; `-R MainResults` raises `Missing heap image` on
+  an unpatched build, reproducing the bug exactly
+- the ROOT parser against the real tree: 14 sessions, cross-checked against
+  `isabelle sessions -a` with no session Isabelle knows missed
+- `isabelle build -n -R MainResults` reports nothing to build in 23s, confirming it
+  answers a different question than the picker needs
 
 Not verified:
 
-- **Linux and macOS.** Only the Windows/Cygwin launch path has actually run
+- **Linux and macOS.** Only the Windows/Cygwin launch path has actually started a prover.
+  CI compiles the tree and runs the pure suites on both, which covers the platform
+  branches in `serverPath` but not a real launch
+- **the merged `-R` fix, by compilation.** It is a clean three-line auto-merge whose one
+  changed expression is already used a few lines below, but the mirror tracks a newer
+  Isabelle revision than the installed release and is checked out with CRLF, so it cannot
+  be built in place. Verified by inspection only
+- **whether `ThemeIcon.color` reaches a quick pick.** `vscode.d.ts` documents it as
+  "currently only used in `TreeItem`", so the recommended session's star may render in the
+  default foreground rather than gold. The star itself renders either way
 - the panels still listed as missing in §2
 - any decoration cost below ~20 ms. The language server processes in the background
   throughout, moving the baseline by more than the effects being compared; resolving
@@ -422,10 +557,21 @@ Not verified:
 
 In rough order of value per effort:
 
-1. **Build and test the `vscode-query-panel` branch**, then turn `isabelle.queryPanel`
-   on by default. Everything else on the jEdit list needs new protocol messages designed
-   from scratch; this one is already written and only needs a build environment.
-2. **A `.vsix` and CI** — plus testing the non-Windows launch path.
-5. **Upstream `Content.recode_symbols`** — the server already computes exactly the edits
+1. **A `.vsix` and CI** — done for packaging and for the cross-platform pure suites; the
+   non-Windows *launch* path is still unexercised, because CI has no Isabelle. What CI
+   proves is that the tree compiles and the platform-conditional path logic behaves on
+   Linux and macOS, not that a prover starts there.
+2. **Turn `isabelle.queryPanel` on by default** once the branch it needs is upstream or
+   routinely built. The client half is written and verified; it stays off so a stock
+   distribution does not get a view that silently does nothing.
+3. **Monitor** — ML statistics plus `ML_Heap.full_gc`. The largest remaining jEdit
+   dockable: protocol plumbing and a chart.
+4. **Debugger and Simplifier trace** — interactive ML-level protocols rather than data
+   feeds, so each is a substantial message set plus stateful UI.
+5. **Graphview** — messages plus a graph renderer in a webview.
+6. **Upstream `Content.recode_symbols`** — the server already computes exactly the edits
    the save normaliser needs, but the method is dead code, referenced nowhere. Exposing
    it over LSP would let clients share one implementation.
+
+Raw output and Protocol are deliberately not on this list: they debug Isabelle itself, and
+`isabelle vscode_server -L FILE -v` already logs the protocol.
