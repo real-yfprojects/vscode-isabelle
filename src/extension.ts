@@ -1,5 +1,6 @@
 import * as vscode from 'vscode'
-import { LanguageClient, LanguageClientOptions, State } from 'vscode-languageclient/node'
+import { CloseAction, ErrorAction, ErrorHandler, LanguageClient, LanguageClientOptions, State }
+  from 'vscode-languageclient/node'
 import { buildServerOptions, findIsabelleHome, IsabelleNotFound } from './isabelle'
 import { SymbolTable } from './symbols'
 import { SymbolRenderer } from './decorations'
@@ -21,6 +22,7 @@ import { registerSemanticTokens } from './semantic_tokens'
 import { SessionPicker } from './session_picker'
 import { stalenessWarning } from './sessions'
 import { BuildProgress } from './build_progress'
+import { closeVerdict } from './restart_policy'
 
 const buildProgress = new BuildProgress()
 let client: LanguageClient | undefined
@@ -93,9 +95,30 @@ async function startClient(): Promise<void> {
   const serverOptions = buildServerOptions(home)
   log(`Launching: ${serverOptions.command} ${(serverOptions.args ?? []).join(' ')}`)
 
+  /* Restart policy. Without an errorHandler the client uses its default, which gives up
+     only when five closes land inside three minutes -- a window a ~20 minute heap build
+     never fits into, so a server that cannot start is restarted forever, rebuilding each
+     time. See restart_policy.ts; `everRunning` is what separates "this will fail again"
+     from "the prover died and should come back". */
+  let everRunning = false
+  let closes = 0
+  const errorHandler: ErrorHandler = {
+    error: (_error, _message, count) => ({
+      action: count !== undefined && count <= 3 ? ErrorAction.Continue : ErrorAction.Shutdown,
+    }),
+    closed: () => {
+      const verdict = closeVerdict({ everRunning, restarts: closes, logic: logicLabel() })
+      closes += 1
+      if (verdict.restart) return { action: CloseAction.Restart }
+      log(verdict.message)
+      return { action: CloseAction.DoNotRestart, message: verdict.message }
+    },
+  }
+
   const clientOptions: LanguageClientOptions = {
     documentSelector: ISABELLE_SELECTOR as any,
     outputChannel: buildProgress.channel(output),
+    errorHandler,
     middleware: {
       /* There is no API for "the user is holding Ctrl", but VS Code asks for a definition
          exactly when it is deciding whether to draw the Ctrl+hover link -- so this is
@@ -125,6 +148,9 @@ async function startClient(): Promise<void> {
     log(`client.start() threw: ${lastError}`)
     throw err
   }
+  // Only now is a later close worth restarting: the server got past `initialize`, so its
+  // heap image exists and coming back does not mean rebuilding it.
+  everRunning = true
   log('Language server started.')
 
   pide = new PideDecorations(log)

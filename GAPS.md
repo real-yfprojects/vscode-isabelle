@@ -507,6 +507,20 @@ Three things that were not obvious:
   stuck-vs-slow signal. `-v` is unrelated: it only sets `Channel`'s JSON-RPC message
   logging. Per-theory lines stay out of the *notification* on purpose -- see `suite26.js`,
   which pins that chatter rewritten every few milliseconds is worse than none.
+- **A start that cannot succeed was retried forever.** With no `errorHandler` in
+  `clientOptions`, the client used `DefaultErrorHandler`, which stops only when five closes
+  land inside three minutes and otherwise drops the oldest timestamp and restarts. That
+  assumes a restart is cheap. Here it costs the heap build, because the build runs inside
+  `initialize` -- ~20 minutes against viper-roots -- so the three-minute window never closed
+  and a `sorry` that failed the requirements image had the extension rebuilding, failing and
+  restarting for hours. Two of those builds then overlapped and collided:
+  `[SQLITE_CONSTRAINT_PRIMARYKEY] ... isabelle_sources.session_name, isabelle_sources.name`,
+  because `Store.write_session_info` inserts a session's source rows outright and trusts
+  `clean_session_info` to have cleared them -- one writer per session record is an
+  assumption the loop broke. `src/restart_policy.ts` keys on whether the server ever
+  reached Running instead of on wall-clock: a failed start is reported and not retried,
+  a crash after a healthy start restarts, capped by count with no window to reset it.
+  Pinned by `suite28.js`.
 
 What the picker deliberately does **not** show is whether a choice needs a heap build.
 That depends on the image `Sessions.background` computes, and nothing short of a full
