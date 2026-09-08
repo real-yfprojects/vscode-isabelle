@@ -86,13 +86,13 @@ function cygwinBash(isabelleHome: string): string {
  * A path that is already POSIX is left alone -- path.resolve would otherwise turn
  * "/cygdrive/c/x" into "C:\cygdrive\c\x" and break a setting that was correct.
  */
-export function serverPath(p: string): string {
-  if (process.platform !== 'win32') return p
+export function serverPath(p: string, platform: NodeJS.Platform = process.platform): string {
+  if (platform !== 'win32') return p
   if (p.startsWith('/')) return p
   return toCygwinPath(p)
 }
 
-export function serverArguments(): string[] {
+export function serverArguments(platform: NodeJS.Platform = process.platform): string[] {
   const cfg = vscode.workspace.getConfiguration('isabelle')
   const args: string[] = []
 
@@ -105,7 +105,7 @@ export function serverArguments(): string[] {
   if (logic) args.push(cfg.get<boolean>('logicRequirements') ? '-R' : '-l', logic)
 
   for (const dir of cfg.get<string[]>('sessionDirs') ?? []) {
-    if (dir.trim()) args.push('-d', serverPath(dir.trim()))
+    if (dir.trim()) args.push('-d', serverPath(dir.trim(), platform))
   }
   for (const opt of cfg.get<string[]>('serverOptions') ?? []) {
     if (opt.trim()) args.push('-o', opt.trim())
@@ -127,13 +127,13 @@ export function serverArguments(): string[] {
  * Inheriting those into a child that eventually launches a JVM is at best noise and at
  * worst makes an Electron binary in the chain misbehave, so strip them.
  */
-function childEnv(): NodeJS.ProcessEnv {
+function childEnv(platform: NodeJS.Platform = process.platform): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {}
   for (const [k, v] of Object.entries(process.env)) {
     if (k.startsWith('VSCODE_') || k.startsWith('ELECTRON_')) continue
     env[k] = v
   }
-  if (process.platform === 'win32') {
+  if (platform === 'win32') {
     env.HOME = env.HOME || env.USERPROFILE
     env.CHERE_INVOKING = 'true'
     env.LANG = env.LANG || 'en_US.UTF-8'
@@ -141,14 +141,23 @@ function childEnv(): NodeJS.ProcessEnv {
   return env
 }
 
-export function buildServerOptions(isabelleHome: string): Executable {
-  const args = serverArguments()
+/**
+ * How to launch the server.
+ *
+ * `platform` is injectable so the launch path for an OS can be checked from any other --
+ * only the Windows/Cygwin path has ever actually started a prover, and CI has no Isabelle
+ * to change that, so the argument construction is the part that can be held still.
+ */
+export function buildServerOptions(
+  isabelleHome: string, platform: NodeJS.Platform = process.platform,
+): Executable {
+  const args = serverArguments(platform)
   // Pin cwd: the extension host's own cwd may be somewhere Cygwin cannot chdir into,
   // and CHERE_INVOKING makes the login shell try to stay there.
   const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? isabelleHome
-  const options = { env: childEnv(), shell: false, cwd }
+  const options = { env: childEnv(platform), shell: false, cwd }
 
-  if (process.platform === 'win32') {
+  if (platform === 'win32') {
     const bash = cygwinBash(isabelleHome)
     if (!fs.existsSync(bash)) {
       throw new IsabelleNotFound(

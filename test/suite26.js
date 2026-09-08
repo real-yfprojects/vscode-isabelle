@@ -9,7 +9,7 @@
 // minutes building a heap image with nothing at all on screen.
 const assert = require('assert')
 
-const { serverPath, toCygwinPath } = require('../out/isabelle.js')
+const { serverPath, toCygwinPath, buildServerOptions } = require('../out/isabelle.js')
 const { buildLine } = require('../out/build_progress.js')
 
 let passed = 0
@@ -36,6 +36,32 @@ async function run() {
     assert.strictEqual(serverPath('relative/dir'), 'relative/dir')
     pass('paths pass through unchanged off Windows')
   }
+
+  // --- the launch path for every platform, from whichever we are on ----------------
+  // Only the Windows/Cygwin path has ever started a real prover, and CI has no Isabelle
+  // to change that. Injecting the platform at least holds the argument construction
+  // still, which is where the -d bug lived.
+  const backslash = String.fromCharCode(92)
+  assert.strictEqual(serverPath('/home/me/afp', 'linux'), '/home/me/afp')
+  assert.strictEqual(serverPath(['C:', 'x'].join(backslash), 'linux'),
+    ['C:', 'x'].join(backslash),
+    'off Windows a path is Isabelle-ready already and must not be rewritten')
+  assert.ok(serverPath(['C:', 'x'].join(backslash), 'win32').startsWith('/cygdrive/c/'))
+  pass('path conversion follows the target platform, not the host')
+
+  // The two launch shapes differ in more than the executable: Windows goes through the
+  // bundled Cygwin bash with the tool script as an argument, POSIX runs bin/isabelle.
+  const home = '/opt/Isabelle2025-2'
+  const posix = buildServerOptions(home, 'linux')
+  assert.ok(posix.command.endsWith('isabelle') && !posix.command.includes('bash'),
+    `POSIX should invoke bin/isabelle directly: ${posix.command}`)
+  assert.strictEqual(posix.args[0], 'vscode_server',
+    'vscode_server must be the first argument, not preceded by a shell login flag')
+  assert.strictEqual(posix.options.env.CHERE_INVOKING, undefined,
+    'CHERE_INVOKING is a Cygwin concern and must not leak onto POSIX')
+  assert.ok(posix.args.every(a => !a.includes('cygdrive')),
+    'no Cygwin path may appear in a POSIX launch')
+  pass('the POSIX launch runs bin/isabelle directly, with no Cygwin residue')
 
   // --- what reaches the notification ----------------------------------------------
   // The line the server actually emitted when this was reported.
