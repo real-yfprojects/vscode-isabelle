@@ -38,6 +38,11 @@ This documents tracks features and tasks that might already be tracked in other 
     wrong metric -- the unit of "implemented" is a direction, not a message
   - [x] fixed on the way: Preview was rendered by embedding a whole Browser_Info document,
     whose inlined `isabelle.css` hardcodes a white page and won the cascade over ours
+  - [x] found by asking how the Query panel compares to VS Code's own symbol search:
+    the server advertises **no symbol provider of either kind**, so Ctrl+Shift+O, the
+    Outline view, breadcrumbs and Ctrl+T were all empty. Supplied client-side in
+    `src/outline.ts`; needed no upstream change. Careful: this changed which lines
+    sticky scroll pins, so `viewport.ts` now follows the outline too
   - still needing new protocol design: Monitor, Debugger, Simplifier trace, Raw output,
     Protocol, Graphview
   - note: the client targets the **development** tree, not Isabelle2025-2, which has no

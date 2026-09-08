@@ -16,6 +16,7 @@ import { PreviewPanels } from './preview_panel'
 import { QueryPanel } from './query_panel'
 import { registerCaretUpdates, isApplyingCaretUpdate } from './caret'
 import { TheoriesPanel } from './theories_panel'
+import { registerOutline } from './outline'
 
 let client: LanguageClient | undefined
 let output: vscode.OutputChannel
@@ -176,6 +177,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registerNormalizer(context, table, log)
   registerAtomicMotion(context, table)
   new SymbolsPanel(table).register(context.subscriptions)
+  // Outline, breadcrumbs and folding: plain LSP features the server does not provide.
+  registerOutline(context, ISABELLE_SELECTOR)
 
   context.subscriptions.push(
     vscode.commands.registerCommand('isabelle.restartServer', async () => {

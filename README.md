@@ -57,6 +57,11 @@ only.** Nothing can desynchronise, because there is only one representation.
   The underlining needs no client code; the five dictionary commands are registered.
   Set `isabelle.spellChecker` to `false` to turn it off and use a general spell-checking
   extension instead.
+- **Outline, breadcrumbs, folding and `Ctrl+T`** — the language server advertises no
+  symbol provider of either kind, so these are supplied client-side from a lexical scan
+  of the theory that tracks comment, string and cartouche nesting. Note this searches
+  *names in your files*; the Query panel's `find_theorems` searches the loaded session
+  image by unifying a term pattern, which is what you want when you don't know the name.
 - **Syntax highlighting** — a TextMate grammar generated from the distribution's own
   keyword table, so colouring appears before the prover attaches. PIDE markup layers on
   top where it has information. The scopes (`comment.block.isabelle`, `string.quoted.*`)
@@ -125,6 +130,8 @@ node test/runTest.js suite5.js   # sendback arrives as LSP code actions
 node test/runTest.js suite6.js   # PIDE markup, Output panel, State panel
 node test/runTest.js suite7.js   # visual: panels and palette, for a screenshot
 node test/runTest.js suite16.js  # theory status rendering, preview HTML stripping
+node test/runTest.js suite18.js  # outline, folding and Ctrl+T through VS Code's own APIs
+node test/runTest.js suite19.js  # the theory scanner, nesting, and sticky-scroll lines
 ```
 
 Two suites need a *patched* Isabelle and skip themselves otherwise: `suite15.js` (Query,

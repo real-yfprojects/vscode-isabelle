@@ -53,6 +53,7 @@ corrupt" banner. Building a fork is the only stable way to get the encoding in.
 | **Spell checker** | underlining arrives as a `spell_checker` decoration; the five dictionary commands are registered |
 | **Theories / Timing panels** | native TreeViews over `PIDE/theories_*` (`vscode-theories-panel` branch) |
 | **Navigating to a command** | `PIDE/goto_command` out, `PIDE/caret_update` back in |
+| **Outline, breadcrumbs, folding, `Ctrl+T`** | client-side, from a lexical scan of the theory |
 
 Sendback deserves emphasis because the original brief listed it as a gap. Isabelle2025
 exposed it as LSP code actions, so it arrives for free. Asking for code actions on a
@@ -181,6 +182,37 @@ pretty-printed panels stay webviews because their content is Isabelle markup, no
 Verified end to end against the patched build (`test/suite17.js`): a small theory reported
 16 commands reaching 100% with no failures, per-command timings, and `PIDE/goto_command`
 navigating to one of them.
+
+### Symbol search: what the server does not advertise
+
+`ServerCapabilities` lists `hoverProvider`, `definitionProvider`,
+`documentHighlightProvider` and `codeActionProvider` -- and **no symbol provider of
+either kind**. So `Ctrl+Shift+O`, the Outline view, breadcrumbs and `Ctrl+T` were all
+empty for theories. Verified rather than assumed: `executeDocumentSymbolProvider`
+returned `undefined` and `executeWorkspaceSymbolProvider` returned zero results for a
+name that was plainly in the file.
+
+That is a plain LSP gap, not an Isabelle one: no PIDE message is involved, only a reading
+of the source. `src/outline.ts` supplies all four from one lexical scan that tracks
+comment, string and cartouche nesting -- necessary because prose is exactly where the
+word "lemma" turns up most, and `text <open>... lemma ...<close>` must not become an
+outline entry.
+
+This does **not** overlap with the Query panel, though both are "search":
+
+| | `Ctrl+T` | `find_theorems` |
+|---|---|---|
+| Scope | `.thy` files in the workspace | the loaded session image -- `Main` and everything below it, which lives in a heap, not in files |
+| Query | fuzzy name | term patterns (`"_ + _"`), `name:`, `intro`/`elim`/`dest`/`simp` |
+| Matching | text | unification against the statement, up to instantiation |
+| Answers | "where is the lemma called X" | "what lemma has this shape" -- when you do not know the name |
+
+One consequence worth recording, because it is the sort of thing that silently regresses:
+`editor.stickyScroll.defaultModel` prefers the outline, then a folding provider, then
+indentation. Registering these providers therefore **changed which lines are sticky**, so
+`viewport.ts` -- which predicts sticky lines to decorate them -- had to switch to the
+outline as well. Left alone it would have quietly reintroduced the partly-coloured sticky
+header it was written to fix.
 
 ### Which Isabelle this client targets
 
