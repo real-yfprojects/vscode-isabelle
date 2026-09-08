@@ -214,6 +214,32 @@ indentation. Registering these providers therefore **changed which lines are sti
 outline as well. Left alone it would have quietly reintroduced the partly-coloured sticky
 header it was written to fix.
 
+### Colour themes and checked text
+
+PIDE markup was painted with decorations whose colours come from `src/colors.ts` --
+Isabelle's `text_color` defaults, which are themselves VS Code's Dark+/Light+ values. A
+decoration `color` overrides everything, so installing a theme recoloured only the text
+PIDE had not reached yet: unchecked code followed the theme through the TextMate grammar,
+and checked code snapped back to what looked like the default theme. It was the Isabelle
+palette winning.
+
+Semantic tokens are the mechanism built for this. `src/semantic_tokens.ts` serves the
+`text_*` categories as tokens the editor colours from the theme, and the `text_*`
+decorations are then *not* applied -- the two are mutually exclusive by construction,
+since a decoration would override the theme again.
+
+Themes do not know Isabelle's categories, so each custom token type is declared in
+`package.json` with a `superType` and a `semanticTokenScopes` mapping to ordinary
+TextMate scopes (`keyword.control`, `variable.other`, ...). A theme that has never heard
+of Isabelle then styles them by rules it already has. `main` is deliberately not
+tokenised: it is Isabelle's plain-text colour, and leaving it alone is what lets the
+theme's editor foreground show through.
+
+One caveat is honest to state: `editor.semanticHighlighting.enabled` defaults to
+`configuredByTheme`, so a theme that opts out gets the TextMate grammar only, losing the
+free/bound/schematic distinctions. `isabelle.markupColors: isabelle` restores the palette
+for anyone who prefers it.
+
 ### Which Isabelle this client targets
 
 Building the branches against a released Isabelle2025-2 turned up four places where the

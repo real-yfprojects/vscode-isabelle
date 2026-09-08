@@ -19,6 +19,7 @@ import * as vscode from 'vscode'
 import { LanguageClient } from 'vscode-languageclient/node'
 import { colorOf } from './colors'
 import { stickyLines } from './viewport'
+import { themeColorsMarkup } from './semantic_tokens'
 
 const BACKGROUND = [
   'unprocessed1', 'running1', 'canceled', 'bad', 'intensify', 'quoted', 'antiquoted',
@@ -34,7 +35,7 @@ const TEXT = [
 ]
 const OVERVIEW = ['unprocessed', 'running', 'error', 'warning']
 
-interface TypeRanges {
+export interface TypeRanges {
   items: vscode.DecorationOptions[]
   /** Tallest range, so a binary search on start lines cannot miss a tall overlap. */
   maxHeight: number
@@ -75,6 +76,9 @@ export class PideDecorations implements vscode.Disposable {
   private lastApplied = new Map<string, Map<string, string>>()
   private disposables: vscode.Disposable[] = []
   private timer: NodeJS.Timeout | undefined
+  /** Fires when a document's markup changed, so semantic tokens can be re-requested. */
+  private readonly updated = new vscode.EventEmitter<vscode.Uri>()
+  readonly onDidUpdate = this.updated.event
 
   constructor(private readonly log: (m: string) => void) {
     this.createTypes()
@@ -174,6 +178,12 @@ export class PideDecorations implements vscode.Disposable {
     for (const editor of vscode.window.visibleTextEditors) {
       if (editor.document.uri.toString() === key) this.applyTo(editor)
     }
+    this.updated.fire(uri)
+  }
+
+  /** The markup this document currently has, by decoration type. */
+  rangesFor(uri: vscode.Uri): ReadonlyMap<string, TypeRanges> | undefined {
+    return this.perDocument.get(uri.toString())
   }
 
   /** Lines the editor could plausibly show, given its viewport plus a margin. */
@@ -204,7 +214,21 @@ export class PideDecorations implements vscode.Disposable {
       ? stickyLines(editor.document, editor.visibleRanges[0]?.start.line ?? 0)
       : []
     const editorKey = editor.document.uri.toString()
+    /* When the theme owns token colours, the text_* categories are served as semantic
+       tokens instead. They must not also be decorated: a decoration `color` overrides
+       the theme, which is the whole bug being fixed. Backgrounds, underlines and ruler
+       marks are unaffected -- no theme has an opinion about those. */
+    const themed = themeColorsMarkup()
     for (const [name, type] of this.types) {
+      if (themed && name.startsWith('text_') && !name.startsWith('text_overview_')) {
+        if (this.lastApplied.get(editorKey)?.get(name) !== 'off') {
+          editor.setDecorations(type, [])
+          let applied = this.lastApplied.get(editorKey)
+          if (!applied) { applied = new Map(); this.lastApplied.set(editorKey, applied) }
+          applied.set(name, 'off')
+        }
+        continue
+      }
       const entry = byType.get(name)
       if (!entry || entry.items.length === 0) { editor.setDecorations(type, []); continue }
 

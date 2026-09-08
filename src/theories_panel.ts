@@ -46,10 +46,23 @@ export type TheoriesResponse = {
 
 const BAR_CELLS = 10
 
-/** jEdit draws a proportional bar per theory; the nearest honest thing in a tree row. */
+/**
+ * jEdit draws a proportional bar per theory. A tree row is the wrong place for it: rows
+ * never wrap and the description is truncated from the right, so a bar wide enough to
+ * read pushes out the number it is illustrating. It lives in the tooltip instead, which
+ * has room.
+ */
 export function progressBar(percentage: number): string {
   const filled = Math.max(0, Math.min(BAR_CELLS, Math.round((percentage / 100) * BAR_CELLS)))
   return '▰'.repeat(filled) + '▱'.repeat(BAR_CELLS - filled)
+}
+
+/** `HOL-Library.Complex_Order` -> session `HOL-Library`, base `Complex_Order`. */
+export function splitTheory(qualified: string): { session: string; base: string } {
+  const dot = qualified.lastIndexOf('.')
+  return dot < 0
+    ? { session: '', base: qualified }
+    : { session: qualified.slice(0, dot), base: qualified.slice(dot + 1) }
 }
 
 export function statusIcon(node: NodeStatus): vscode.ThemeIcon {
@@ -62,20 +75,34 @@ export function statusIcon(node: NodeStatus): vscode.ThemeIcon {
   return new vscode.ThemeIcon('check')
 }
 
-/** Short right-hand summary: the bar plus whatever is not simply "finished". */
+/**
+ * Short right-hand summary. Ordered most-important-first because the description is what
+ * VS Code truncates, and empty for a theory that finished cleanly -- the icon already
+ * says so, and a row ending in "0 failed" is noise.
+ */
 export function statusDescription(node: NodeStatus): string {
   const parts: string[] = []
+  if (node.percentage < 100) parts.push(`${node.percentage}%`)
   if (node.failed > 0) parts.push(`${node.failed} failed`)
   if (node.warned > 0) parts.push(`${node.warned} warned`)
   if (node.running > 0) parts.push(`${node.running} running`)
-  if (node.unprocessed > 0) parts.push(`${node.unprocessed} unprocessed`)
-  const tail = parts.length ? '  ' + parts.join(', ') : ''
-  return `${progressBar(node.percentage)} ${node.percentage}%${tail}`
+  if (node.unprocessed > 0) parts.push(`${node.unprocessed} left`)
+  return parts.join(' · ')
+}
+
+/** Roll a session's theories up into one row. */
+export function sessionDescription(nodes: readonly NodeStatus[]): string {
+  const done = nodes.filter(n => n.percentage === 100).length
+  const failed = nodes.reduce((n, x) => n + (x.failed > 0 ? 1 : 0), 0)
+  const parts = [`${done}/${nodes.length}`]
+  if (failed > 0) parts.push(`${failed} failed`)
+  return parts.join(' · ')
 }
 
 function tooltip(node: NodeStatus): vscode.MarkdownString {
   const md = new vscode.MarkdownString()
   md.appendMarkdown(`**${node.theory}**\n\n`)
+  md.appendMarkdown(`${progressBar(node.percentage)} ${node.percentage}%\n\n`)
   md.appendMarkdown(
     [
       `| | |`,
@@ -94,7 +121,41 @@ function tooltip(node: NodeStatus): vscode.MarkdownString {
 
 type TimingItem = { kind: 'theory'; node: NodeStatus } | { kind: 'command'; cmd: CommandTiming }
 
-class TheoriesProvider implements vscode.TreeDataProvider<NodeStatus> {
+type TheoryItem =
+  | { kind: 'session'; session: string; nodes: NodeStatus[] }
+  | { kind: 'theory'; node: NodeStatus }
+
+/**
+ * Theories grouped by their session.
+ *
+ * A flat list does not fit: every row carries its session as a prefix
+ * (`HOL-Library.Liminf_Limsup`), which is both redundant down a column and long enough
+ * that the status is truncated away. Grouping removes the prefix from the label and
+ * gives the imported library sessions somewhere to be collapsed out of the way.
+ */
+export function groupBySession(nodes: readonly NodeStatus[]): TheoryItem[] {
+  const groups = new Map<string, NodeStatus[]>()
+  for (const node of nodes) {
+    const { session } = splitTheory(node.theory)
+    const list = groups.get(session)
+    if (list) list.push(node)
+    else groups.set(session, [node])
+  }
+  const out: TheoryItem[] = []
+  for (const [session, list] of groups) {
+    // A theory with no qualifier has no session to file it under.
+    if (session === '') out.push(...list.map(node => ({ kind: 'theory', node } as TheoryItem)))
+    else out.push({ kind: 'session', session, nodes: list })
+  }
+  return out
+}
+
+/** Sessions you are working in stay open; finished library sessions fold away. */
+export function sessionIsBusy(nodes: readonly NodeStatus[]): boolean {
+  return nodes.some(n => n.failed > 0 || n.running > 0 || n.percentage < 100)
+}
+
+class TheoriesProvider implements vscode.TreeDataProvider<TheoryItem> {
   private readonly emitter = new vscode.EventEmitter<void>()
   readonly onDidChangeTreeData = this.emitter.event
   nodes: NodeStatus[] = []
@@ -104,12 +165,29 @@ class TheoriesProvider implements vscode.TreeDataProvider<NodeStatus> {
     this.emitter.fire()
   }
 
-  getChildren(element?: NodeStatus): NodeStatus[] {
-    return element ? [] : this.nodes
+  getChildren(element?: TheoryItem): TheoryItem[] {
+    if (!element) return groupBySession(this.nodes)
+    if (element.kind === 'session') {
+      return element.nodes.map(node => ({ kind: 'theory', node } as TheoryItem))
+    }
+    return []
   }
 
-  getTreeItem(node: NodeStatus): vscode.TreeItem {
-    const item = new vscode.TreeItem(node.theory, vscode.TreeItemCollapsibleState.None)
+  getTreeItem(element: TheoryItem): vscode.TreeItem {
+    if (element.kind === 'session') {
+      const busy = sessionIsBusy(element.nodes)
+      const item = new vscode.TreeItem(element.session,
+        busy ? vscode.TreeItemCollapsibleState.Expanded
+             : vscode.TreeItemCollapsibleState.Collapsed)
+      item.id = 'session:' + element.session
+      item.description = sessionDescription(element.nodes)
+      item.iconPath = new vscode.ThemeIcon('library')
+      item.contextValue = 'isabelleSession'
+      return item
+    }
+    const node = element.node
+    const item = new vscode.TreeItem(splitTheory(node.theory).base,
+      vscode.TreeItemCollapsibleState.None)
     item.id = node.uri
     item.description = statusDescription(node)
     item.iconPath = statusIcon(node)
@@ -170,7 +248,7 @@ class TimingProvider implements vscode.TreeDataProvider<TimingItem> {
     }
     const node = element.node
     const expandable = this.isCurrent(node) && this.commands.length > 0
-    const item = new vscode.TreeItem(node.theory,
+    const item = new vscode.TreeItem(splitTheory(node.theory).base,
       expandable ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None)
     item.id = 'timing:' + node.uri
     item.description = `${node.cumulated_time.toFixed(3)}s` +
@@ -189,7 +267,7 @@ class TimingProvider implements vscode.TreeDataProvider<TimingItem> {
 export class TheoriesPanel {
   private readonly theories = new TheoriesProvider()
   private readonly timing = new TimingProvider()
-  private theoriesView: vscode.TreeView<NodeStatus> | undefined
+  private theoriesView: vscode.TreeView<TheoryItem> | undefined
   private last: TheoriesResponse | undefined
   private supported = false
 
@@ -199,7 +277,7 @@ export class TheoriesPanel {
   ) {}
 
   register(disposables: vscode.Disposable[]): void {
-    this.theoriesView = vscode.window.createTreeView('isabelle-theories',
+    this.theoriesView = vscode.window.createTreeView<TheoryItem>('isabelle-theories',
       { treeDataProvider: this.theories })
     const timingView = vscode.window.createTreeView('isabelle-timing',
       { treeDataProvider: this.timing })

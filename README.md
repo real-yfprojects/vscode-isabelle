@@ -38,9 +38,12 @@ only.** Nothing can desynchronise, because there is only one representation.
 - **Atomic motion** — arrow keys, shift-arrows, backspace and delete treat `\<forall>` as
   one unit; `wordPattern` and a per-language `editor.wordSeparators` cover double-click
   selection and Ctrl+arrow declaratively.
-- **PIDE markup** — syntax colouring and processing status from `PIDE/decoration`, using
-  the palette from Isabelle's own `text_color` defaults (override via
-  `isabelle.textColorOverrides`).
+- **PIDE markup** — syntax colouring and processing status from `PIDE/decoration`.
+  Colouring is served as **semantic tokens**, so the active colour theme applies to
+  checked text just as it does to unchecked text; processing status, message underlines
+  and overview marks stay decorations, which no theme has an opinion about. Set
+  `isabelle.markupColors` to `isabelle` for Isabelle's own `text_color` palette instead
+  (then `isabelle.textColorOverrides` applies).
 - **Panels** — Output and State as webviews over `PIDE/dynamic_output` and `PIDE/state_*`,
   plus a Symbols palette whose entries come from `etc/symbols`. The State panel has
   Update / Auto-update / Locate.
@@ -132,6 +135,8 @@ node test/runTest.js suite7.js   # visual: panels and palette, for a screenshot
 node test/runTest.js suite16.js  # theory status rendering, preview HTML stripping
 node test/runTest.js suite18.js  # outline, folding and Ctrl+T through VS Code's own APIs
 node test/runTest.js suite19.js  # the theory scanner, nesting, and sticky-scroll lines
+node test/runTest.js suite21.js  # PIDE markup to semantic tokens
+node test/runTest.js suite23.js  # markup colouring end to end, both modes
 ```
 
 Two suites need a *patched* Isabelle and skip themselves otherwise: `suite15.js` (Query,

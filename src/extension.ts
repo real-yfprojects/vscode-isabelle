@@ -17,6 +17,7 @@ import { QueryPanel } from './query_panel'
 import { registerCaretUpdates, isApplyingCaretUpdate } from './caret'
 import { TheoriesPanel } from './theories_panel'
 import { registerOutline } from './outline'
+import { registerSemanticTokens } from './semantic_tokens'
 
 let client: LanguageClient | undefined
 let output: vscode.OutputChannel
@@ -97,6 +98,7 @@ async function startClient(): Promise<void> {
 
   pide = new PideDecorations(log)
   pide.register(clientScope, client)
+  registerSemanticTokens(clientScope, ISABELLE_SELECTOR, pide)
   outputPanel = new OutputPanel()
   outputPanel.register(clientScope, client)
   statePanel = new StatePanel(client, log)

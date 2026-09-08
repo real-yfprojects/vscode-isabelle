@@ -80,7 +80,12 @@ export function serverArguments(): string[] {
   const args: string[] = []
 
   const logic = cfg.get<string>('logic')?.trim()
-  if (logic) args.push('-l', logic)
+  /* -R builds the image of a session's *requirements* rather than the session itself,
+     which is the setup you want while editing that session's own theories: everything
+     they import comes from a heap and is never re-checked, while the files you are
+     editing stay live. Plain -l loads the named session itself, so its theories are
+     already in the image and PIDE treats them as loaded rather than editable. */
+  if (logic) args.push(cfg.get<boolean>('logicRequirements') ? '-R' : '-l', logic)
 
   for (const dir of cfg.get<string[]>('sessionDirs') ?? []) {
     if (dir.trim()) args.push('-d', dir.trim())

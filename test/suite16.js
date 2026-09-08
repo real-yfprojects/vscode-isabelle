@@ -5,7 +5,8 @@
 const assert = require('assert')
 const path = require('path')
 
-const { progressBar, statusIcon, statusDescription } =
+const { progressBar, statusIcon, statusDescription, splitTheory, groupBySession,
+        sessionDescription, sessionIsBusy } =
   require(path.join(__dirname, '..', 'out', 'theories_panel.js'))
 const { documentBody } = require(path.join(__dirname, '..', 'out', 'webview.js'))
 
@@ -43,17 +44,42 @@ async function run() {
     'circle-large-outline')
   pass('status icon follows jEdit precedence: failed > canceled > running > warned > ok')
 
-  // Description must name every non-finished bucket, and stay quiet when there is nothing
-  // to say -- a row that always ends in ", 0 failed" is noise.
+  // Description must name every non-finished bucket and stay quiet otherwise -- a row
+  // always ending in "0 failed" is noise. It is also what VS Code truncates when a row
+  // does not fit, so the progress has to come first.
   const busy = statusDescription(node(
     { failed: 2, warned: 1, running: 3, unprocessed: 4, finished: 90, percentage: 90 }))
-  for (const part of ['2 failed', '1 warned', '3 running', '4 unprocessed', '90%']) {
+  for (const part of ['2 failed', '1 warned', '3 running', '4 left', '90%']) {
     assert.ok(busy.includes(part), `description should mention ${part}: ${busy}`)
   }
-  const done = statusDescription(node({}))
-  assert.ok(done.endsWith('100%'), `a finished theory needs no tail: ${done}`)
-  assert.ok(!done.includes('failed'), done)
-  pass('status description reports only the buckets that are non-empty')
+  assert.ok(busy.startsWith('90%'), `progress must survive truncation: ${busy}`)
+  assert.strictEqual(statusDescription(node({})), '',
+    'a theory that finished cleanly needs no description -- the icon already says so')
+  assert.strictEqual(statusDescription(node({ warned: 2 })), '2 warned',
+    'a finished theory with warnings still reports them')
+  pass('status description reports only non-empty buckets, progress first')
+
+  // Grouping: rows were truncated because every label carried its session as a prefix.
+  assert.deepStrictEqual(splitTheory('HOL-Library.Liminf_Limsup'),
+    { session: 'HOL-Library', base: 'Liminf_Limsup' })
+  assert.deepStrictEqual(splitTheory('Scratch'), { session: '', base: 'Scratch' })
+  const grouped = groupBySession([
+    node({ theory: 'HOL-Library.A', uri: 'file:///a' }),
+    node({ theory: 'Mine.B', uri: 'file:///b', percentage: 40, unprocessed: 6 }),
+    node({ theory: 'HOL-Library.C', uri: 'file:///c' }),
+    node({ theory: 'Loose', uri: 'file:///d' }),
+  ])
+  assert.deepStrictEqual(
+    grouped.map(g => (g.kind === 'session' ? `${g.session}(${g.nodes.length})` : g.node.theory)),
+    ['HOL-Library(2)', 'Mine(1)', 'Loose'],
+    'theories group under their session; an unqualified one stays at the top level')
+  assert.strictEqual(sessionDescription(grouped[0].nodes), '2/2')
+  assert.strictEqual(sessionDescription(grouped[1].nodes), '0/1')
+  assert.strictEqual(sessionIsBusy(grouped[0].nodes), false,
+    'a finished library session folds away')
+  assert.strictEqual(sessionIsBusy(grouped[1].nodes), true,
+    'the session being worked on stays open')
+  pass('theories are grouped by session so label and status both fit')
 
   // Preview: the server returns a whole Browser_Info document, and its inlined
   // isabelle.css hardcodes a white page. Embedded as-is it lands after our stylesheet

@@ -255,6 +255,24 @@
           "type": "boolean",
           "default": false,
           "description": "Check the whole visible theory rather than a window around the caret (vscode_caret_perspective=0). Takes effect on server restart."
+        },
+        "isabelle.logicRequirements": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Start from an image built of `#isabelle.logic#`'s **requirements** (`-R`) rather than the session itself (`-l`). Use this when the theories you are editing belong to that session: everything they import is then loaded from a prebuilt heap and is never re-checked, while your own files stay live."
+        },
+        "isabelle.markupColors": {
+          "type": "string",
+          "enum": [
+            "theme",
+            "isabelle"
+          ],
+          "default": "theme",
+          "enumDescriptions": [
+            "Colour checked text from the active colour theme, by serving PIDE markup as semantic tokens. Installing a theme then recolours the whole file.",
+            "Colour checked text from Isabelle's own text_color palette, as Isabelle/jEdit and the official Isabelle/VSCode do. The theme will not affect checked text."
+          ],
+          "markdownDescription": "Who colours text that PIDE has checked. Processing status, message underlines and overview marks are unaffected either way. Note that `theme` relies on semantic highlighting, which `#editor.semanticHighlighting.enabled#` leaves to the theme by default; a theme that opts out falls back to the TextMate grammar."
         }
       }
     },
@@ -343,7 +361,71 @@
           "when": "false"
         }
       ]
-    }
+    },
+    "semanticTokenTypes": [
+      {
+        "id": "isabelleProofKeyword",
+        "superType": "keyword",
+        "description": "Isabelle proof command (by, apply, done)"
+      },
+      {
+        "id": "isabelleInnerKeyword",
+        "superType": "type",
+        "description": "Isabelle inner-syntax keyword"
+      },
+      {
+        "id": "isabelleQuasiKeyword",
+        "superType": "keyword",
+        "description": "Isabelle quasi-keyword"
+      },
+      {
+        "id": "isabelleImproper",
+        "superType": "keyword",
+        "description": "Isabelle improper command"
+      },
+      {
+        "id": "isabelleSkolem",
+        "superType": "variable",
+        "description": "Isabelle Skolem variable"
+      },
+      {
+        "id": "isabelleSchematic",
+        "superType": "variable",
+        "description": "Isabelle schematic variable"
+      }
+    ],
+    "semanticTokenScopes": [
+      {
+        "language": "isabelle",
+        "scopes": {
+          "isabelleProofKeyword": [
+            "keyword.control.isabelle",
+            "keyword.control"
+          ],
+          "isabelleInnerKeyword": [
+            "support.type.isabelle",
+            "support.type",
+            "entity.name.type"
+          ],
+          "isabelleQuasiKeyword": [
+            "keyword.other.isabelle",
+            "keyword.other"
+          ],
+          "isabelleImproper": [
+            "invalid.deprecated",
+            "keyword.other"
+          ],
+          "isabelleSkolem": [
+            "variable.other.isabelle",
+            "variable.other"
+          ],
+          "isabelleSchematic": [
+            "variable.other.constant",
+            "variable.other"
+          ]
+        }
+      }
+    ]
   },
   "scripts": {
     "compile": "tsc -p ./",

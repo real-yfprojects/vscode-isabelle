@@ -43,6 +43,12 @@ This documents tracks features and tasks that might already be tracked in other 
     Outline view, breadcrumbs and Ctrl+T were all empty. Supplied client-side in
     `src/outline.ts`; needed no upstream change. Careful: this changed which lines
     sticky scroll pins, so `viewport.ts` now follows the outline too
+  - [x] reported: installing a theme recoloured only *unchecked* code. PIDE decorations
+    carry Isabelle's palette and a decoration colour overrides the theme. Now served as
+    semantic tokens (`src/semantic_tokens.ts`) with custom types mapped to TextMate
+    scopes, so themes apply; `isabelle.markupColors: isabelle` restores the palette
+  - [x] reported: Theories rows truncated. Grouped by session, so the label loses its
+    redundant prefix, and the bar moved to the tooltip where there is room
   - still needing new protocol design: Monitor, Debugger, Simplifier trace, Raw output,
     Protocol, Graphview
   - note: the client targets the **development** tree, not Isabelle2025-2, which has no
@@ -53,8 +59,12 @@ This documents tracks features and tasks that might already be tracked in other 
     abbreviation help/"show all abbreviations" command
   - note their Infoview is itself a webview, so it is not an argument for native widgets
 - [ ] compare to features of the python vscode extension and see whether any feature is useful for isabelle as well.
+  - [ ] find references
 - [x] symbols view: option to jump to category
   - category dropdown above the filter box; not visually confirmed yet
+- [ ] status bar widget
+- [ ] bug when cursor jumps around glyphs: it also jumps over a preceeding whitespace
+- [ ] strg+hover underlines clickable symbols, but this doesn't happen for glyphs although they are clickable.
 
 
 ### To be decided
