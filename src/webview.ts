@@ -93,14 +93,46 @@ export function isabelleCss(): string {
  * run. The webview is also sandboxed from the extension host, whose only channel is the
  * postMessage handler below.
  */
-export function panelHtml(webview: vscode.Webview, body: string): string {
+/**
+ * Reduce a whole HTML document to what can be embedded in a themed page.
+ *
+ * The Preview response is not a fragment: Browser_Info returns a complete document whose
+ * head inlines $ISABELLE_HOME/etc/isabelle.css, which hardcodes a white page (`body
+ * { color: #000000; background-color: #FFFFFF }`) along with light-theme syntax colours.
+ * Nested inside our page that stylesheet lands *after* ours, so it wins the cascade and
+ * the preview stays light whatever the VS Code theme is. The classes it styles are the
+ * same ones isabelleCss() already colours from the theme, so dropping it loses nothing.
+ */
+export function documentBody(html: string): string {
+  const body = /<body[^>]*>([\s\S]*)<\/body>/i.exec(html)
+  let inner = body ? body[1] : html
+  // Also drop anything that survived outside a <head>, and stylesheet links: the CSP
+  // blocks those anyway, so they can only fail silently.
+  inner = inner.replace(/<style[\s\S]*?<\/style>/gi, '')
+  inner = inner.replace(/<link\b[^>]*>/gi, '')
+  return inner
+}
+
+export type PanelOptions = {
+  /** Editor-tab webviews have no host container behind them, so they need a real
+      background; side-bar and bottom-panel views must stay transparent to pick up
+      whichever container they happen to be docked in. */
+  background?: string
+}
+
+export function panelHtml(
+  webview: vscode.Webview,
+  body: string,
+  options: PanelOptions = {},
+): string {
   const nonce = Math.random().toString(36).slice(2) + Date.now().toString(36)
   return `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy"
       content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
-<style>${isabelleCss()}</style>
+<style>${isabelleCss()}
+${options.background ? `body { background-color: ${options.background}; }` : ''}</style>
 </head><body>
 <div id="content">${body}</div>
 <script nonce="${nonce}">

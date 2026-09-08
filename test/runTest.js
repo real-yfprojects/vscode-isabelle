@@ -27,7 +27,10 @@ async function main() {
       extensionDevelopmentPath: path.join(__dirname, '..'),
       extensionTestsPath: path.join(__dirname, process.argv[2] || 'suite.js'),
       // Forwarded so suite15 can find a patched Isabelle; unset in a normal run.
-      extensionTestsEnv: { ISABELLE_QUERY_HOME: process.env.ISABELLE_QUERY_HOME || '' },
+      extensionTestsEnv: {
+        ISABELLE_QUERY_HOME: process.env.ISABELLE_QUERY_HOME || '',
+        ISABELLE_PATCHED_HOME: process.env.ISABELLE_PATCHED_HOME || '',
+      },
       launchArgs: [
         path.join(__dirname, 'workspace'),
         '--disable-extensions',

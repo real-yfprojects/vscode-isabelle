@@ -44,6 +44,11 @@ only.** Nothing can desynchronise, because there is only one representation.
 - **Panels** — Output and State as webviews over `PIDE/dynamic_output` and `PIDE/state_*`,
   plus a Symbols palette whose entries come from `etc/symbols`. The State panel has
   Update / Auto-update / Locate.
+- **Theories and Timing** — the session's theories with per-command status, and the
+  slowest commands of the theory you are in. These two are TreeViews rather than
+  webviews: both are lists of named things with a status, so going native buys keyboard
+  navigation, type-to-filter and theme-coloured icons for free. Behind
+  `isabelle.theoriesPanel`, since the server side is the `vscode-theories-panel` branch.
 - **Sledgehammer** — a panel to drive the search (prover list, run, cancel, locate,
   progress), with proof suggestions as clickable buttons that insert the method into the
   proof. The same suggestions also appear as LSP code actions under the lightbulb.
@@ -118,7 +123,12 @@ node test/runTest.js suite4.js   # reveal boundaries, selection, motion decision
 node test/runTest.js suite5.js   # sendback arrives as LSP code actions
 node test/runTest.js suite6.js   # PIDE markup, Output panel, State panel
 node test/runTest.js suite7.js   # visual: panels and palette, for a screenshot
+node test/runTest.js suite16.js  # theory status rendering, preview HTML stripping
 ```
+
+Two suites need a *patched* Isabelle and skip themselves otherwise: `suite15.js` (Query,
+`ISABELLE_QUERY_HOME`) and `suite17.js` (Theories/Timing, `ISABELLE_PATCHED_HOME`).
+[GAPS.md](GAPS.md) has the recipe for building one.
 
 The suites drive a real VS Code against a real Isabelle; they are integration tests,
 not unit tests, and need an Isabelle distribution present.
@@ -131,18 +141,22 @@ both worked around here.
 
 PIDE markup colouring and the Output, State, Symbols, Sledgehammer, Documentation and
 Preview panels are implemented, along with the spell-checker commands, session
-abbreviations and panel margins. **All 32 of the 32 `PIDE/*` protocol messages the server
-defines are in use**, so nothing further is reachable without changing Isabelle itself.
+abbreviations and panel margins. **Every `PIDE/*` message the released server defines is in
+use, in both directions**, so nothing further is reachable without changing Isabelle itself.
 
-What jEdit still has beyond this -- Theories, Timing, Monitor and others -- is out of reach
-for a different reason than the encoding was: jEdit is not an LSP client at all, but a peer
-front end embedding PIDE directly, so each panel needs protocol messages written by hand.
-[GAPS.md](GAPS.md) works through what each would cost.
+What jEdit still has beyond this is out of reach for a different reason than the encoding
+was: jEdit is not an LSP client at all, but a peer front end embedding PIDE directly, so
+each panel needs protocol messages written by hand. Two branches of mirror-isabelle do
+that, both built and verified against a real prover:
 
-The Query panel (find_theorems / find_consts) is the exception: the server-side messages
-exist on the `vscode-query-panel` branch of mirror-isabelle, built and verified, and the
-client ships behind `isabelle.queryPanel` (off by default, since released Isabelle does not
-answer them).
+- `vscode-query-panel` — find_theorems / find_consts, client behind `isabelle.queryPanel`
+- `vscode-theories-panel` — theory status and timing, client behind `isabelle.theoriesPanel`
+
+Both default to off, since a released Isabelle answers none of those messages. Of what is
+left, **Syslog and Info turn out to need nothing at all**: the server already routes its
+syslog through `window/logMessage` into the Isabelle output channel, and VS Code hovers
+already do what jEdit's Info dockable does. Monitor, Debugger, Simplifier trace, Raw
+output, Protocol and Graphview remain; [GAPS.md](GAPS.md) works through what each costs.
 
 ## License
 

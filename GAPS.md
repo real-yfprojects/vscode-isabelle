@@ -51,6 +51,8 @@ corrupt" banner. Building a fork is the only stable way to get the encoding in.
 | **Symbols palette** | webview over the `etc/symbols` table; click inserts the escape |
 | **Sledgehammer panel** | webview over `PIDE/sledgehammer_*`: prover list, run, cancel, locate, status |
 | **Spell checker** | underlining arrives as a `spell_checker` decoration; the five dictionary commands are registered |
+| **Theories / Timing panels** | native TreeViews over `PIDE/theories_*` (`vscode-theories-panel` branch) |
+| **Navigating to a command** | `PIDE/goto_command` out, `PIDE/caret_update` back in |
 
 Sendback deserves emphasis because the original brief listed it as a gap. Isabelle2025
 exposed it as LSP code actions, so it arrives for free. Asking for code actions on a
@@ -83,10 +85,14 @@ the remaining work small rather than deep:
 | jEdit dockable | Mechanism it uses | What exposing it would take |
 |---|---|---|
 | Query (find_theorems, find_consts) | `Query_Operation(PIDE.editor, view, "find_theorems", ...)` | **the same class the server already uses for Sledgehammer**, with a different operation name. Implemented on the `vscode-query-panel` branch of mirror-isabelle |
-| Theories | `PIDE.session.phase`, per-node status | new messages for session phase and node status |
-| Timing | timing data off `Document.Snapshot` | new messages; snapshot data is already server-side |
+| Theories | `PIDE.session.phase`, per-node status | one message carrying `Document_Status.Nodes_Status`. Implemented on the `vscode-theories-panel` branch |
+| Timing | timing data off `Document.Snapshot` | **the same message** -- both dockables are views of one `Nodes_Status`. Same branch |
+| Syslog | `PIDE.session.syslog.content()` | **nothing: already delivered.** The server's `syslog_messages` consumer calls `channel.log_writeln`, which is `window/logMessage`, which VS Code shows in the Isabelle output channel |
+| Info | shows tooltip content in a dockable | **nothing: VS Code hovers already do this**, and unlike jEdit they need no dedicated panel |
 | Monitor | ML statistics plus `session.protocol_command("ML_Heap.full_gc")` | protocol plumbing and a chart; the largest of these |
-| Debugger, Simplifier trace, Syslog, Raw output, Protocol, Info, Graphview | assorted direct PIDE APIs | one set of messages each |
+| Debugger, Simplifier trace | interactive ML-level protocols, not just a data feed | one substantial set of messages each, plus UI with state |
+| Raw output, Protocol | `session.raw_output_messages`, `session.all_messages` | messages, but these debug Isabelle itself; `isabelle vscode_server -L FILE -v` already logs the protocol |
+| Graphview | a Swing graph renderer over `Graph_Display` | messages plus a graph renderer in a webview |
 
 Query is the one worth having, and the cheapest: `Query_Dockable` builds
 `new Query_Operation(PIDE.editor, view, "find_theorems", ...)` while `VSCode_Sledgehammer`
@@ -132,8 +138,66 @@ backports onto a released distribution, which already has every component:
 4. Point `isabelle.home` at the copy, set `isabelle.queryPanel`, and run `test/suite15.js`
    with `ISABELLE_QUERY_HOME` set to it. The suite skips itself when that is unset.
 
+The same recipe applies to `vscode-theories-panel`, driven by `test/suite17.js` with
+`ISABELLE_PATCHED_HOME` set. Both branches can be applied to one copy. Mind the four
+divergences listed above when backporting: they are compile errors, except
+`PIDE/goto_command`, which fails silently at run time.
+
 Pin `ISABELLE_IDENTIFIER` for the copy so `ISABELLE_HOME_USER` does not overlap with the
 working installation's settings, preferences and heaps.
+
+### Theories and Timing
+
+Both jEdit dockables are views of a single `Document_Status.Nodes_Status`, recomputed from
+the snapshot on every `commands_changed`; only the presentation differs. So the
+`vscode-theories-panel` branch adds one server component feeding both:
+
+```
+PIDE/theories_request        -- recompute and publish now
+PIDE/theories_set_threshold  { threshold }      -- seconds
+PIDE/theories_response       { phase, threshold, current, nodes, commands }
+```
+
+Node entries carry `Document_Status.Node_Status.json`, which already existed, plus the
+theory name, its `Overall_Status` and its cumulated and maximum command time. Command
+entries are the notable timings of the theory the caret is in -- only that one, because
+command ids resolve only against the caret's snapshot, which is the restriction
+`Timing_Dockable` works under too.
+
+Two jEdit controls have no counterpart and are deliberately absent. **Purge** acts on
+jEdit's own buffer set, whereas VS Code models follow `didOpen`/`didClose`. **Continuous
+checking** is jEdit's `editor_continuous_checking`; the nearest option here is
+`vscode_caret_perspective`, which `VSCode_Resources` reads once at startup, so a live
+toggle would mean making those options mutable. The client instead exposes
+`isabelle.continuousChecking`, which passes `-o vscode_caret_perspective=0` and restarts
+the server.
+
+These two are **TreeViews, not webviews** -- the only native panels here. That is not a
+style preference: both dockables are lists of named things with a status, which is the
+shape a TreeView has, and going native buys keyboard navigation, type-to-filter,
+theme-coloured icons and hover tooltips that a webview would have to reimplement. The
+pretty-printed panels stay webviews because their content is Isabelle markup, not a list.
+
+Verified end to end against the patched build (`test/suite17.js`): a small theory reported
+16 commands reaching 100% with no failures, per-command timings, and `PIDE/goto_command`
+navigating to one of them.
+
+### Which Isabelle this client targets
+
+Building the branches against a released Isabelle2025-2 turned up four places where the
+development tree has moved on. They matter because the client speaks to the *development*
+server, so a released distribution is not a supported target:
+
+| Development tree | Isabelle2025-2 |
+|---|---|
+| `PIDE/goto_command` (and `Goto_File`, `Goto_Source_File`) | **absent entirely** -- the client's navigation has no server to talk to |
+| `Channel.Delay` | `Delay.last(t, channel.Error_Logger)` |
+| `Nodes_Status.command_timings` keyed by `Document_ID.Command` | keyed by `Command`; no `Snapshot.get_command` |
+| `this.class_name` | `getClass.getName` |
+
+The first is the load-bearing one, and it was found the hard way: `suite17` asserted that
+the caret moved after `PIDE/goto_command` and it never did, because the released server
+does not handle that message at all.
 
 ### Genuinely needs the fork — or a workaround
 

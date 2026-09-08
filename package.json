@@ -89,6 +89,19 @@
       {
         "command": "isabelle.findTheorems",
         "title": "Isabelle: Find Theorems / Constants"
+      },
+      {
+        "command": "isabelle.theoriesRefresh",
+        "title": "Isabelle: Refresh Theories",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "isabelle.toggleContinuousChecking",
+        "title": "Isabelle: Toggle Continuous Checking"
+      },
+      {
+        "command": "isabelle.gotoCommand",
+        "title": "Isabelle: Go to Command"
       }
     ],
     "keybindings": [
@@ -226,6 +239,22 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Show the Query panel (find_theorems / find_consts). Requires an Isabelle whose language server exposes the `PIDE/query_*` messages; released versions do not. See the `vscode-query-panel` branch of mirror-isabelle."
+        },
+        "isabelle.theoriesPanel": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show the Theories and Timing views. Requires the vscode-theories-panel branch of mirror-isabelle; a released Isabelle does not answer PIDE/theories_request."
+        },
+        "isabelle.timingThreshold": {
+          "type": "number",
+          "default": 0.1,
+          "minimum": 0,
+          "description": "Timing view: only commands at or above this many seconds are reported."
+        },
+        "isabelle.continuousChecking": {
+          "type": "boolean",
+          "default": false,
+          "description": "Check the whole visible theory rather than a window around the caret (vscode_caret_perspective=0). Takes effect on server restart."
         }
       }
     },
@@ -251,6 +280,17 @@
           "id": "isabelle-state",
           "name": "State",
           "type": "webview"
+        },
+        {
+          "id": "isabelle-theories",
+          "name": "Theories",
+          "when": "config.isabelle.theoriesPanel"
+        },
+        {
+          "id": "isabelle-timing",
+          "name": "Timing",
+          "when": "config.isabelle.theoriesPanel",
+          "visibility": "collapsed"
         },
         {
           "id": "isabelle-sledgehammer",
@@ -288,7 +328,22 @@
         "scopeName": "source.isabelle",
         "path": "./syntaxes/isabelle-grammar.json"
       }
-    ]
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "isabelle.theoriesRefresh",
+          "when": "view == isabelle-theories",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "isabelle.gotoCommand",
+          "when": "false"
+        }
+      ]
+    }
   },
   "scripts": {
     "compile": "tsc -p ./",

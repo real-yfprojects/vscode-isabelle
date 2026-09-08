@@ -14,6 +14,8 @@ import { registerSpellChecker } from './spell_checker'
 import { DocumentationPanel } from './doc_panel'
 import { PreviewPanels } from './preview_panel'
 import { QueryPanel } from './query_panel'
+import { registerCaretUpdates, isApplyingCaretUpdate } from './caret'
+import { TheoriesPanel } from './theories_panel'
 
 let client: LanguageClient | undefined
 let output: vscode.OutputChannel
@@ -31,6 +33,7 @@ let sledgehammer: SledgehammerPanel | undefined
 let docPanel: DocumentationPanel | undefined
 let previews: PreviewPanels | undefined
 let queryPanel: QueryPanel | undefined
+let theoriesPanel: TheoriesPanel | undefined
 const abbrevs = new AbbrevStore()
 
 export const ISABELLE_SELECTOR: vscode.DocumentSelector =
@@ -50,6 +53,8 @@ function log(message: string): void {
  */
 function sendCaretUpdate(editor: vscode.TextEditor | undefined): void {
   if (!client || client.state !== State.Running) return
+  // Do not echo a caret the server itself just asked us to move to.
+  if (isApplyingCaretUpdate()) return
   if (!editor || editor.document.languageId !== 'isabelle') return
   const pos = editor.selection.active
   client.sendNotification('PIDE/caret_update', {
@@ -107,7 +112,15 @@ async function startClient(): Promise<void> {
     queryPanel = new QueryPanel(client, log)
     queryPanel.register(clientScope)
   }
+  // Same reasoning as the Query panel: the PIDE/theories_* messages exist only on the
+  // vscode-theories-panel branch, so the views stay hidden against a stock distribution
+  // rather than showing two permanently empty trees.
+  if (vscode.workspace.getConfiguration('isabelle').get<boolean>('theoriesPanel', false)) {
+    theoriesPanel = new TheoriesPanel(client, log)
+    theoriesPanel.register(clientScope)
+  }
   registerSpellChecker(clientScope, client, log)
+  registerCaretUpdates(clientScope, client, log)
 
   // Session abbreviations complement the static ones in etc/symbols.
   clientScope.push(client.onNotification('PIDE/abbrevs_response',
@@ -131,6 +144,7 @@ async function stopClient(): Promise<void> {
   docPanel = undefined
   previews = undefined
   queryPanel = undefined
+  theoriesPanel = undefined
   const c = client
   client = undefined
   if (c) {
@@ -207,7 +221,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       previewLabel: previews?.label ?? '',
       queryPanelEnabled: queryPanel !== undefined,
       querySupported: queryPanel?.serverSupported,
+      theoriesSupported: theoriesPanel?.serverSupported ?? false,
     })),
+    vscode.commands.registerCommand('isabelle.toggleContinuousChecking', async () => {
+      const cfg = vscode.workspace.getConfiguration('isabelle')
+      const on = !cfg.get<boolean>('continuousChecking')
+      // Global rather than workspace: the option is a property of how you like to work.
+      await cfg.update('continuousChecking', on, vscode.ConfigurationTarget.Global)
+      await vscode.commands.executeCommand('isabelle.restartServer')
+      void vscode.window.showInformationMessage(
+        `Isabelle continuous checking ${on ? 'on' : 'off'}; server restarted.`)
+    }),
     vscode.commands.registerCommand('isabelle.queryState', () => queryPanel && ({
       supported: queryPanel.serverSupported,
       output: queryPanel.lastOutput,

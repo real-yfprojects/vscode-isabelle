@@ -10,7 +10,7 @@
 
 import * as vscode from 'vscode'
 import { LanguageClient } from 'vscode-languageclient/node'
-import { openIsabelleLink, panelHtml } from './webview'
+import { documentBody, openIsabelleLink, panelHtml } from './webview'
 
 interface PreviewResponse { uri: string; column: number; label: string; content: string }
 
@@ -64,7 +64,9 @@ export class PreviewPanels {
       this.panels.set(column, panel)
     }
     panel.title = p.label || 'Isabelle Preview'
-    panel.webview.html = panelHtml(panel.webview, p.content ?? '')
+    // The server sends a whole HTML document from Browser_Info, not a fragment.
+    panel.webview.html = panelHtml(panel.webview, documentBody(p.content ?? ''),
+      { background: 'var(--vscode-editor-background)' })
   }
 
   /** Test hooks. */

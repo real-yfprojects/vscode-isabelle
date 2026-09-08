@@ -90,6 +90,11 @@ export function serverArguments(): string[] {
   }
   // A dedicated setting rather than making users hand-write an -o override.
   if (cfg.get<boolean>('spellChecker') === false) args.push('-o', 'spell_checker=false')
+  /* jEdit's "Continuous checking" toggle has no direct counterpart here: the server
+     narrows the document perspective to vscode_caret_perspective lines around the caret,
+     and 0 means the whole visible theory instead. The option is read once when the
+     session starts, so the command that flips this setting restarts the server. */
+  if (cfg.get<boolean>('continuousChecking')) args.push('-o', 'vscode_caret_perspective=0')
   if (cfg.get<boolean>('verbose')) args.push('-v')
   args.push(...(cfg.get<string[]>('serverArgs') ?? []))
   return args

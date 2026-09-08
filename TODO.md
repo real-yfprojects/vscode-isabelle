@@ -25,19 +25,44 @@ This documents tracks features and tasks that might already be tracked in other 
     off by default since released Isabelle does not answer those messages.
     Build recipe in GAPS.md; a patched copy currently sits at
     `C:\Users\yanni\Isabelle\Isabelle2025-2-query` (2.3 GB, safe to delete)
-  - still needing new protocol design: Theories, Timing, Monitor, Debugger, Simplifier
-    trace, Syslog, Raw output, Protocol, Info, Graphview
+  - [x] Theories + Timing: both are views of one `Document_Status.Nodes_Status`, so one
+    server component feeds both. `vscode-theories-panel` branch of mirror-isabelle,
+    **built and verified** (16 commands to 100%, per-command timings, goto_command).
+    Client ships as **native TreeViews** behind `isabelle.theoriesPanel`
+  - [x] Syslog: needs nothing. The server's `syslog_messages` consumer calls
+    `channel.log_writeln` = `window/logMessage`, which lands in the Isabelle output
+    channel. jEdit needs a dockable because it has no such thing
+  - [x] Info: needs nothing. VS Code hovers already show what that dockable shows
+  - [x] fixed on the way: the client never handled *incoming* `PIDE/caret_update`, so
+    every "Locate" button was a silent no-op. Counting 32/32 message names in use was the
+    wrong metric -- the unit of "implemented" is a direction, not a message
+  - [x] fixed on the way: Preview was rendered by embedding a whole Browser_Info document,
+    whose inlined `isabelle.css` hardcodes a white page and won the cascade over ours
+  - still needing new protocol design: Monitor, Debugger, Simplifier trace, Raw output,
+    Protocol, Graphview
+  - note: the client targets the **development** tree, not Isabelle2025-2, which has no
+    `PIDE/goto_command` at all (see GAPS.md for the four divergences found by building)
 - [ ] compare to lean extension and see if we can use any of their UX
   - not started. Candidates seen while reading vscode-lean4 during the spike:
     gutter progress bars (`taskgutter.ts`) for per-command elaboration status, and its
     abbreviation help/"show all abbreviations" command
   - note their Infoview is itself a webview, so it is not an argument for native widgets
-- [ ] status and other panels not as html but native widgets
+- [ ] compare to features of the python vscode extension and see whether any feature is useful for isabelle as well.
+- [x] symbols view: option to jump to category
+  - category dropdown above the filter box; not visually confirmed yet
+
+
+### To be decided
+
+- [~] status and other panels not as html but native widgets
   - the honest options are a TreeView (structural, poor fit for pretty-printed proof
     state) or a read-only virtual document via TextDocumentContentProvider
   - the virtual-document route looks strongest: it gets real editor behaviour for free,
     including find, selection, the Isabelle font, and our own symbol rendering, none of
     which a webview gets. Cost is losing clickable sendback/hyperlinks unless they are
     re-added as document links
-- [x] symbols view: option to jump to category
-  - category dropdown above the filter box; not visually confirmed yet
+  - **first evidence in**: Theories and Timing are TreeViews and it was clearly the right
+    call -- they are lists of named things with a status, which is exactly a TreeView's
+    shape, and keyboard nav, type-to-filter, theme icons and tooltips came for free
+  - that does not transfer to State/Output, whose content is pretty-printed markup rather
+    than a list. Those remain the virtual-document question
