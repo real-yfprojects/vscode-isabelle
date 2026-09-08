@@ -30,6 +30,7 @@ async function main() {
       extensionTestsEnv: {
         ISABELLE_QUERY_HOME: process.env.ISABELLE_QUERY_HOME || '',
         ISABELLE_PATCHED_HOME: process.env.ISABELLE_PATCHED_HOME || '',
+        ISABELLE_TEST_PROJECT: process.env.ISABELLE_TEST_PROJECT || '',
       },
       launchArgs: [
         path.join(__dirname, 'workspace'),

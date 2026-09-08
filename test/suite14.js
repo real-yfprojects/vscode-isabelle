@@ -69,4 +69,7 @@ async function run() {
   console.log('SUITE14_OK')
 }
 
-module.exports = { run }
+module.exports.run = () => run().catch(err => {
+  console.error('FAIL: ' + (err && err.stack || err))
+  process.exit(1)
+})

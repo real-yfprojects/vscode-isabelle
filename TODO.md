@@ -63,8 +63,27 @@ This documents tracks features and tasks that might already be tracked in other 
 - [x] symbols view: option to jump to category
   - category dropdown above the filter box; not visually confirmed yet
 - [ ] status bar widget
-- [ ] bug when cursor jumps around glyphs: it also jumps over a preceeding whitespace
-- [ ] strg+hover underlines clickable symbols, but this doesn't happen for glyphs although they are clickable.
+- [ ] when opening an isabelle language file, the isabelle lsp should be started without opening the isabelle panel first.
+- [x] bug when cursor jumps around glyphs: it also jumps over a preceeding whitespace
+  - the caret *offsets* were always right; the trajectory across `A \<and> B` is
+    19 -> 18 -> 12 -> 11, exactly one visual unit per press. The bug was where the caret
+    got **drawn**
+  - the glyph was a `before` attachment on the escape range. Attachment content is laid
+    out inside the span of the character it attaches to, and VS Code derives a column's x
+    by measuring the DOM up to that point -- so a `before` glyph on the range start counts
+    towards the *preceding* boundary. The caret for the escape start was therefore drawn
+    to the right of the glyph: one press of Left looked like it did nothing, and the next
+    looked like it skipped the glyph and the space in front of it together
+  - pinned down by selecting *only the space* before a glyph: the highlight visibly
+    covered the glyph too (`test/probe_caret.js`). Fixed by attaching as `after`
+- [x] strg+hover underlines clickable symbols, but this doesn't happen for glyphs although they are clickable
+  - `textDecoration` is the only decoration option taking raw CSS, so it is how one
+    smuggles in a property the API does not expose. Writing `'none; font-size: ...'` also
+    *sets* `text-decoration: none`, which was never intended and landed on the same
+    element as VS Code's own goto-definition class, suppressing every underline the
+    editor draws over a symbol
+  - fixed by starting the string with `;`, which makes the text-decoration declaration
+    empty so the CSS parser drops just that one and keeps the rest
 
 
 ### To be decided

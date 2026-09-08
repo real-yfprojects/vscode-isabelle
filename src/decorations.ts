@@ -47,25 +47,34 @@ export class SymbolRenderer implements vscode.Disposable {
   }
 
   private createTypes(): void {
-    // The escape text is shrunk to nothing; the glyph is supplied by a ::before
-    // attachment, which needs its size restored explicitly since it would otherwise
-    // inherit the 0.001em from the range it is attached to.
+    /* The escape text is shrunk to nothing; the glyph is supplied by an ::after
+       attachment, which needs its size restored explicitly since it would otherwise
+       inherit the 0.001em from the range it is attached to.
+
+       The leading ";" matters. `textDecoration` is the only decoration option that takes
+       raw CSS, so it is the standard way to smuggle in a property the API does not
+       expose -- but writing "none; font-size: ..." also *sets* text-decoration: none,
+       which was never the intent. That silently suppressed every underline the editor
+       draws over a symbol, including the one Ctrl+hover uses to show a name is
+       clickable: the rule lands on the same element and wins over VS Code's own
+       goto-definition class. Starting with ";" makes the text-decoration declaration
+       empty, so the CSS parser drops just that one and keeps the rest. */
     const fontSize = vscode.workspace.getConfiguration('editor').get<number>('fontSize') ?? 14
     this.hide = vscode.window.createTextEditorDecorationType({
-      textDecoration: 'none; font-size: 0.001em',
+      textDecoration: '; font-size: 0.001em',
       rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
-      before: {
-        textDecoration: `none; font-size: ${fontSize}px; letter-spacing: normal`,
+      after: {
+        textDecoration: `; font-size: ${fontSize}px; letter-spacing: normal`,
       },
     })
     this.sub = vscode.window.createTextEditorDecorationType({
-      textDecoration: 'none; position: relative; bottom: -0.4em; font-size: 80%',
+      textDecoration: '; position: relative; bottom: -0.4em; font-size: 80%',
     })
     this.sup = vscode.window.createTextEditorDecorationType({
-      textDecoration: 'none; position: relative; top: -0.4em; font-size: 80%',
+      textDecoration: '; position: relative; top: -0.4em; font-size: 80%',
     })
     this.bold = vscode.window.createTextEditorDecorationType({
-      textDecoration: 'none; font-weight: bold',
+      textDecoration: '; font-weight: bold',
     })
   }
 
@@ -188,7 +197,16 @@ export class SymbolRenderer implements vscode.Disposable {
 
         const glyph = this.table.glyphOf(name)
         if (glyph) {
-          out.hidden.push({ range, renderOptions: { before: { contentText: glyph } } })
+          /* `after`, not `before`. Attachment content is laid out inside the span of
+             the character it is attached to, and VS Code measures a column's x by
+             measuring the DOM up to that point -- so a `before` glyph on the range start
+             counts towards the *preceding* boundary. The caret for the escape's start
+             was then drawn to the right of the glyph, one press of Left appeared to do
+             nothing, and the next appeared to skip the glyph and the space in front of
+             it together. Selecting just that space visibly highlighted the glyph too,
+             which is how this was pinned down. Attaching at the end keeps the glyph
+             inside the range from both sides. */
+          out.hidden.push({ range, renderOptions: { after: { contentText: glyph } } })
         }
       }
     }

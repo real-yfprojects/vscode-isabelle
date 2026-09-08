@@ -214,6 +214,28 @@ indentation. Registering these providers therefore **changed which lines are sti
 outline as well. Left alone it would have quietly reintroduced the partly-coloured sticky
 header it was written to fix.
 
+### Where a glyph is drawn, and why the caret looked wrong
+
+Symbol rendering hides the escape text and supplies the glyph as an attachment. It was a
+`before` attachment on the escape range, which produced a bug worth recording because the
+logic was never wrong: pressing Left across `A \<and> B` walks 19 -> 18 -> 12 -> 11,
+exactly one visual unit per press.
+
+Attachment content is laid out inside the span of the character it attaches to, and VS
+Code derives a column's x by measuring the DOM up to that point. A `before` glyph on the
+range start therefore counts towards the *preceding* boundary, so the caret for the
+escape's start was drawn to the right of the glyph. One press of Left appeared to do
+nothing and the next appeared to skip the glyph and the space in front of it together.
+
+Selecting only the space before a glyph made it visible: the highlight covered the glyph
+too. Attaching the glyph as `after` puts it inside the range from both sides.
+
+The same file had a second latent defect. `textDecoration` is the only decoration option
+that takes raw CSS, so it is how one smuggles in a property the API does not expose --
+but `'none; font-size: ...'` also *sets* `text-decoration: none`, on the very element VS
+Code underlines to show a name is clickable. Starting the string with `;` leaves that
+declaration empty, so the parser drops it and keeps the rest.
+
 ### Colour themes and checked text
 
 PIDE markup was painted with decorations whose colours come from `src/colors.ts` --
@@ -239,6 +261,37 @@ One caveat is honest to state: `editor.semanticHighlighting.enabled` defaults to
 `configuredByTheme`, so a theme that opts out gets the TextMate grammar only, losing the
 free/bound/schematic distinctions. `isabelle.markupColors: isabelle` restores the palette
 for anyone who prefers it.
+
+### What is cached between restarts, and the -R bug
+
+Isabelle's cache is the heap image. On startup the server runs
+`Build.build(build_heap = true)` for the session named by `-l`: if that image is current
+nothing is rebuilt, and every theory inside it is loaded rather than re-checked. Anything
+*above* the image is re-elaborated on every start -- PIDE keeps no on-disk cache of
+command results.
+
+So to stop your imports being re-checked you want them inside an image. Plain `-l NAME`
+is the wrong tool for that when you are editing NAME's own theories: they are then in the
+image too, and PIDE treats them as loaded rather than editable. `-R NAME` is the right
+one -- it builds an image of NAME's *requirements*, so imports come from a heap while
+your files stay live. That is `isabelle.logicRequirements`.
+
+`-R` did not work at all. `Language_Server.build_session` built
+`Sessions.Selection.session(logic)` -- the name asked for -- while `init` loaded heaps for
+`session_background.session_name`, which under `session_requirements` is a synthetic
+`NAME_requirements(ANCESTOR)` session holding exactly the imported theories. So it built
+one session and looked for the heap of another:
+
+```
+REQS  session_name = Work_requirements(HOL)
+REQS  heaps wanted = FAILED: Missing heap image for session "Work_requirements(HOL)"
+build_session builds Selection.session(logic) = Work
+```
+
+Isabelle/jEdit is unaffected because `Session.build` selects
+`resources.session_base.session_name`. The `vscode-requirements-build` branch of
+mirror-isabelle makes `build_session` do the same; the server then reports
+`Welcome to Isabelle/Work_requirements(HOL)` and the imports really are cached.
 
 ### Which Isabelle this client targets
 

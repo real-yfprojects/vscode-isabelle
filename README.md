@@ -85,6 +85,25 @@ an OS-level resource, so unlike the encoding they *can* be installed globally.
 
 Point `isabelle.home` at your distribution if it is not auto-detected.
 
+### Not re-checking your imports on every start
+
+Isabelle caches whole sessions as heap images, not individual proofs, so anything not in
+an image is re-elaborated each time the server starts. To keep a project's imports out of
+that, point `isabelle.logic` at the session whose theories you are editing and set
+`isabelle.logicRequirements`, which starts the server with `-R`: an image is built of that
+session's *requirements*, so its imports load from a heap while your own files stay live.
+
+```jsonc
+"isabelle.logic": "ViperCommon",
+"isabelle.logicRequirements": true,
+"isabelle.sessionDirs": ["/path/to/project"]
+```
+
+The first start builds the image and takes a while; later ones reuse it. Note that this
+needs the `vscode-requirements-build` branch of mirror-isabelle -- released Isabelle
+builds the wrong session under `-R` and fails with a missing heap image. See
+[GAPS.md](GAPS.md).
+
 ## Performance
 
 Both decoration systems -- symbol rendering and PIDE markup -- are scoped to

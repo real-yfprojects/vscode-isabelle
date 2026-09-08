@@ -204,11 +204,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const r = renderer.computeRanges(editor)
       return {
         hidden: r.hidden.length,
-        withGlyph: r.hidden.filter(d => !!d.renderOptions?.before?.contentText).length,
+        withGlyph: r.hidden.filter(d => !!d.renderOptions?.after?.contentText).length,
         sub: r.sub.length,
         sup: r.sup.length,
         bold: r.bold.length,
-        glyphs: r.hidden.map(d => d.renderOptions?.before?.contentText).filter(Boolean).slice(0, 12),
+        glyphs: r.hidden.map(d => d.renderOptions?.after?.contentText).filter(Boolean).slice(0, 12),
       }
     }),
     // Test hooks for the PIDE panels.
