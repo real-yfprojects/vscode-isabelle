@@ -116,6 +116,7 @@ one piece off, which is how the table above was produced.
 ```
 npm install
 npm run compile
+npm run dev                      # interactive: Extension Development Host against a patched build
 node test/runTest.js suite.js    # Step 1: server, diagnostics, hover
 node test/runTest.js suite2.js   # Step 2: symbols, rendering, input, save, motion
 node test/runTest.js suite3.js   # visual: holds a window open for a screenshot
@@ -129,6 +130,12 @@ node test/runTest.js suite16.js  # theory status rendering, preview HTML strippi
 Two suites need a *patched* Isabelle and skip themselves otherwise: `suite15.js` (Query,
 `ISABELLE_QUERY_HOME`) and `suite17.js` (Theories/Timing, `ISABELLE_PATCHED_HOME`).
 [GAPS.md](GAPS.md) has the recipe for building one.
+
+`npm run dev` (or **F5** → *Run Extension*) is the interactive counterpart: it seeds a
+throwaway VS Code profile under `.dev-profile/` — pointed at a patched build and with the
+Theories/Query views enabled — then opens an Extension Development Host on `test/workspace`.
+It finds the patched build from `ISABELLE_PATCHED_HOME`, else `ISABELLE_QUERY_HOME`, else an
+`~/Isabelle/Isabelle<year>-<n>-{query,theories,patched}` directory.
 
 The suites drive a real VS Code against a real Isabelle; they are integration tests,
 not unit tests, and need an Isabelle distribution present.

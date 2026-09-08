@@ -348,6 +348,7 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
+    "dev": "node ./test/dev.js",
     "test": "node ./out/test/runTest.js"
   },
   "dependencies": {
