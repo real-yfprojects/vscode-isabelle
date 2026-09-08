@@ -557,10 +557,14 @@ Not verified:
 
 In rough order of value per effort:
 
-1. **A `.vsix` and CI** — done for packaging and for the cross-platform pure suites; the
-   non-Windows *launch* path is still unexercised, because CI has no Isabelle. What CI
-   proves is that the tree compiles and the platform-conditional path logic behaves on
-   Linux and macOS, not that a prover starts there.
+1. **A `.vsix` and CI** — packaging and cross-platform CI are **done**: `npm run package`
+   produces a 98 KB vsix (34 files: `out/`, `syntaxes/`, the language configuration,
+   `media/`, LICENSE, README -- no sources, no harness), and `.github/workflows/ci.yml`
+   compiles and runs the pure suites on Linux, macOS and Windows plus a packaging job.
+   The non-Windows *launch* path remains unexercised, because CI has no Isabelle: a green
+   run means the tree compiles and the platform-conditional path logic is consistent off
+   Windows, not that a prover starts there. Running the integration suites in CI would
+   need a distribution on the runner and a display for the spawned editor.
 2. **Turn `isabelle.queryPanel` on by default** once the branch it needs is upstream or
    routinely built. The client half is written and verified; it stays off so a stock
    distribution does not get a view that silently does nothing.

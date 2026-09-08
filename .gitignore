@@ -11,3 +11,6 @@ test/workspace/*.thy
 !test/workspace/Probe.thy
 test/perf.json
 test/results.json
+
+# Build artifact from "npm run package".
+*.vsix

@@ -1,0 +1,58 @@
+# CI for the stock-VS-Code Isabelle client.
+#
+# What this proves and what it does not. There is no Isabelle distribution on these
+# runners, so nothing here starts a prover: the integration suites, which spawn an editor
+# and talk to vscode_server, cannot run. What CI covers is that the tree compiles and that
+# the platform-conditional logic behaves off Windows -- notably serverPath, whose Cygwin
+# conversion is the one place a path crosses into Isabelle's own notation, and which broke
+# startup once already by not being applied.
+#
+# The macOS and Linux jobs are therefore the first exercise this code gets outside
+# Windows. Treat a green run as "the non-Windows code paths are consistent", not as
+# "the non-Windows launch path works".
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run compile
+      # Pure suites only: these need no editor and no prover, so they are the part of the
+      # harness that means the same thing on every platform.
+      - run: npm run test:unit
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run compile
+      - run: npm run package
+      # Packaging is itself a test: vsce fails on a missing contribution path, so a
+      # grammar or language-configuration dropped from .vscodeignore is caught here
+      # rather than by someone installing the result.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: isabelle-pide-stock.vsix

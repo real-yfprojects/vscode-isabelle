@@ -436,7 +436,9 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "dev": "node ./test/dev.js",
-    "test": "node ./out/test/runTest.js"
+    "test:unit": "node ./test/suite25.js",
+    "test": "node ./test/runTest.js",
+    "package": "vsce package --out isabelle-pide-stock.vsix"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
@@ -445,6 +447,11 @@
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
     "@vscode/test-electron": "^2.3.9",
+    "@vscode/vsce": "^3.2.0",
     "typescript": "^5.4.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/real-yfprojects/vscode-isabelle.git"
   }
 }

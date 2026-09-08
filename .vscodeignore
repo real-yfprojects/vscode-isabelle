@@ -1,0 +1,30 @@
+# What must NOT go into the .vsix. Everything else in the tree is packaged, so this is
+# the list that keeps a 100 MB node_modules and the whole test harness out of it.
+#
+# Kept deliberately: out/, package.json, language-configuration.json, syntaxes/, media/,
+# README.md and LICENSE. The grammar and the language configuration are contribution
+# paths -- dropping either leaves the extension installable and silently unable to
+# highlight or to place a cursor correctly.
+
+.vscode/**
+.vscode-test/**
+.dev-profile/**
+.github/**
+.gitignore
+
+# TypeScript sources and build inputs: out/ is what runs.
+src/**
+tsconfig.json
+**/*.ts
+**/*.map
+
+# The harness. suite*.js drive a spawned editor and have no business in a package.
+test/**
+scripts/**
+
+# Working notes, not user documentation.
+GAPS.md
+TODO.md
+
+node_modules/**
+package-lock.json
