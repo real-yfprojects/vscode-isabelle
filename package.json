@@ -106,6 +106,10 @@
       {
         "command": "isabelle.gotoCommand",
         "title": "Isabelle: Go to Command"
+      },
+      {
+        "command": "isabelle.simplifierTrace",
+        "title": "Isabelle: Show Simplifier Trace"
       }
     ],
     "keybindings": [
@@ -255,6 +259,11 @@
           "default": [],
           "description": "Extra session directories (isabelle vscode_server -d)."
         },
+        "isabelle.simplifierTrace": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show the Simplifier Trace panel. The PIDE/simplifier_trace_* messages exist only on the vscode-simplifier-trace branch of mirror-isabelle, so against a stock distribution this view would stay empty. Enable tracing in a theory with declare [[simp_trace_new mode=full]]."
+        },
         "isabelle.spellChecker": {
           "type": "boolean",
           "default": true,
@@ -340,6 +349,12 @@
           "name": "Query",
           "type": "webview",
           "when": "config.isabelle.queryPanel"
+        },
+        {
+          "id": "isabelle-simplifier-trace",
+          "name": "Simplifier Trace",
+          "type": "webview",
+          "when": "config.isabelle.simplifierTrace"
         }
       ],
       "isabelle-panel": [

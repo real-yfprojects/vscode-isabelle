@@ -17,6 +17,7 @@ import { PreviewPanels } from './preview_panel'
 import { QueryPanel } from './query_panel'
 import { registerCaretUpdates, isApplyingCaretUpdate } from './caret'
 import { TheoriesPanel } from './theories_panel'
+import { SimplifierTracePanel } from './simplifier_trace_panel'
 import { registerOutline } from './outline'
 import { registerSemanticTokens } from './semantic_tokens'
 import { SessionPicker } from './session_picker'
@@ -42,6 +43,7 @@ let docPanel: DocumentationPanel | undefined
 let previews: PreviewPanels | undefined
 let queryPanel: QueryPanel | undefined
 let theoriesPanel: TheoriesPanel | undefined
+let simplifierTrace: SimplifierTracePanel | undefined
 let sessionPicker: SessionPicker | undefined
 const abbrevs = new AbbrevStore()
 
@@ -178,6 +180,13 @@ async function startClient(): Promise<void> {
   // Views live at extension scope (registered in activate); only the subscription is
   // per-client, so a restart that fails leaves the view present rather than provider-less.
   theoriesPanel?.bind(client, clientScope)
+  /* Same reasoning as the Query panel: PIDE/simplifier_trace_* exists only on the
+     vscode-simplifier-trace branch, so the view stays hidden against a stock
+     distribution rather than sitting there permanently empty. */
+  if (vscode.workspace.getConfiguration('isabelle').get<boolean>('simplifierTrace', false)) {
+    simplifierTrace = new SimplifierTracePanel(client, log)
+    simplifierTrace.register(clientScope)
+  }
   registerSpellChecker(clientScope, client, log)
   registerCaretUpdates(clientScope, client, log)
 
@@ -203,6 +212,7 @@ async function stopClient(): Promise<void> {
   docPanel = undefined
   previews = undefined
   queryPanel = undefined
+  simplifierTrace = undefined
   const c = client
   client = undefined
   if (c) {
@@ -307,6 +317,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       queryPanelEnabled: queryPanel !== undefined,
       querySupported: queryPanel?.serverSupported,
       theoriesSupported: theoriesPanel?.serverSupported ?? false,
+      simplifierTraceSupported: simplifierTrace?.serverSupported ?? false,
     })),
     vscode.commands.registerCommand('isabelle.selectSession', () => sessionPicker?.pick()),
     vscode.commands.registerCommand('isabelle.staleEditCheck', (file: string) => {

@@ -94,7 +94,7 @@ the remaining work small rather than deep:
 | Info | shows tooltip content in a dockable | **nothing: VS Code hovers already do this**, and unlike jEdit they need no dedicated panel |
 | Monitor | ML statistics plus `session.protocol_command("ML_Heap.full_gc")` | **declined** -- see below |
 | Debugger | breakpoints and frame evaluation for Isabelle/ML | **declined** -- see below |
-| Simplifier trace | an interactive question/answer protocol, not a data feed | messages plus a panel with state |
+| Simplifier trace | an interactive question/answer protocol, not a data feed | **done** -- `vscode-simplifier-trace` branch; see below |
 | Raw output, Protocol | `session.raw_output_messages`, `session.all_messages` | messages, but these debug Isabelle itself; `isabelle vscode_server -L FILE -v` already logs the protocol |
 | Graphview | a Swing graph renderer over `Graph_Display` | messages plus a graph renderer in a webview |
 
@@ -126,6 +126,41 @@ PIDE/query_request { operation: find_theorems, args: ["5", "false", "\"_ + _\""]
 PIDE/query_status  { message: "Finished" }
 PIDE/query_output  -> find_theorems "_ + _" found 1239 theorem(s) (5 displayed)
 ```
+
+### Simplifier trace
+
+The one jEdit dockable that is a *conversation* rather than a view. With
+`declare [[simp_trace_new mode=full]]` the simplifier suspends at a rewrite step and waits
+for an answer, so the panel's buttons are not commands to run -- they are what the proof
+is blocked on. That is the whole value of it: a plain `simp_trace` of a looping simpset is
+thousands of lines with no way to stop at the interesting one.
+
+```
+PIDE/simplifier_trace_request       -> _response { auto_update, pending, question }
+PIDE/simplifier_trace_reply         { serial, answer }
+PIDE/simplifier_trace_auto_update   { enabled }
+PIDE/simplifier_trace_clear_memory
+PIDE/simplifier_trace_show          -> _full { entries }
+```
+
+Three things the protocol has to respect, none of them obvious from the dockable:
+
+- **A reply quotes a serial**, because by the time the user clicks, the trace may have
+  moved on. The panel disables the buttons the moment one is pressed rather than waiting
+  for the response, since a second click would answer a question the prover has passed.
+- **Only the first question is answerable.** The simplifier is suspended at exactly one
+  point and the rest are queued behind it, so the response carries the count as well as
+  the head. Without it a backlog reads as the trace being finished.
+- **Answers come from the question**, never from a fixed list. A rewrite step offers
+  Continue/Skip and their variants; a *hint failure* offers Redo/Exit instead. Assuming
+  the step answers would send one the prover does not accept at that point.
+
+`trace_events` republishes even when auto-update is off: a new question means the proof is
+now blocked, which is precisely when a stale panel is worst. `Session`'s outlets are each
+separately typed, so this needs three consumers rather than one.
+
+The client half ships behind `isabelle.simplifierTrace` (default off), like the Query
+panel, so a stock distribution does not show a view that can never fill.
 
 ### Two dockables deliberately not implemented
 
@@ -669,9 +704,9 @@ In rough order of value per effort:
 2. **Turn `isabelle.queryPanel` on by default** once the branch it needs is upstream or
    routinely built. The client half is written and verified; it stays off so a stock
    distribution does not get a view that silently does nothing.
-3. **Simplifier trace** — the one jEdit dockable that addresses a problem a user hits
-   routinely, and which nothing else in this client addresses.
-4. **Graphview** — messages plus a graph renderer in a webview.
+3. **Graphview** — messages plus a graph renderer in a webview. Note that `Active` is
+   jEdit-only (`src/Tools/jEdit/src/active.scala`), so there is no click-to-open path
+   here: the server has to find the `graphview` markup in command output itself.
 
 Monitor and Debugger are declined; see "Two dockables deliberately not implemented".
 6. **Upstream `Content.recode_symbols`** — the server already computes exactly the edits
