@@ -292,39 +292,36 @@ export class TheoriesPanel {
   private readonly theories = new TheoriesProvider()
   private readonly timing = new TimingProvider()
   private theoriesView: vscode.TreeView<TheoryItem> | undefined
+  private timingView: vscode.TreeView<unknown> | undefined
+  private client: LanguageClient | undefined
   private last: TheoriesResponse | undefined
   private supported = false
 
-  constructor(
-    private readonly client: LanguageClient,
-    private readonly log: (m: string) => void,
-  ) {}
+  constructor(private readonly log: (m: string) => void) {}
 
-  register(disposables: vscode.Disposable[]): void {
+  /**
+   * Views and commands, for the lifetime of the *extension*.
+   *
+   * Deliberately not tied to a client. These used to be created per client, so a restart
+   * that failed to come back left the view with no provider at all ("There is no data
+   * provider registered that can provide view data") and its refresh command missing --
+   * two errors about plumbing, on top of whatever actually went wrong. The view now
+   * always exists and simply reports that the prover is not running.
+   */
+  registerViews(disposables: vscode.Disposable[]): void {
     this.theoriesView = vscode.window.createTreeView<TheoryItem>('isabelle-theories',
       { treeDataProvider: this.theories })
     const timingView = vscode.window.createTreeView('isabelle-timing',
       { treeDataProvider: this.timing })
 
+    this.timingView = timingView
     disposables.push(
       this.theoriesView,
       timingView,
-      this.client.onNotification('PIDE/theories_response', (p: TheoriesResponse) => {
-        this.supported = true
-        this.last = p
-        this.theories.refresh(p.nodes ?? [], p.loading === true)
-        this.timing.refresh(p.nodes ?? [], p.commands ?? [], p.current)
-        if (this.theoriesView) {
-          // Say why nothing is failing yet, rather than leaving a wall of spinners.
-          this.theoriesView.description =
-            p.loading ? `Prover: ${p.phase} · resolving imports` : `Prover: ${p.phase}`
-        }
-        timingView.description = `Threshold: ${p.threshold}s`
-      }),
       vscode.commands.registerCommand('isabelle.theoriesRefresh', () => this.request()),
       vscode.commands.registerCommand('isabelle.gotoCommand', (id: number) => {
         this.log(`goto_command ${id}`)
-        return this.client.sendNotification('PIDE/goto_command', { id, offset: 0 })
+        return this.client?.sendNotification('PIDE/goto_command', { id, offset: 0 })
       }),
       vscode.workspace.onDidChangeConfiguration(e => {
         if (e.affectsConfiguration('isabelle.timingThreshold')) this.sendThreshold()
@@ -340,19 +337,56 @@ export class TheoriesPanel {
       })),
     )
 
+    this.setDescription('not running')
+  }
+
+  /** Subscribe to the current client. Called again on every restart. */
+  bind(client: LanguageClient, disposables: vscode.Disposable[]): void {
+    this.client = client
+    disposables.push(
+      client.onNotification('PIDE/theories_response', (p: TheoriesResponse) => {
+        this.supported = true
+        this.last = p
+        this.theories.refresh(p.nodes ?? [], p.loading === true)
+        this.timing.refresh(p.nodes ?? [], p.commands ?? [], p.current)
+        // Say why nothing is failing yet, rather than leaving a wall of spinners.
+        this.setDescription(
+          p.loading ? `Prover: ${p.phase} · resolving imports` : `Prover: ${p.phase}`)
+        if (this.timingView) this.timingView.description = `Threshold: ${p.threshold}s`
+      }),
+      { dispose: () => this.unbind() },
+    )
     this.sendThreshold()
     this.request()
+  }
+
+  /** The prover went away. Keep the views, drop what they were showing. */
+  unbind(): void {
+    this.client = undefined
+    this.last = undefined
+    this.theories.refresh([], false)
+    this.timing.refresh([], [], undefined)
+    this.setDescription('not running')
+  }
+
+  private setDescription(text: string): void {
+    if (this.theoriesView) this.theoriesView.description = text
   }
 
   private sendThreshold(): void {
     const threshold = vscode.workspace.getConfiguration('isabelle').get<number>('timingThreshold')
     if (typeof threshold === 'number' && threshold >= 0) {
-      void this.client.sendNotification('PIDE/theories_set_threshold', { threshold })
-        .catch(err => this.log(`theories_set_threshold failed: ${err}`))
+      void this.client?.sendNotification('PIDE/theories_set_threshold', { threshold })
+        ?.catch(err => this.log(`theories_set_threshold failed: ${err}`))
     }
   }
 
+  /** Refresh on demand. Harmless with no prover: the command must never be missing. */
   request(): void {
+    if (this.client === undefined) {
+      this.setDescription('not running')
+      return
+    }
     void this.client.sendNotification('PIDE/theories_request', {})
       .catch(err => this.log(`theories_request failed: ${err}`))
   }

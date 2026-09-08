@@ -75,6 +75,23 @@ function cygwinBash(isabelleHome: string): string {
   return path.join(isabelleHome, 'contrib', 'cygwin', 'bin', 'bash.exe')
 }
 
+/**
+ * A path as the *server* must see it.
+ *
+ * On Windows the server runs under Isabelle's bundled Cygwin, and Isabelle's own
+ * Path.explode rejects a native path: a `-d c:\Users\...` argument makes vscode_server
+ * exit 1 before the client ever sees an initialize reply. Only the launcher path was
+ * being converted, which went unnoticed while nobody had sessionDirs set.
+ *
+ * A path that is already POSIX is left alone -- path.resolve would otherwise turn
+ * "/cygdrive/c/x" into "C:\cygdrive\c\x" and break a setting that was correct.
+ */
+export function serverPath(p: string): string {
+  if (process.platform !== 'win32') return p
+  if (p.startsWith('/')) return p
+  return toCygwinPath(p)
+}
+
 export function serverArguments(): string[] {
   const cfg = vscode.workspace.getConfiguration('isabelle')
   const args: string[] = []
@@ -88,7 +105,7 @@ export function serverArguments(): string[] {
   if (logic) args.push(cfg.get<boolean>('logicRequirements') ? '-R' : '-l', logic)
 
   for (const dir of cfg.get<string[]>('sessionDirs') ?? []) {
-    if (dir.trim()) args.push('-d', dir.trim())
+    if (dir.trim()) args.push('-d', serverPath(dir.trim()))
   }
   for (const opt of cfg.get<string[]>('serverOptions') ?? []) {
     if (opt.trim()) args.push('-o', opt.trim())

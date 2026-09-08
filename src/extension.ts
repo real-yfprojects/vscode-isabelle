@@ -20,7 +20,9 @@ import { registerOutline } from './outline'
 import { registerSemanticTokens } from './semantic_tokens'
 import { SessionPicker } from './session_picker'
 import { stalenessWarning } from './sessions'
+import { BuildProgress } from './build_progress'
 
+const buildProgress = new BuildProgress()
 let client: LanguageClient | undefined
 let output: vscode.OutputChannel
 let isabelleHome: string | undefined
@@ -70,6 +72,13 @@ function sendCaretUpdate(editor: vscode.TextEditor | undefined): void {
   }).catch(err => output.appendLine(`caret_update failed: ${err}`))
 }
 
+/** Session named in settings, for the progress title. */
+function logicLabel(): string {
+  const cfg = vscode.workspace.getConfiguration('isabelle')
+  const logic = cfg.get<string>('logic')?.trim() || 'HOL'
+  return cfg.get<boolean>('logicRequirements') ? `${logic} (requirements)` : logic
+}
+
 async function startClient(): Promise<void> {
   lastError = undefined
   // Re-resolve on every start rather than reusing the value cached at activation:
@@ -86,7 +95,7 @@ async function startClient(): Promise<void> {
 
   const clientOptions: LanguageClientOptions = {
     documentSelector: ISABELLE_SELECTOR as any,
-    outputChannel: output,
+    outputChannel: buildProgress.channel(output),
     middleware: {
       /* There is no API for "the user is holding Ctrl", but VS Code asks for a definition
          exactly when it is deciding whether to draw the Ctrl+hover link -- so this is
@@ -104,8 +113,13 @@ async function startClient(): Promise<void> {
   }
 
   client = new LanguageClient('isabelle', 'Isabelle/PIDE', serverOptions, clientOptions)
+  /* The server builds its heap image inside `initialize`, so client.start() does not
+     resolve until any build has finished -- which is why a first start with a missing
+     image looks like a hang. Wrapping the start is therefore all it takes to cover the
+     build, and buildProgress relays the server's own progress lines into the notification
+     so it says which session and how far, not just "working". */
   try {
-    await client.start()
+    await buildProgress.during(logicLabel(), () => (client as LanguageClient).start())
   } catch (err) {
     lastError = err instanceof Error ? (err.stack ?? err.message) : String(err)
     log(`client.start() threw: ${lastError}`)
@@ -135,10 +149,9 @@ async function startClient(): Promise<void> {
   // Same reasoning as the Query panel: the PIDE/theories_* messages exist only on the
   // vscode-theories-panel branch, so the views stay hidden against a stock distribution
   // rather than showing two permanently empty trees.
-  if (vscode.workspace.getConfiguration('isabelle').get<boolean>('theoriesPanel', false)) {
-    theoriesPanel = new TheoriesPanel(client, log)
-    theoriesPanel.register(clientScope)
-  }
+  // Views live at extension scope (registered in activate); only the subscription is
+  // per-client, so a restart that fails leaves the view present rather than provider-less.
+  theoriesPanel?.bind(client, clientScope)
   registerSpellChecker(clientScope, client, log)
   registerCaretUpdates(clientScope, client, log)
 
@@ -164,7 +177,6 @@ async function stopClient(): Promise<void> {
   docPanel = undefined
   previews = undefined
   queryPanel = undefined
-  theoriesPanel = undefined
   const c = client
   client = undefined
   if (c) {
@@ -202,6 +214,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   /* The session image decides what is cached: imports already in the heap are never
      re-checked, everything else is elaborated from source on every start. The stock
      default is HOL, which caches nothing in a project workspace. */
+  /* Same reasoning as the Query panel: the PIDE/theories_* messages exist only on the
+     vscode-theories-panel branch, so the views stay hidden against a stock distribution
+     rather than showing two permanently empty trees. */
+  if (vscode.workspace.getConfiguration('isabelle').get<boolean>('theoriesPanel', false)) {
+    theoriesPanel = new TheoriesPanel(log)
+    theoriesPanel.registerViews(context.subscriptions)
+  }
+
   sessionPicker = new SessionPicker(msg => output.appendLine(msg))
   context.subscriptions.push(sessionPicker)
 
