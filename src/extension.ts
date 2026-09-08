@@ -330,6 +330,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.onDidChangeActiveTextEditor(editor => sendCaretUpdate(editor)),
   )
 
+  /* Starting the server loads a heap image, which is the slowest thing this extension
+     does. Plenty of what it offers -- symbol rendering, input, the outline, folding,
+     Ctrl+T -- is client-side and needs no prover at all, so this is worth being able to
+     decline: on a machine without Isabelle, when opening a theory only to read it, or in
+     tests that assert none of the prover-backed behaviour. */
+  if (vscode.workspace.getConfiguration('isabelle').get<boolean>('autoStart') === false) {
+    log('isabelle.autoStart is off; run "Isabelle: Start / Restart Language Server" to connect')
+    return
+  }
+
   try {
     await startClient()
   } catch (err) {

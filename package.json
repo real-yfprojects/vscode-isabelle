@@ -32,7 +32,7 @@
     "commands": [
       {
         "command": "isabelle.restartServer",
-        "title": "Isabelle: Restart Language Server"
+        "title": "Isabelle: Start / Restart Language Server"
       },
       {
         "command": "isabelle.normalizeDocument",
@@ -148,6 +148,21 @@
     "configuration": {
       "title": "Isabelle",
       "properties": {
+        "isabelle.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start the language server when the extension activates. Turn this off to open .thy files without a prover -- symbol rendering, the outline and symbol input all work without one, and starting a session loads a heap image, which takes a while. Use \"Isabelle: Start / Restart Language Server\" when you want it."
+        },
+        "isabelle.continuousChecking": {
+          "type": "boolean",
+          "default": false,
+          "description": "Check the whole visible theory rather than a window around the caret (vscode_caret_perspective=0). Takes effect on server restart."
+        },
+        "isabelle.expandAbbreviations": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Expand `\\forall` into `\\<forall>` as you type."
+        },
         "isabelle.home": {
           "type": "string",
           "default": "",
@@ -157,108 +172,6 @@
           "type": "string",
           "default": "HOL",
           "description": "Session image the language server boots with (isabelle vscode_server -l/-R). Imports already in this image load from a heap and are never re-checked; every other theory is elaborated from source on each start. The default \"HOL\" caches no project theory. Use \"Isabelle: Select Session Image\" to pick one from the ROOT files in the workspace."
-        },
-        "isabelle.sessionDirs": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "description": "Extra session directories (isabelle vscode_server -d)."
-        },
-        "isabelle.serverOptions": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [
-            "vscode_pide_extensions=true",
-            "vscode_html_output=true",
-            "vscode_unicode_symbols_output=true"
-          ],
-          "markdownDescription": "Isabelle system options passed as `-o NAME=VALUE`.\n\n`vscode_pide_extensions` enables PIDE markup decorations and the Output/State panels. `vscode_html_output` makes those panels deliver HTML, and also avoids an Isabelle2025-2 bug where the non-HTML branch fails to serialise decorations. `vscode_unicode_symbols_output` renders glyphs in panels and hovers.\n\nDo **not** enable `vscode_unicode_symbols_edits`: those edits are inserted into the buffer, which must stay ASCII."
-        },
-        "isabelle.serverArgs": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "description": "Additional raw arguments appended to isabelle vscode_server."
-        },
-        "isabelle.verbose": {
-          "type": "boolean",
-          "default": false,
-          "description": "Verbose language-server logging (-v)."
-        },
-        "isabelle.renderSymbols": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Render `\\<forall>`-style symbol escapes as Unicode glyphs using editor decorations. The file on disk stays ASCII."
-        },
-        "isabelle.renderMarginLines": {
-          "type": "number",
-          "default": 100,
-          "markdownDescription": "How many lines above and below the viewport to decorate. Cost is linear in decorated ranges; keep the resulting count well under ~1500."
-        },
-        "isabelle.revealSymbolAtCursor": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Show the raw `\\<name>` escape instead of the glyph for the symbol the cursor is inside, so it can be edited."
-        },
-        "isabelle.normalizeOnSave": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Before saving, rewrite any literal Unicode symbols back to `\\<name>` escapes. `isabelle build` rejects literal Unicode, so this keeps files loadable."
-        },
-        "isabelle.expandAbbreviations": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Expand `\\forall` into `\\<forall>` as you type."
-        },
-        "isabelle.textColorOverrides": {
-          "type": "object",
-          "default": {},
-          "additionalProperties": {
-            "type": "string"
-          },
-          "markdownDescription": "Override individual PIDE markup colours, keyed `<name>_light` / `<name>_dark` (e.g. `keyword1_dark`). Defaults come from Isabelle's own palette."
-        },
-        "isabelle.pideViewportScope": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Apply PIDE markup only to the visible part of the document (plus `#isabelle.renderMarginLines#`). The server sends markup for the whole file - over 51000 ranges on a 9000-line theory - and applying all of it costs roughly 40ms per keystroke. Disable only to compare against that behaviour."
-        },
-        "isabelle.pideMarkup": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Apply PIDE markup (syntax colouring and processing status) as editor decorations."
-        },
-        "isabelle.spellChecker": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Use Isabelle's own spell checker, which checks prose in comments and `text ‹…›` blocks by PIDE markup category (so antiquotations inside prose are excluded). Turn this off to avoid double underlining if you prefer a general spell-checking extension such as Code Spell Checker; the bundled TextMate grammar gives those extensions `comment.block.isabelle` and `string.quoted.*` scopes to target."
-        },
-        "isabelle.queryPanel": {
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Show the Query panel (find_theorems / find_consts). Requires an Isabelle whose language server exposes the `PIDE/query_*` messages; released versions do not. See the `vscode-query-panel` branch of mirror-isabelle."
-        },
-        "isabelle.theoriesPanel": {
-          "type": "boolean",
-          "default": false,
-          "description": "Show the Theories and Timing views. Requires the vscode-theories-panel branch of mirror-isabelle; a released Isabelle does not answer PIDE/theories_request."
-        },
-        "isabelle.timingThreshold": {
-          "type": "number",
-          "default": 0.1,
-          "minimum": 0,
-          "description": "Timing view: only commands at or above this many seconds are reported."
-        },
-        "isabelle.continuousChecking": {
-          "type": "boolean",
-          "default": false,
-          "description": "Check the whole visible theory rather than a window around the caret (vscode_caret_perspective=0). Takes effect on server restart."
         },
         "isabelle.logicRequirements": {
           "type": "boolean",
@@ -278,6 +191,98 @@
             "Colour checked text from Isabelle's own text_color palette, as Isabelle/jEdit and the official Isabelle/VSCode do. The theme will not affect checked text."
           ],
           "markdownDescription": "Who colours text that PIDE has checked. Processing status, message underlines and overview marks are unaffected either way. Note that `theme` relies on semantic highlighting, which `#editor.semanticHighlighting.enabled#` leaves to the theme by default; a theme that opts out falls back to the TextMate grammar."
+        },
+        "isabelle.normalizeOnSave": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Before saving, rewrite any literal Unicode symbols back to `\\<name>` escapes. `isabelle build` rejects literal Unicode, so this keeps files loadable."
+        },
+        "isabelle.pideMarkup": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Apply PIDE markup (syntax colouring and processing status) as editor decorations."
+        },
+        "isabelle.pideViewportScope": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Apply PIDE markup only to the visible part of the document (plus `#isabelle.renderMarginLines#`). The server sends markup for the whole file - over 51000 ranges on a 9000-line theory - and applying all of it costs roughly 40ms per keystroke. Disable only to compare against that behaviour."
+        },
+        "isabelle.queryPanel": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Show the Query panel (find_theorems / find_consts). Requires an Isabelle whose language server exposes the `PIDE/query_*` messages; released versions do not. See the `vscode-query-panel` branch of mirror-isabelle."
+        },
+        "isabelle.renderMarginLines": {
+          "type": "number",
+          "default": 100,
+          "markdownDescription": "How many lines above and below the viewport to decorate. Cost is linear in decorated ranges; keep the resulting count well under ~1500."
+        },
+        "isabelle.renderSymbols": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Render `\\<forall>`-style symbol escapes as Unicode glyphs using editor decorations. The file on disk stays ASCII."
+        },
+        "isabelle.revealSymbolAtCursor": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show the raw `\\<name>` escape instead of the glyph for the symbol the cursor is inside, so it can be edited."
+        },
+        "isabelle.serverArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional raw arguments appended to isabelle vscode_server."
+        },
+        "isabelle.serverOptions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "vscode_pide_extensions=true",
+            "vscode_html_output=true",
+            "vscode_unicode_symbols_output=true"
+          ],
+          "markdownDescription": "Isabelle system options passed as `-o NAME=VALUE`.\n\n`vscode_pide_extensions` enables PIDE markup decorations and the Output/State panels. `vscode_html_output` makes those panels deliver HTML, and also avoids an Isabelle2025-2 bug where the non-HTML branch fails to serialise decorations. `vscode_unicode_symbols_output` renders glyphs in panels and hovers.\n\nDo **not** enable `vscode_unicode_symbols_edits`: those edits are inserted into the buffer, which must stay ASCII."
+        },
+        "isabelle.sessionDirs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra session directories (isabelle vscode_server -d)."
+        },
+        "isabelle.spellChecker": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Use Isabelle's own spell checker, which checks prose in comments and `text ‹…›` blocks by PIDE markup category (so antiquotations inside prose are excluded). Turn this off to avoid double underlining if you prefer a general spell-checking extension such as Code Spell Checker; the bundled TextMate grammar gives those extensions `comment.block.isabelle` and `string.quoted.*` scopes to target."
+        },
+        "isabelle.textColorOverrides": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          },
+          "markdownDescription": "Override individual PIDE markup colours, keyed `<name>_light` / `<name>_dark` (e.g. `keyword1_dark`). Defaults come from Isabelle's own palette."
+        },
+        "isabelle.theoriesPanel": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show the Theories and Timing views. Requires the vscode-theories-panel branch of mirror-isabelle; a released Isabelle does not answer PIDE/theories_request."
+        },
+        "isabelle.timingThreshold": {
+          "type": "number",
+          "default": 0.1,
+          "minimum": 0,
+          "description": "Timing view: only commands at or above this many seconds are reported."
+        },
+        "isabelle.verbose": {
+          "type": "boolean",
+          "default": false,
+          "description": "Verbose language-server logging (-v)."
         }
       }
     },

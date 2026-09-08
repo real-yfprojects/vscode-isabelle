@@ -27,9 +27,30 @@ const REGRESSION = ['suite', 'suite2', 'suite4', 'suite6', 'suite12', 'suite16',
 /** Suites that need no editor at all, and so cost nothing to run. */
 const PURE = new Set(['suite25'])
 
+/**
+ * Suites that assert nothing the prover produces.
+ *
+ * These still need a real editor -- they exercise decorations, motion, the outline and
+ * the pick lists -- but activation used to block on startClient(), so each paid a full
+ * heap load before its first assertion. Roughly 30 of their 37 seconds was spent waiting
+ * for a session none of them looks at. isabelle.autoStart lets them decline it.
+ *
+ * A suite belongs here only if it never reads serverState, decorations from PIDE, or any
+ * panel fed by the server. When in doubt leave it out: the cost of being wrong is a
+ * confusing failure, and the cost of being conservative is half a minute.
+ */
+const NO_PROVER = new Set(['suite4', 'suite16', 'suite19', 'suite21', 'suite26'])
+
 function copyWorkspace(name) {
   const dest = fs.mkdtempSync(path.join(os.tmpdir(), `isa-ws-${name}-`))
   fs.cpSync(path.join(__dirname, 'workspace'), dest, { recursive: true })
+  if (NO_PROVER.has(name)) {
+    // Workspace settings rather than an env var, so nothing in the extension has to know
+    // it is under test -- this is the same switch a user would flip.
+    fs.mkdirSync(path.join(dest, '.vscode'), { recursive: true })
+    fs.writeFileSync(path.join(dest, '.vscode', 'settings.json'),
+      JSON.stringify({ 'isabelle.autoStart': false }, null, 2))
+  }
   return dest
 }
 
@@ -50,9 +71,19 @@ function runOne(name) {
     child.on('close', code => {
       const seconds = ((Date.now() - started) / 1000).toFixed(0)
       const checks = /(\d+) checks passed/.exec(out)
-      // A suite can exit 0 having printed nothing useful, so require its own marker too.
-      const ok = code === 0 && /SUITE\w*_OK|checks passed/.test(out)
-      if (workspace) fs.rmSync(workspace, { recursive: true, force: true })
+      /* A suite can exit 0 having printed nothing useful -- that is how suite14 once
+         failed silently -- so require its own completion marker too. The marker is not
+         uniformly named: the early suites print STEP1_OK/STEP2_OK and the later ones
+         SUITEn_OK, so match the shape rather than the prefix. */
+      const ok = code === 0 && /\b[A-Z0-9_]+_OK\b|checks passed/.test(out)
+      /* Cleanup must never take the run down. On Windows the editor can still hold a
+         handle to the copied workspace when the process exits, so rmSync throws EBUSY;
+         a leftover temp directory is a far smaller problem than losing the results of
+         a five-minute run to an exception in a close handler. */
+      if (workspace) {
+        try { fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 }) }
+        catch { /* the OS will reap it */ }
+      }
       resolve({ name, ok, code, seconds, checks: checks ? Number(checks[1]) : undefined, out })
     })
   })
