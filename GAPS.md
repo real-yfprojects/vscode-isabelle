@@ -96,7 +96,7 @@ the remaining work small rather than deep:
 | Debugger | breakpoints and frame evaluation for Isabelle/ML | **declined** -- see below |
 | Simplifier trace | an interactive question/answer protocol, not a data feed | **done** -- `vscode-simplifier-trace` branch; see below |
 | Raw output, Protocol | `session.raw_output_messages`, `session.all_messages` | messages, but these debug Isabelle itself; `isabelle vscode_server -L FILE -v` already logs the protocol |
-| Graphview | a Swing graph renderer over `Graph_Display` | messages plus a graph renderer in a webview |
+| Graphview | a Swing graph renderer over `Graph_Display` | **done** -- `vscode-graphview` branch; see below |
 
 Query is the one worth having, and the cheapest: `Query_Dockable` builds
 `new Query_Operation(PIDE.editor, view, "find_theorems", ...)` while `VSCode_Sledgehammer`
@@ -161,6 +161,41 @@ separately typed, so this needs three consumers rather than one.
 
 The client half ships behind `isabelle.simplifierTrace` (default off), like the Query
 panel, so a stock distribution does not show a view that can never fill.
+
+### Graph view
+
+Draws what `thy_deps`, `class_deps`, `locale_deps`, `thm_deps` and `code_deps` produce.
+Pull, not push: nothing appears unless a theory asks for it.
+
+```
+PIDE/graphview_request -> _response { graph?: { nodes, edges }, error? }
+```
+
+Two things had to be built rather than reused.
+
+**There is no click-to-open path.** jEdit opens its dockable from an `Active.Handler` --
+the `graphview` markup is an active area in the output that the user clicks. `Active`
+lives in `src/Tools/jEdit/src/active.scala` and has no counterpart on this side, so the
+server walks the current command's results looking for `Markup.GRAPHVIEW` itself. A
+command with no graph publishes an empty response rather than nothing, or moving the caret
+off a `thy_deps` would leave the previous graph on screen looking current.
+
+**There is no reusable layout.** `src/Tools/Graphview/layout.scala` produces coordinates
+for a Java2D canvas, so `graphview_layout.ts` implements a layered layout instead:
+longest-path layering, then barycentre ordering, then placement. Layering is the half that
+decides correctness -- an edge that does not point downwards makes the picture lie about
+the dependency -- and it must be longest-path rather than shortest, or a node with parents
+at different depths is drawn level with one of its own ancestors. Ordering is the half
+that decides readability and is NP-hard done properly, so four barycentre passes is where
+the returns flatten.
+
+The server applies `transitive_reduction_acyclic`, as jEdit does: `thy_deps` on a real
+project is dense with edges implied by others. It throws on a cycle, so the failure is
+reported to the panel rather than taking it down, and the layout tolerates a cycle anyway
+rather than recursing forever.
+
+Drawn as inline SVG in theme colours. Node names are text out of a theory, so they are
+escaped rather than interpolated.
 
 ### Two dockables deliberately not implemented
 
@@ -704,9 +739,10 @@ In rough order of value per effort:
 2. **Turn `isabelle.queryPanel` on by default** once the branch it needs is upstream or
    routinely built. The client half is written and verified; it stays off so a stock
    distribution does not get a view that silently does nothing.
-3. **Graphview** — messages plus a graph renderer in a webview. Note that `Active` is
-   jEdit-only (`src/Tools/jEdit/src/active.scala`), so there is no click-to-open path
-   here: the server has to find the `graphview` markup in command output itself.
+3. **Drive the two new panels against a live prover.** Both are compile- and unit-tested
+   but neither has been exercised end to end, which needs the patched build installed:
+   a theory with `declare [[simp_trace_new mode=full]]` for the trace, and a `thy_deps`
+   command for the graph.
 
 Monitor and Debugger are declined; see "Two dockables deliberately not implemented".
 6. **Upstream `Content.recode_symbols`** — the server already computes exactly the edits

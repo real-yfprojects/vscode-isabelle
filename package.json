@@ -110,6 +110,10 @@
       {
         "command": "isabelle.simplifierTrace",
         "title": "Isabelle: Show Simplifier Trace"
+      },
+      {
+        "command": "isabelle.graphview",
+        "title": "Isabelle: Show Graph View"
       }
     ],
     "keybindings": [
@@ -166,6 +170,11 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Expand `\\forall` into `\\<forall>` as you type."
+        },
+        "isabelle.graphview": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show the Graph View panel, which draws the output of thy_deps, class_deps, locale_deps, thm_deps and code_deps. The PIDE/graphview_* messages exist only on the vscode-graphview branch of mirror-isabelle."
         },
         "isabelle.home": {
           "type": "string",
@@ -355,6 +364,12 @@
           "name": "Simplifier Trace",
           "type": "webview",
           "when": "config.isabelle.simplifierTrace"
+        },
+        {
+          "id": "isabelle-graphview",
+          "name": "Graph View",
+          "type": "webview",
+          "when": "config.isabelle.graphview"
         }
       ],
       "isabelle-panel": [

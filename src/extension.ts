@@ -18,6 +18,7 @@ import { QueryPanel } from './query_panel'
 import { registerCaretUpdates, isApplyingCaretUpdate } from './caret'
 import { TheoriesPanel } from './theories_panel'
 import { SimplifierTracePanel } from './simplifier_trace_panel'
+import { GraphviewPanel } from './graphview_panel'
 import { registerOutline } from './outline'
 import { registerSemanticTokens } from './semantic_tokens'
 import { SessionPicker } from './session_picker'
@@ -44,6 +45,7 @@ let previews: PreviewPanels | undefined
 let queryPanel: QueryPanel | undefined
 let theoriesPanel: TheoriesPanel | undefined
 let simplifierTrace: SimplifierTracePanel | undefined
+let graphview: GraphviewPanel | undefined
 let sessionPicker: SessionPicker | undefined
 const abbrevs = new AbbrevStore()
 
@@ -187,6 +189,10 @@ async function startClient(): Promise<void> {
     simplifierTrace = new SimplifierTracePanel(client, log)
     simplifierTrace.register(clientScope)
   }
+  if (vscode.workspace.getConfiguration('isabelle').get<boolean>('graphview', false)) {
+    graphview = new GraphviewPanel(client, log)
+    graphview.register(clientScope)
+  }
   registerSpellChecker(clientScope, client, log)
   registerCaretUpdates(clientScope, client, log)
 
@@ -213,6 +219,7 @@ async function stopClient(): Promise<void> {
   previews = undefined
   queryPanel = undefined
   simplifierTrace = undefined
+  graphview = undefined
   const c = client
   client = undefined
   if (c) {
@@ -318,6 +325,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       querySupported: queryPanel?.serverSupported,
       theoriesSupported: theoriesPanel?.serverSupported ?? false,
       simplifierTraceSupported: simplifierTrace?.serverSupported ?? false,
+      graphviewSupported: graphview?.serverSupported ?? false,
     })),
     vscode.commands.registerCommand('isabelle.selectSession', () => sessionPicker?.pick()),
     vscode.commands.registerCommand('isabelle.staleEditCheck', (file: string) => {
