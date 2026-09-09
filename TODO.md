@@ -246,6 +246,9 @@ This documents tracks features and tasks that might already be tracked in other 
 - [ ] Code completion
 - [ ] For instantiations add skeleton for missing attributes
 - [ ] marketplace extension
+- [ ] code formatting / prettier extension
+- [ ] search in isabelle output panel (e.g. for print_classes)
+- [ ] extension user docs s.t. copilot can help you
 
 ### To be decided
 
