@@ -20,7 +20,7 @@ const os = require('os')
 const path = require('path')
 
 // The set that is expected to be green at all times. Suites needing a patched Isabelle
-// (15, 17) or a project workspace (24) skip themselves, so they are not listed here.
+// (15, 17, 30) or a project workspace (24) skip themselves, so they are not listed here.
 const REGRESSION = ['suite', 'suite2', 'suite4', 'suite6', 'suite12', 'suite16',
                     'suite18', 'suite19', 'suite21', 'suite23', 'suite26', 'suite27',
                     'suite28', 'suite29']

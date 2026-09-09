@@ -9,6 +9,9 @@ test/workspace/*.thy
 # live here rather than beside the generated scratch theories.
 !test/workspace/Hover.thy
 !test/workspace/Probe.thy
+# suite30 drives both new panels against a real prover; without this fixture it has
+# nothing to trace and no thy_deps to draw.
+!test/workspace/Trace.thy
 test/perf.json
 test/results.json
 
