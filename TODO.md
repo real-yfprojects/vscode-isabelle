@@ -102,6 +102,69 @@ This documents tracks features and tasks that might already be tracked in other 
   - note their Infoview is itself a webview, so it is not an argument for native widgets
 - [ ] compare to features of the python vscode extension and see whether any feature is useful for isabelle as well.
   - [ ] find references
+- [~] compare to `Arthur742Ramos/Isabelle-VSCode` (MIT, `0.1.0-alpha.6`), an independent
+    stock-VS-Code client. Opposite bet on the same problem: it ships its own Scala backend
+    (`dev.isabelle.vscode.server`, 26 files) driving Isabelle's **Headless** API and treats
+    `isabelle vscode_server` as an optional relay. So it reaches PIDE operations without
+    patching Isabelle, at the cost of owning a bridge against Isabelle's internal Scala
+    API. 120 `src/` files, 103 unit specs, 60 commands, 8 per-platform `.vsix` with
+    Temurin 21 bundled
+  - it has no encoding story, and that is the one thing we already got right. Its
+    `src/semantic/convertSymbolsCommand.ts` rewrites the buffer to literal glyphs and
+    calls the transform "lossless"; its PIDE abbrev completion inserts `λ` and `⟹` (its
+    own fixtures assert those expansions); `onWillSave` appears nowhere in its 2682-line
+    `extension.ts`. Re-verified the consequence on Isabelle2025-2 -- a `.thy` holding a
+    literal `∀` fails `isabelle build` with `Inner lexical error ... at "?x::nat. x = x"`.
+    Their Convert-to-Unicode followed by their own Build command is a failure
+  - not worth taking: the AI repair seam; their theory-graph TreeView, which parses
+    `imports` client-side and is superseded by the real graphview on `vscode-graphview`
+  - [ ] **Sledgehammer proof minimization.** They expose
+    `isabelle.minimizeSledgehammerProof`: shrink the fact list of an existing method call
+    at the cursor. Assumed at first this was free because it rides the same
+    `Query_Operation` the panel already drives -- it is not.
+    `src/HOL/Tools/Sledgehammer/sledgehammer_commands.ML:399` (mirror-isabelle) does `val [provers_arg, isar_proofs_arg, try0_arg] =
+    args` and hard-codes `hammer_away ... runN`, with `minimize` fixed inside the
+    six-entry `override_params`. So the LSP surface is capped by an ML pattern match, not
+    by PIDE, and this needs a mirror branch like Query and Theories did: widen
+    `LSP.Sledgehammer_Request` past three strings and thread a mode plus a fact list
+    through to `sledgehammer_prover_minimize.ML`. That is also why *they* get it for free
+    -- the Headless backend never goes through the query operation
+    (`backend/.../SledgehammerWithPideHandler.scala`)
+  - [ ] **an offline tier.** Their strongest product decision: highlighting, outline,
+    folding, hovers, method completion and symbol entry all work with no Isabelle and no
+    Java installed. We are closer than it looks -- the generated grammar and
+    `src/outline.ts` are already prover-independent, and `src/symbols.ts` needs only
+    `etc/symbols`. What is missing is that everything else waits on the server, and there
+    is no behaviour at all for "no distribution found". Concretely: proof-method
+    completion after `apply`/`by`/`proof`, hovers for outer-syntax commands and for
+    symbols, folding without PIDE. The hard part is the gate -- their
+    `src/semantic/proofMethods.ts` stays out of term and argument position
+    - subsumes the `find references` sub-item above: theirs is a name-based scan over
+      the workspace's `.thy` files, labelled as such rather than sold as scope-aware
+  - [ ] **proof-gap audit for `sorry` and `oops`.** First dismissed as already covered by
+    PIDE; that is true for exactly half of it. `sorry` runs `Skip_Proof.report`, which
+    emits `Markup.markup (Markup.bad ()) "Skipped proof"`, and `Markup.BAD` survives
+    `Rendering.background_elements` through `VSCode_Rendering` (which subtracts only
+    `ENTITY` and the active elements) into `PIDE/decoration` as `background_bad` --
+    `src/pide_decorations.ts` already draws it. `oops` is
+    `Outer_Syntax.command ... (Scan.succeed Toplevel.forget_proof)` in `Pure.thy:1011`
+    and emits no report at all, so PIDE never mentions it
+  - a decoration is not an audit either way: it cannot be listed or counted, F8 does not
+    walk it, it exists only for open *and checked* files, and it says nothing before the
+    prover attaches -- which is when "does this project still have gaps" is worth asking
+  - their `src/audit/proofGapScanner.ts` is a lexical scan that skips comments, cartouches
+    and strings and publishes to Problems with no prover running. Ours can reuse the
+    nesting tracker `src/outline.ts` already has, so the scan itself is nearly free. Keep
+    the PIDE decoration as well: it is the authority on a `sorry` that actually *fired*,
+    including ones reached through `apply` scripts the lexer cannot see
+  - [ ] **per-platform packaging and releases.** They ship `.vsix` assets per platform
+    with a CI and release workflow; we have `npm run dev` and a checkout. The bundled-JRE
+    half does not apply to us -- we spawn `isabelle vscode_server`, which runs on
+    Isabelle's own JDK, so there is nothing to bundle. What is left is the `.vsix` build,
+    a version story, and installing without cloning
+  - the awkward part is ours alone: four panels answer only on a patched Isabelle, so a
+    release has to state which features a released distribution serves and which need a
+    mirror branch. GAPS.md has the recipe; a release needs the one-paragraph version
 - [x] symbols view: option to jump to category
   - category dropdown above the filter box; not visually confirmed yet
 - [ ] status bar widget
