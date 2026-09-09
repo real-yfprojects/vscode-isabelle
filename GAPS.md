@@ -159,6 +159,12 @@ Three things the protocol has to respect, none of them obvious from the dockable
 now blocked, which is precisely when a stale panel is worst. `Session`'s outlets are each
 separately typed, so this needs three consumers rather than one.
 
+Auto-update itself has to publish on *both* edges. It is server-owned state that reaches
+the client only inside the response, so refreshing just when it is switched on left the
+panel's checkbox reading "on" after the user turned it off -- the one piece of panel state
+a client cannot work out for itself, and so the one where a missing publish is invisible
+until something asserts on it.
+
 The client half ships behind `isabelle.simplifierTrace` (default off), like the Query
 panel, so a stock distribution does not show a view that can never fill.
 
@@ -234,6 +240,16 @@ What the suite establishes, against `HOL`:
 - a question arrives with the prover's own answers (`continue`, `continue_trace`,
   `continue_passive`, `continue_disable`, `skip`), and answering it advances the
   conversation to the next queued question rather than leaving the proof blocked;
+- `simplifier_trace_show` returns the assembled trace, which matters because it is built
+  by `generate_trace` from `Command.Results` rather than from the manager's context -- a
+  different server path than questions take, so it can break on its own;
+- auto-update round-trips in *both* directions, which is what caught the missing publish
+  on the disable edge;
+- `clear_memory` is accepted and republishes. This one is weaker than it looks: the
+  response is identical to what is already displayed, so the panel counts responses to
+  tell "accepted and refreshed" from "went nowhere". It does **not** verify that the
+  simplifier's memoised answers were discarded -- that needs a proof with repeated
+  equivalent rewrites and a re-run of the command;
 - `thy_deps` on `Main` decodes to 100 nodes and 140 edges, and moving the caret off the
   command clears it instead of leaving a stale graph looking current.
 
@@ -273,19 +289,32 @@ than a bespoke panel.
 They are **stacked, not independent**, which matters when picking one up:
 
 ```
-master
+master                                     (clean mirror of upstream Isabelle)
  +- vscode-query-panel                    (Query)
  +- vscode-requirements-build             (the -R build fix)
  +- vscode-theories-panel                 (Theories/Timing)
      merged: vscode-requirements-build
       +- vscode-simplifier-trace          (+ build progress, + Simplifier trace)
           +- vscode-graphview             (+ Graph view)
+
+main                                       (all of the above, merged; install from here)
 ```
 
-So `vscode-graphview` carries everything except the Query panel, and checking it out is
-the way to get all of it at once. Only `vscode-query-panel` is genuinely parallel. Anyone
-upstreaming these should expect to split them apart again; they were stacked because each
-was developed against the last, not because the features depend on each other.
+The feature branches exist to be proposed upstream one at a time, so they stay separate
+and each keeps its own history. They were stacked because each was developed against the
+last, not because the features depend on each other, so anyone upstreaming them should
+expect to split them apart again.
+
+`main` is the integration branch and the one to install from: `vscode-graphview` merged
+with `vscode-query-panel`, which is everything. It is deliberately *not* `master` --
+`master` stays a clean mirror of upstream so it can be pulled and the feature branches
+rebased onto it without dragging the merges along. Merging the two conflicted only in
+`language_server.scala`, in four places that are all purely additive (each panel's
+declaration, `init`, `exit` and message-dispatch case), so both sides are kept.
+
+Verified by building: Isabelle/Scala compiles from the merged tree and
+`lib/classes/isabelle.jar` carries `VSCode_Query`, `VSCode_Theories`,
+`VSCode_Simplifier_Trace`, `VSCode_Graphview` and `Language_Server` together.
 
 ### Reproducing the build
 

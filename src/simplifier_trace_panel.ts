@@ -33,6 +33,15 @@ export class SimplifierTracePanel implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined
   private state: TraceResponse | undefined
   private supported = false
+  /* Kept so the full trace can be asserted on. It arrives by a different server path
+     than the question does -- generate_trace re-assembles from Command.Results rather
+     than reading the manager's context -- so it can break on its own. */
+  private lastFull: TraceEntry[] | undefined
+  /* Counted because some server actions republish state that is identical to what is
+     already shown -- clear_memory is the clear case. Without a count there is no way to
+     tell "the server accepted the message and refreshed" from "the message went
+     nowhere". */
+  private responses = 0
 
   constructor(
     private readonly client: LanguageClient,
@@ -46,10 +55,14 @@ export class SimplifierTracePanel implements vscode.WebviewViewProvider {
       this.client.onNotification('PIDE/simplifier_trace_response', (p: TraceResponse) => {
         this.supported = true
         this.state = p
+        this.responses++
         this.render()
       }),
       this.client.onNotification('PIDE/simplifier_trace_full',
-        (p: { entries: TraceEntry[] }) => void this.showFullTrace(p.entries ?? [])),
+        (p: { entries: TraceEntry[] }) => {
+          this.lastFull = p.entries ?? []
+          void this.showFullTrace(this.lastFull)
+        }),
       vscode.commands.registerCommand('isabelle.simplifierTrace', async () => {
         await vscode.commands.executeCommand('isabelle-simplifier-trace.focus')
         this.request()
@@ -58,11 +71,20 @@ export class SimplifierTracePanel implements vscode.WebviewViewProvider {
          posts, so what suite30 drives is the shipped path and not a parallel one. */
       vscode.commands.registerCommand('isabelle.simplifierTraceReply',
         (serial: number, answer: string) => this.reply(serial, answer)),
+      vscode.commands.registerCommand('isabelle.simplifierTraceAutoUpdate',
+        (enabled: boolean) => this.setAutoUpdate(enabled)),
+      vscode.commands.registerCommand('isabelle.simplifierTraceClearMemory',
+        () => this.clearMemory()),
+      vscode.commands.registerCommand('isabelle.simplifierTraceShow',
+        () => this.showTrace()),
       vscode.commands.registerCommand('isabelle.simplifierTraceState', () => ({
         supported: this.supported,
+        autoUpdate: this.state?.auto_update,
         pending: this.state?.pending ?? 0,
         serial: this.state?.question?.serial,
         answers: this.state?.question?.answers.map(a => a.name) ?? [],
+        full: this.lastFull?.length,
+        responses: this.responses,
       })),
     )
     this.request()
@@ -73,6 +95,21 @@ export class SimplifierTracePanel implements vscode.WebviewViewProvider {
   private request(): void {
     void this.client.sendNotification('PIDE/simplifier_trace_request', {})
       .catch(err => this.log(`simplifier_trace_request failed: ${err}`))
+  }
+
+  private setAutoUpdate(enabled: boolean): void {
+    void this.client.sendNotification('PIDE/simplifier_trace_auto_update', { enabled })
+      .catch(err => this.log(`simplifier_trace_auto_update failed: ${err}`))
+  }
+
+  private clearMemory(): void {
+    void this.client.sendNotification('PIDE/simplifier_trace_clear_memory', {})
+      .catch(err => this.log(`simplifier_trace_clear_memory failed: ${err}`))
+  }
+
+  private showTrace(): void {
+    void this.client.sendNotification('PIDE/simplifier_trace_show', {})
+      .catch(err => this.log(`simplifier_trace_show failed: ${err}`))
   }
 
   private reply(serial: number, answer: string): void {
@@ -100,16 +137,9 @@ export class SimplifierTracePanel implements vscode.WebviewViewProvider {
           if (msg.serial !== undefined && msg.answer !== undefined) this.reply(msg.serial, msg.answer)
           break
         case 'update': this.request(); break
-        case 'autoUpdate':
-          void this.client.sendNotification('PIDE/simplifier_trace_auto_update',
-            { enabled: msg.enabled === true })
-          break
-        case 'clearMemory':
-          void this.client.sendNotification('PIDE/simplifier_trace_clear_memory', {})
-          break
-        case 'showTrace':
-          void this.client.sendNotification('PIDE/simplifier_trace_show', {})
-          break
+        case 'autoUpdate': this.setAutoUpdate(msg.enabled === true); break
+        case 'clearMemory': this.clearMemory(); break
+        case 'showTrace': this.showTrace(); break
       }
     })
     this.render()

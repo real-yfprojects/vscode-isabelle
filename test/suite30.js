@@ -113,6 +113,53 @@ async function run() {
   console.log(`  (question ${traceState.serial}, answers: ${traceState.answers.join(', ')})`)
   pass("a suspended simplifier reports a question with the prover's own answers")
 
+  /* --- the three messages the request/reply triangle does not touch ---------------
+     `show` re-assembles the trace from Command.Results by a different server path than
+     the question takes (generate_trace, not the manager's context), so it can be broken
+     while questions work perfectly. */
+  await vscode.commands.executeCommand('isabelle.simplifierTraceShow')
+  const full = await pollFor('the full trace to arrive',
+    async () => {
+      const s = await vscode.commands.executeCommand('isabelle.simplifierTraceState')
+      return s && s.full !== undefined ? s : undefined
+    }, 60000, describeTrace)
+  assert.ok(full.full > 0, `a traced proof should have trace entries, got ${full.full}`)
+  console.log(`  (full trace: ${full.full} entries)`)
+  pass('simplifier_trace_show returns the assembled trace, not just the question')
+
+  /* Auto-update is the one piece of state the client cannot infer: it lives on the
+     server and comes back only in the response. Both edges have to publish, or the
+     panel's checkbox silently disagrees with the server after being turned off. */
+  await vscode.commands.executeCommand('isabelle.simplifierTraceAutoUpdate', false)
+  const off = await pollFor('auto-update to report itself off',
+    async () => {
+      const s = await vscode.commands.executeCommand('isabelle.simplifierTraceState')
+      return s && s.autoUpdate === false ? s : undefined
+    }, 30000, describeTrace)
+  assert.strictEqual(off.autoUpdate, false)
+  await vscode.commands.executeCommand('isabelle.simplifierTraceAutoUpdate', true)
+  const on = await pollFor('auto-update to report itself on',
+    async () => {
+      const s = await vscode.commands.executeCommand('isabelle.simplifierTraceState')
+      return s && s.autoUpdate === true ? s : undefined
+    }, 30000, describeTrace)
+  assert.strictEqual(on.autoUpdate, true)
+  pass('auto-update round-trips in both directions')
+
+  /* clear_memory republishes state identical to what is already shown, so the only
+     observable is that a response came back at all -- hence the counter. This checks
+     the server accepted the message and refreshed; it does NOT verify that the
+     simplifier's memoised answers were actually discarded, which would need a proof
+     with repeated equivalent rewrites and a re-run of the command. */
+  const before = (await vscode.commands.executeCommand('isabelle.simplifierTraceState')).responses
+  await vscode.commands.executeCommand('isabelle.simplifierTraceClearMemory')
+  await pollFor('a response after clear_memory',
+    async () => {
+      const s = await vscode.commands.executeCommand('isabelle.simplifierTraceState')
+      return s && s.responses > before ? s : undefined
+    }, 30000, describeTrace)
+  pass('clear_memory is accepted and republishes')
+
   /* Answering is the half that a read-only panel would never exercise: the reply has to
      reach Simplifier_Trace's manager, quote a serial it recognises, and unblock the ML
      future. If it does not, the question simply stays put. */
