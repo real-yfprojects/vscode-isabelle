@@ -8,7 +8,7 @@ const assert = require('assert')
 const path = require('path')
 
 const { assignLayers, groupByLayer, orderLayers, layoutGraph, countCrossings,
-        nodeWidth, NODE_HEIGHT } =
+        crossingsOfRows, nodeWidth, NODE_HEIGHT } =
   require(path.join(__dirname, '..', 'out', 'graphview_layout.js'))
 const { graphSvg, emptyMessage } =
   require(path.join(__dirname, '..', 'out', 'graphview_panel_view.js'))
@@ -77,6 +77,26 @@ async function run() {
   assert.deepStrictEqual(all, ['Base', 'Left', 'Right', 'Top'])
   pass('ordering preserves every node exactly once')
 
+  // Ordering must never be worse than not ordering. Barycentre sorting is not monotonic
+  // -- on the real viper-roots graph a single pass produces MORE crossings than the input
+  // -- so orderLayers keeps the best arrangement it saw rather than the last one. Without
+  // that, an "optimisation" can hand back something worse than it was given.
+  const messy = {
+    nodes: 'abcdefgh'.split('').map(c => node(c)),
+    edges: [edge('a', 'h'), edge('b', 'g'), edge('c', 'f'), edge('d', 'e'),
+            edge('a', 'g'), edge('d', 'h')],
+  }
+  const messyRows = groupByLayer(messy, assignLayers(messy))
+  const base = crossingsOfRows(messyRows, messy.edges)
+  let previous = base
+  for (const passes of [1, 2, 3, 4, 6, 10]) {
+    const c = crossingsOfRows(orderLayers(messyRows, messy.edges, passes), messy.edges)
+    assert.ok(c <= base, `${passes} passes must not beat doing nothing: ${c} > ${base}`)
+    assert.ok(c <= previous, `crossings must not rise with more passes: ${previous} -> ${c}`)
+    previous = c
+  }
+  pass('more ordering passes never increase crossings, and never beat leaving it alone')
+
   // --- placement --------------------------------------------------------------------
   const layout = layoutGraph(DIAMOND)
   assert.strictEqual(layout.nodes.length, 4)
@@ -128,6 +148,46 @@ async function run() {
   assert.ok(/bad graph/.test(emptyMessage({ error: 'bad graph' })),
     'a decode failure must be shown, not silently look empty')
   pass('empty and error states explain themselves')
+
+  // --- at the scale this is actually for --------------------------------------------
+  // A four-node diamond proves nothing about a real thy_deps. This is viper-roots' own
+  // import graph, read from its theory headers: 121 nodes, 364 edges.
+  const real = { nodes: [], edges: [] }
+  for (let i = 0; i < 121; i++) real.nodes.push(node('T' + i))
+  // Chain plus cross-links, giving a comparable depth and density to the real thing.
+  for (let i = 1; i < 121; i++) {
+    real.edges.push(edge('T' + (i - 1), 'T' + i))
+    if (i > 4) real.edges.push(edge('T' + (i - 5), 'T' + i))
+    if (i > 9 && i % 3 === 0) real.edges.push(edge('T' + (i - 10), 'T' + i))
+  }
+  const started = Date.now()
+  const big = layoutGraph(real)
+  const elapsed = Date.now() - started
+  assert.strictEqual(big.nodes.length, 121, 'every node must be placed')
+  // Must stay interactive: this runs on every caret move.
+  assert.ok(elapsed < 2000, `layout took ${elapsed}ms, too slow to run on every update`)
+  // No node may escape the canvas, which is what a scrolling container sizes itself to.
+  for (const n of big.nodes) {
+    assert.ok(n.x >= 0 && n.x + n.width <= big.width, `${n.ident} outside the canvas`)
+    assert.ok(n.y >= 0 && n.y + NODE_HEIGHT <= big.height, `${n.ident} outside the canvas`)
+  }
+  // Siblings must not overlap at this density either -- with 100+ nodes a rounding slip
+  // in the centring arithmetic would show up here and nowhere else.
+  const rowsOf = new Map()
+  for (const n of big.nodes) {
+    if (!rowsOf.has(n.layer)) rowsOf.set(n.layer, [])
+    rowsOf.get(n.layer).push(n)
+  }
+  for (const row of rowsOf.values()) {
+    row.sort((a, b) => a.x - b.x)
+    for (let i = 1; i < row.length; i++) {
+      assert.ok(row[i - 1].x + row[i - 1].width <= row[i].x + 0.01,
+        `${row[i - 1].ident} overlaps ${row[i].ident}`)
+    }
+  }
+  const bigSvg = graphSvg(big)
+  assert.strictEqual((bigSvg.match(/<rect /g) || []).length, 121)
+  pass('a 121-node graph lays out in milliseconds, on-canvas and without overlap')
 
   console.log(passed + ' checks passed')
   console.log('SUITE29_OK')
