@@ -399,6 +399,22 @@
         {
           "command": "isabelle.gotoCommand",
           "when": "false"
+        },
+        {
+          "command": "isabelle.theoriesRefresh",
+          "when": "config.isabelle.theoriesPanel"
+        },
+        {
+          "command": "isabelle.findTheorems",
+          "when": "config.isabelle.queryPanel"
+        },
+        {
+          "command": "isabelle.simplifierTrace",
+          "when": "config.isabelle.simplifierTrace"
+        },
+        {
+          "command": "isabelle.graphview",
+          "when": "config.isabelle.graphview"
         }
       ]
     },

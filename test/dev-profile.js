@@ -66,9 +66,12 @@ function seed() {
 
   const settings = {
     'isabelle.home': home,
-    // The two views that need a patched server; harmless to leave on.
+    // The views that need a patched server; harmless to leave on. Without these the
+    // panels never register, and their palette commands report "command not found".
     'isabelle.theoriesPanel': true,
     'isabelle.queryPanel': true,
+    'isabelle.simplifierTrace': true,
+    'isabelle.graphview': true,
     // Keep every command that took at least a millisecond, so a small theory still
     // fills the Timing view.
     'isabelle.timingThreshold': 0,
