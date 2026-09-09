@@ -224,6 +224,25 @@ without changing who wants it. If Isabelle/ML development in VS Code ever become
 this is the entry point, and mapping `Debugger` onto DAP is the design to reach for rather
 than a bespoke panel.
 
+### How the mirror branches relate
+
+They are **stacked, not independent**, which matters when picking one up:
+
+```
+master
+ +- vscode-query-panel                    (Query)
+ +- vscode-requirements-build             (the -R build fix)
+ +- vscode-theories-panel                 (Theories/Timing)
+     merged: vscode-requirements-build
+      +- vscode-simplifier-trace          (+ build progress, + Simplifier trace)
+          +- vscode-graphview             (+ Graph view)
+```
+
+So `vscode-graphview` carries everything except the Query panel, and checking it out is
+the way to get all of it at once. Only `vscode-query-panel` is genuinely parallel. Anyone
+upstreaming these should expect to split them apart again; they were stacked because each
+was developed against the last, not because the features depend on each other.
+
 ### Reproducing the build
 
 There are two routes, and which one applies depends on whether the change backports.
