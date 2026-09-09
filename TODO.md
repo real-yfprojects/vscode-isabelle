@@ -130,17 +130,45 @@ This documents tracks features and tasks that might already be tracked in other 
     through to `sledgehammer_prover_minimize.ML`. That is also why *they* get it for free
     -- the Headless backend never goes through the query operation
     (`backend/.../SledgehammerWithPideHandler.scala`)
-  - [ ] **an offline tier.** Their strongest product decision: highlighting, outline,
-    folding, hovers, method completion and symbol entry all work with no Isabelle and no
-    Java installed. We are closer than it looks -- the generated grammar and
-    `src/outline.ts` are already prover-independent, and `src/symbols.ts` needs only
-    `etc/symbols`. What is missing is that everything else waits on the server, and there
-    is no behaviour at all for "no distribution found". Concretely: proof-method
-    completion after `apply`/`by`/`proof`, hovers for outer-syntax commands and for
-    symbols, folding without PIDE. The hard part is the gate -- their
-    `src/semantic/proofMethods.ts` stays out of term and argument position
-    - subsumes the `find references` sub-item above: theirs is a name-based scan over
-      the workspace's `.thy` files, labelled as such rather than sold as scope-aware
+  - [ ] **syntactic LSP capabilities before the session is up** -- first filed as "copy
+    their offline tier", which conflated two different things. *Zero-install* (no Isabelle
+    on the machine) can never be served by the server, since `isabelle vscode_server` is a
+    tool of the distribution; that residue is small and probably not worth building at all.
+    *Prover not up yet* is the one that bites, and it belongs in the server, not in
+    TypeScript
+  - today there is nothing at all in that window. `language_server.scala:219` is
+    `def session = session_.value getOrElse error("Server inactive")` and every document
+    handler goes through `resources`, so all of them error until the session exists -- and
+    the heap build runs *inside* `init`, which does not reply until it finishes (our own
+    comment at `language_server.scala:371`). A cold session is tens of minutes with no LSP
+    surface whatsoever. Same bug as the startup item at the bottom of this file, seen from
+    the server side
+  - `ServerCapabilities` (`lsp.scala:157`) advertises six things: sync, completion, hover,
+    definition, documentHighlight, codeAction. No `documentSymbolProvider`,
+    `foldingRangeProvider` or `selectionRangeProvider`. Its `completionProvider` trigger
+    characters are already built from `Symbol.symbols` at initialize time, so serving from
+    static distribution data is established precedent in that same object
+  - **`src/outline.ts` reimplements code Isabelle already ships.**
+    `Document_Structure.parse_sections(syntax, node_name, text)` takes raw text and returns
+    a block tree, building `Command(Document_ID.none, ...)` from `syntax.parse_spans` --
+    no snapshot, no session, no ML process -- and `Thy_Header.bootstrap_syntax` supplies an
+    `Outer_Syntax` with nothing loaded. Its only consumer in the tree is
+    `src/Tools/jEdit/jedit_main/isabelle_sidekick.scala`. Arthur742Ramos hit the same wall,
+    called `documentSymbol` "upstream-blocked in Isabelle 2025-2", and also rewrote it in
+    TypeScript -- two clients reimplementing one shipped Scala function is the tell
+  - so the shape is a **`vscode-syntactic` mirror branch**, like the other four: reply to
+    `initialize` at once with the three syntactic capabilities, move the heap build off the
+    initialize path into a background task still reporting via `build_started`, serve
+    outline/folding/selection from `Document_Structure` on `bootstrap_syntax` and upgrade to
+    the session's `overall_syntax` when the base loads, and leave PIDE-dependent handlers
+    erroring while inactive. That **deletes** `src/outline.ts` rather than extending it, and
+    the outline then comes from Isabelle's own lexer instead of from our scanner happening
+    to agree with `token.scala`
+  - what stays client-side is only the generated TextMate grammar and symbol input from
+    `etc/symbols`, both of which already work
+  - the `find references` sub-item above is *not* subsumed by this: theirs is a name-based
+    workspace scan, honest about not being scope-aware, and the server has no
+    `referencesProvider` either -- worth folding into the same branch as a fourth capability
   - [ ] **proof-gap audit for `sorry` and `oops`.** First dismissed as already covered by
     PIDE; that is true for exactly half of it. `sorry` runs `Skip_Proof.report`, which
     emits `Markup.markup (Markup.bad ()) "Skipped proof"`, and `Markup.BAD` survives
