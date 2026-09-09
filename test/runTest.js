@@ -48,8 +48,20 @@ function repairExecutable(exe) {
   return undefined
 }
 
-/** The editor to drive: an installed one, else the downloaded one. */
+/** The editor to drive: a pre-resolved one, else an installed one, else a download. */
 async function resolveVSCode() {
+  /* Set by CI, which fetches the editor once before anything runs in parallel. Without
+     it every concurrent suite calls downloadAndUnzipVSCode against the same .vscode-test
+     directory; they mostly no-op on a warm cache, but the macOS job still managed to
+     spawn a path that had just been reported as downloaded and get ENOENT. Handing the
+     path in means no suite ever touches that directory. */
+  const provided = process.env.VSCODE_TEST_EXECUTABLE?.trim()
+  if (provided) {
+    if (fs.existsSync(provided)) return provided
+    const repaired = repairExecutable(provided)
+    if (repaired) return repaired
+    throw new Error(`VSCODE_TEST_EXECUTABLE is set to ${provided}, which does not exist`)
+  }
   const installed = installedVSCode()
   if (installed) return installed
   const exe = await downloadAndUnzipVSCode()

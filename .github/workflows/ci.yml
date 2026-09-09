@@ -173,7 +173,12 @@ jobs:
       # That is what hung the macOS job for 28 minutes -- its cleanup reported an orphan
       # `unzip` still running.
       - name: Pre-download the test editor
-        run: node -e "require('@vscode/test-electron').downloadAndUnzipVSCode().then(p => console.log(p))"
+        run: |
+          set -eu
+          exe=$(node -e "require('@vscode/test-electron').downloadAndUnzipVSCode().then(p => console.log(p))" | tail -1)
+          # Handed to runTest.js, which repairs it if the library's guess is wrong.
+          echo "VSCODE_TEST_EXECUTABLE=$exe" >> "$GITHUB_ENV"
+          echo "editor: $exe"
 
       - name: Integration suites
         env:
