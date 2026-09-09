@@ -13,9 +13,18 @@ import { Executable } from 'vscode-languageclient/node'
 
 export class IsabelleNotFound extends Error {}
 
-/** Windows path -> the /cygdrive/... form Isabelle's bundled Cygwin expects. */
+/** Windows path -> the /cygdrive/... form Isabelle's bundled Cygwin expects.
+ *
+ * path.win32.resolve, not path.resolve. The host's resolver is the Windows one only when
+ * the host is Windows, so on Linux `path.resolve("C:\\x")` yields "<cwd>/C:\x" -- no drive
+ * letter at position 0, the regex below misses, and the result is a mangled path rather
+ * than a Cygwin one. Production never saw it, because serverPath only calls this when the
+ * target platform is win32 and that is the host too; but the platform argument exists so
+ * the launch can be checked from any host, and this function quietly did not support that.
+ * CI on Linux is what surfaced it.
+ */
 export function toCygwinPath(p: string): string {
-  const win = path.resolve(p)
+  const win = path.win32.resolve(p)
   const m = /^([A-Za-z]):[\\/](.*)$/.exec(win)
   if (!m) return win.replace(/\\/g, '/')
   return `/cygdrive/${m[1].toLowerCase()}/${m[2].replace(/\\/g, '/')}`

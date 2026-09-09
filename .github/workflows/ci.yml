@@ -107,7 +107,9 @@ jobs:
       # extension itself looks for (isDistribution), so this locates the same thing.
       - name: Locate the distribution
         run: |
-          set -euo pipefail
+          # No pipefail: `find | head -1` makes find die of SIGPIPE once head
+          # has its line, and pipefail would report that as a failed step.
+          set -eu
           home=$(dirname "$(dirname "$(find ~/isabelle-dist -path '*/bin/isabelle' | head -1)")")
           if [ -z "$home" ] || [ ! -f "$home/etc/symbols" ]; then
             echo "no Isabelle distribution under ~/isabelle-dist"; find ~/isabelle-dist -maxdepth 2; exit 1
@@ -126,18 +128,31 @@ jobs:
       # from the Java launcher -- and this extension starts the server by calling
       # contrib/cygwin/bin/bash.exe directly, which bypasses it. A user never notices,
       # because the installer already initialized the copy on disk. Here nothing has, so
-      # do it explicitly: any setup-jar operation triggers Environment.init, and
-      # `classpath` is the harmless headless one. It is a no-op once the marker is gone.
+      # call it explicitly. It is a no-op once the marker is gone.
       - name: Initialize Cygwin
         if: runner.os == 'Windows'
         run: |
-          set -euo pipefail
+          set -eu
           java=$(find "$ISABELLE_POSIX/contrib" -path '*x86_64-windows/bin/java.exe' | head -1)
           jar=$(find "$ISABELLE_POSIX/contrib" -name isabelle_setup.jar | head -1)
           [ -n "$java" ] && [ -n "$jar" ] || { echo "bundled JDK or setup jar missing"; exit 1; }
-          "$java" -Disabelle.root="$ISABELLE_HOME" \
-                  -Dcygwin.root="$ISABELLE_HOME\\contrib\\cygwin" \
-                  -cp "$(cygpath -w "$jar")" isabelle.setup.Setup classpath > /dev/null
+          # Call Environment.cygwin_init directly, through Java's single-file source mode.
+          # Going via `Setup classpath` instead reaches it only as a side effect of
+          # Environment.init and then dies in Build.classpath with
+          # NoClassDefFoundError: dotty/tools/dotc/interfaces/SimpleReporter -- every
+          # Setup operation needs the Scala compiler, which the setup jar alone does not
+          # carry. Depending on a command that happens to do the useful work before
+          # crashing is not a fixture worth having.
+          src="$RUNNER_TEMP/CygwinInit.java"
+          cat > "$src" <<'JAVA'
+          public class CygwinInit {
+              public static void main(String[] args) throws Exception {
+                  isabelle.setup.Environment.cygwin_init(args[0], args[1]);
+              }
+          }
+          JAVA
+          "$java" -cp "$(cygpath -w "$jar")" "$(cygpath -w "$src")" \
+                  "$ISABELLE_HOME" "$ISABELLE_HOME\\contrib\\cygwin"
           echo "Cygwin initialized"
 
       # The release ships prebuilt Pure and HOL images, which is what makes this job
@@ -146,12 +161,20 @@ jobs:
       # take vastly longer, so fail loudly here instead.
       - name: Check the prebuilt heaps are there
         run: |
-          set -euo pipefail
+          set -eu
           ls -la "$ISABELLE_POSIX/heaps/"*/ || { echo "no prebuilt heap images"; exit 1; }
 
       # Two at a time: a suite is a whole VS Code plus a JVM and a Poly/ML process, and
       # these runners have far fewer cores than the machine the default was chosen on.
       # Oversubscribing turns the suites' timeouts into coin flips.
+      # Fetch the editor once, before anything runs in parallel. runAll starts two suites
+      # at a time and each calls runTests, which downloads VS Code into .vscode-test on
+      # first use; two concurrent first-time downloads into one cache directory deadlock.
+      # That is what hung the macOS job for 28 minutes -- its cleanup reported an orphan
+      # `unzip` still running.
+      - name: Pre-download the test editor
+        run: node -e "require('@vscode/test-electron').downloadAndUnzipVSCode().then(p => console.log(p))"
+
       - name: Integration suites
         env:
           ISABELLE_TEST_JOBS: 2

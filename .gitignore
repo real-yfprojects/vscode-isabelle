@@ -18,3 +18,9 @@ test/results.json
 
 # Build artifact from "npm run package".
 *.vsix
+
+# suite30 writes isabelle.home and the panel flags here via ConfigurationTarget.Workspace.
+# Run through runAll they land in a per-suite copy, but run directly they land here -- and
+# a committed one pins every machine to the author's absolute path. CI read
+# "C:/Users/.../Isabelle2025-2-query" on a Linux runner and failed every prover suite.
+test/workspace/.vscode/

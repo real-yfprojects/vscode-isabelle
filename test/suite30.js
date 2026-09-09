@@ -43,7 +43,26 @@ async function pollFor(what, predicate, timeoutMs, describe = undefined, interva
     `timed out after ${timeoutMs}ms waiting for ${what}; last state: ${JSON.stringify(seen)}`)
 }
 
+/* Settings this suite writes into the workspace, so they can be taken back out again.
+   ConfigurationTarget.Workspace means .vscode/settings.json in the *workspace folder*.
+   Under runAll that is a per-suite temp copy and nobody notices, but run directly it is
+   test/workspace -- and a committed one pins every other machine to this machine's
+   absolute isabelle.home. That is not hypothetical: CI read
+   "C:/Users/.../Isabelle2025-2-query" on a Linux runner and every prover suite failed. */
+const WRITTEN_SETTINGS = ['home', 'simplifierTrace', 'graphview', 'autoStart']
+
 async function run() {
+  try { await drive() }
+  finally {
+    const cfg = vscode.workspace.getConfiguration('isabelle')
+    for (const key of WRITTEN_SETTINGS) {
+      try { await cfg.update(key, undefined, vscode.ConfigurationTarget.Workspace) }
+      catch { /* leaving one behind must not mask the real failure */ }
+    }
+  }
+}
+
+async function drive() {
   const home = process.env.ISABELLE_PATCHED_HOME
   if (!home) {
     console.log('SKIP: ISABELLE_PATCHED_HOME is not set; no patched Isabelle to drive')
