@@ -94,9 +94,9 @@ the remaining work small rather than deep:
 | Info | shows tooltip content in a dockable | **nothing: VS Code hovers already do this**, and unlike jEdit they need no dedicated panel |
 | Monitor | ML statistics plus `session.protocol_command("ML_Heap.full_gc")` | **declined** -- see below |
 | Debugger | breakpoints and frame evaluation for Isabelle/ML | **declined** -- see below |
-| Simplifier trace | an interactive question/answer protocol, not a data feed | **done** -- `vscode-simplifier-trace` branch; see below |
+| Simplifier trace | an interactive question/answer protocol, not a data feed | **done** -- `vscode-simplifier-trace` branch, verified live; see below |
 | Raw output, Protocol | `session.raw_output_messages`, `session.all_messages` | messages, but these debug Isabelle itself; `isabelle vscode_server -L FILE -v` already logs the protocol |
-| Graphview | a Swing graph renderer over `Graph_Display` | **done** -- `vscode-graphview` branch; see below |
+| Graphview | a Swing graph renderer over `Graph_Display` | **done** -- `vscode-graphview` branch, verified live; see below |
 
 Query is the one worth having, and the cheapest: `Query_Dockable` builds
 `new Query_Operation(PIDE.editor, view, "find_theorems", ...)` while `VSCode_Sledgehammer`
@@ -162,6 +162,13 @@ separately typed, so this needs three consumers rather than one.
 The client half ships behind `isabelle.simplifierTrace` (default off), like the Query
 panel, so a stock distribution does not show a view that can never fill.
 
+Two things about the attribute are load-bearing and neither is visible from the dockable.
+`interactive` is a *separate* flag defaulting to false, so `mode=full` alone downgrades
+every step to `simp_trace_log` and the panel waits forever on a trace that only logs; the
+form that works is `declare [[simp_trace_new interactive mode=full]]`. And a traced proof
+genuinely suspends, so no command after it in the same theory is ever processed -- which
+is why suite30's fixture keeps the traced lemma last and puts `thy_deps` in its own file.
+
 ### Graph view
 
 Draws what `thy_deps`, `class_deps`, `locale_deps`, `thm_deps` and `code_deps` produce.
@@ -196,6 +203,43 @@ rather than recursing forever.
 
 Drawn as inline SVG in theme colours. Node names are text out of a theory, so they are
 escaped rather than interpolated.
+
+**The graph element is wrapped.** `Graph_Display.display_graph` emits through
+`YXML.output_markup_elem`, which builds an `XML.wrap_elem`, so the tree is
+
+```
+XML.Elem(Markup("xml_elem", ("xml_name", "graphview") :: props),
+  XML.Elem(Markup("xml_body", Nil), <encoded graph>) :: <visible text>)
+```
+
+Its own markup name is `xml_elem`, never `graphview`. Searching results for the
+`GRAPHVIEW` name alone therefore matches nothing and descends into the visible text
+instead of the graph -- an empty panel beside an Output pane that plainly says "See
+graph". jEdit never meets this because its `Active.Handler` receives an element the
+rendering layer has already resolved, so its pattern is not the shape raw command results
+have. Match `XML.Wrapped_Elem` first.
+
+### Verified against a live prover
+
+Both panels are driven end to end by `test/suite30.js`, which skips unless
+`ISABELLE_PATCHED_HOME` points at a build carrying the components. Everything else
+covering them is a unit test over a fixture, and a fixture cannot answer the only
+question a protocol has: does the server send what the client expects to receive? Both
+of these were written from the jEdit dockables and the Isabelle sources, which is exactly
+the kind of reading that is convincing and wrong -- the wrapped-element bug above
+survived every unit test and every re-reading of the source.
+
+What the suite establishes, against `HOL`:
+
+- a question arrives with the prover's own answers (`continue`, `continue_trace`,
+  `continue_passive`, `continue_disable`, `skip`), and answering it advances the
+  conversation to the next queued question rather than leaving the proof blocked;
+- `thy_deps` on `Main` decodes to 100 nodes and 140 edges, and moving the caret off the
+  command clears it instead of leaving a stale graph looking current.
+
+The suite has to wait for a *question*, not merely for a response: the server answers a
+request immediately, long before the theory has been elaborated, so a poll that accepts
+the first response passes while proving nothing.
 
 ### Two dockables deliberately not implemented
 
