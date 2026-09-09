@@ -249,6 +249,8 @@ This documents tracks features and tasks that might already be tracked in other 
 - [ ] code formatting / prettier extension
 - [ ] search in isabelle output panel (e.g. for print_classes)
 - [ ] extension user docs s.t. copilot can help you
+- [ ] some issue where files in the cache are reported as "Changed sources for loaded theory" and totally red.
+- [ ] proper auto indent
 
 ### To be decided
 
