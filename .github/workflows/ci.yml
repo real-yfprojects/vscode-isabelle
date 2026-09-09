@@ -1,15 +1,16 @@
 # CI for the stock-VS-Code Isabelle client.
 #
-# What this proves and what it does not. There is no Isabelle distribution on these
-# runners, so nothing here starts a prover: the integration suites, which spawn an editor
-# and talk to vscode_server, cannot run. What CI covers is that the tree compiles and that
-# the platform-conditional logic behaves off Windows -- notably serverPath, whose Cygwin
-# conversion is the one place a path crosses into Isabelle's own notation, and which broke
-# startup once already by not being applied.
+# Three jobs, covering three different things:
 #
-# The macOS and Linux jobs are therefore the first exercise this code gets outside
-# Windows. Treat a green run as "the non-Windows code paths are consistent", not as
-# "the non-Windows launch path works".
+#   build        the tree compiles and the pure suites pass, on all three platforms
+#   integration  a real prover starts and the integration suites pass, on Linux and macOS
+#   package      the .vsix builds
+#
+# The integration job is the one that matters for platform confidence. Before it existed,
+# no prover had ever been launched anywhere but the author's Windows machine, so `build`
+# green meant only "the non-Windows code paths are consistent" -- it could not catch a
+# launch that fails on Linux, which is exactly where serverPath's Cygwin conversion must
+# *not* apply.
 
 name: CI
 
@@ -18,6 +19,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+
+env:
+  # One place to bump the distribution. The cache key derives from it, so a change here
+  # invalidates the cache rather than silently testing against the old version.
+  ISABELLE_VERSION: Isabelle2025-2
 
 jobs:
   build:
@@ -34,9 +40,87 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run compile
-      # Pure suites only: these need no editor and no prover, so they are the part of the
-      # harness that means the same thing on every platform.
+      # Pure suites: no editor, no prover, so they mean the same thing everywhere.
       - run: npm run test:unit
+
+  integration:
+    # Windows is absent on purpose: it is the platform this is developed on, so it is the
+    # one place the suites already run before anything is pushed. Add it here if that ever
+    # stops being true.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            bundle: linux.tar.gz
+          - os: macos-latest
+            bundle: macos.tar.gz
+    runs-on: ${{ matrix.os }}
+    # A cold download plus the prover suites. Generous, because the failure this job
+    # exists to catch looks like a hang.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run compile
+
+      # ~2 GB unpacked. Worth caching both to keep the job quick and to avoid pulling a
+      # multi-gigabyte bundle off a university server on every push.
+      - name: Cache the Isabelle distribution
+        id: isabelle-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/isabelle-dist
+          key: isabelle-${{ matrix.os }}-${{ env.ISABELLE_VERSION }}
+
+      - name: Download Isabelle
+        if: steps.isabelle-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/isabelle-dist
+          curl -fL --retry 3 --retry-delay 10 \
+            "https://isabelle.in.tum.de/dist/${ISABELLE_VERSION}_${{ matrix.bundle }}" \
+            -o /tmp/isabelle.tar.gz
+          tar -xzf /tmp/isabelle.tar.gz -C ~/isabelle-dist
+          rm /tmp/isabelle.tar.gz
+
+      # Found rather than hardcoded: the Linux bundle unpacks to a plain directory and the
+      # macOS one to an .app with the distribution nested inside it, and neither layout is
+      # promised to stay put across releases. bin/isabelle plus etc/symbols is what the
+      # extension itself looks for (isDistribution), so this locates the same thing.
+      - name: Locate the distribution
+        run: |
+          home=$(dirname "$(dirname "$(find ~/isabelle-dist -path '*/bin/isabelle' | head -1)")")
+          if [ -z "$home" ] || [ ! -f "$home/etc/symbols" ]; then
+            echo "no Isabelle distribution under ~/isabelle-dist"; find ~/isabelle-dist -maxdepth 2; exit 1
+          fi
+          echo "ISABELLE_HOME=$home" >> "$GITHUB_ENV"
+
+      # The release ships prebuilt Pure and HOL images, which is what makes this job
+      # affordable: building HOL from source would cost half an hour before the first
+      # assertion. If a future bundle stops shipping them the suites would still pass but
+      # take vastly longer, so fail loudly here instead.
+      - name: Check the prebuilt heaps are there
+        run: |
+          "$ISABELLE_HOME/bin/isabelle" version
+          ls -la "$ISABELLE_HOME/heaps/"*/ || { echo "no prebuilt heap images"; exit 1; }
+
+      # Two at a time: a suite is a whole VS Code plus a JVM and a Poly/ML process, and
+      # these runners have far fewer cores than the machine the default was chosen on.
+      # Oversubscribing turns the suites' timeouts into coin flips.
+      - name: Integration suites
+        env:
+          ISABELLE_TEST_JOBS: 2
+        run: |
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            sudo apt-get update && sudo apt-get install -y xvfb
+            xvfb-run -a node test/runAll.js
+          else
+            node test/runAll.js
+          fi
 
   package:
     runs-on: ubuntu-latest

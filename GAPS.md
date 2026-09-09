@@ -800,8 +800,11 @@ Verified by running it:
 Not verified:
 
 - **Linux and macOS.** Only the Windows/Cygwin launch path has actually started a prover.
-  CI compiles the tree and runs the pure suites on both, which covers the platform
-  branches in `serverPath` but not a real launch
+  There is now a CI `integration` job that downloads a release and runs the full
+  regression on Linux and macOS -- affordable because the release ships prebuilt Pure and
+  HOL images, so nothing has to build a heap before the first assertion. It has not had a
+  green run yet, so until it does, treat the non-Windows launch path as untested rather
+  than as covered
 - ~~the merged `-R` fix, by compilation~~ -- **now verified**: Isabelle/Scala builds from
   the mirror tree with zero errors and `lib/classes/isabelle.jar` carries
   `Language_Server`, `LSP` and `VSCode_Theories`. See "Compiling the mirror tree itself"

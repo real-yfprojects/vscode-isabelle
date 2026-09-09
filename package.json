@@ -471,7 +471,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "dev": "node ./test/dev.js",
-    "test:unit": "node ./test/suite25.js",
+    "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29",
     "test": "node ./test/runTest.js",
     "package": "vsce package --out isabelle-pide-stock.vsix"
   },
