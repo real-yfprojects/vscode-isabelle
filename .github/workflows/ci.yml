@@ -3,7 +3,7 @@
 # Three jobs, covering three different things:
 #
 #   build        the tree compiles and the pure suites pass, on all three platforms
-#   integration  a real prover starts and the integration suites pass, on Linux and macOS
+#   integration  a real prover starts and the regression passes, on all three platforms
 #   package      the .vsix builds
 #
 # The integration job is the one that matters for platform confidence. Before it existed,
@@ -21,9 +21,15 @@ on:
   workflow_dispatch:
 
 env:
-  # One place to bump the distribution. The cache key derives from it, so a change here
-  # invalidates the cache rather than silently testing against the old version.
-  ISABELLE_VERSION: Isabelle2025-2
+  # The version itself lives in the matrix bundle names below -- the env context is not
+  # available in strategy.matrix, so it cannot be factored out to here.
+  #
+  # NOT https://isabelle.in.tum.de/dist. That host answers every bundle with a 301 to
+  # *http* on this one, and curl will not follow an https->http downgrade -- it writes the
+  # 372-byte redirect body and then stalls, which is what the first run of this job did.
+  # Permitting the downgrade does not help either: plain http on that host does not serve.
+  # https straight to the redirect target does, so go there directly.
+  ISABELLE_DIST: https://dist.isabelle.cit.tum.de/dist
 
 jobs:
   build:
@@ -44,21 +50,24 @@ jobs:
       - run: npm run test:unit
 
   integration:
-    # Windows is absent on purpose: it is the platform this is developed on, so it is the
-    # one place the suites already run before anything is pushed. Add it here if that ever
-    # stops being true.
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
-            bundle: linux.tar.gz
+            bundle: Isabelle2025-2_linux.tar.gz
           - os: macos-latest
-            bundle: macos.tar.gz
+            bundle: Isabelle2025-2_macos.tar.gz
+          - os: windows-latest
+            bundle: Isabelle2025-2.exe
     runs-on: ${{ matrix.os }}
-    # A cold download plus the prover suites. Generous, because the failure this job
-    # exists to catch looks like a hang.
-    timeout-minutes: 60
+    # The bundles are 1.0-1.6 GB and the prover suites are not quick. Generous, because
+    # the failure this job exists to catch looks like a hang.
+    timeout-minutes: 90
+    defaults:
+      run:
+        # Git Bash on Windows, so find/curl/cygpath work the same way everywhere.
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -69,35 +78,67 @@ jobs:
       - run: npm run compile
 
       # ~2 GB unpacked. Worth caching both to keep the job quick and to avoid pulling a
-      # multi-gigabyte bundle off a university server on every push.
+      # gigabyte off a university server on every push.
       - name: Cache the Isabelle distribution
         id: isabelle-cache
         uses: actions/cache@v4
         with:
           path: ~/isabelle-dist
-          key: isabelle-${{ matrix.os }}-${{ env.ISABELLE_VERSION }}
+          key: isabelle-${{ matrix.os }}-${{ matrix.bundle }}
 
-      - name: Download Isabelle
+      - name: Download and unpack Isabelle
         if: steps.isabelle-cache.outputs.cache-hit != 'true'
         run: |
+          set -euo pipefail
           mkdir -p ~/isabelle-dist
-          curl -fL --retry 3 --retry-delay 10 \
-            "https://isabelle.in.tum.de/dist/${ISABELLE_VERSION}_${{ matrix.bundle }}" \
-            -o /tmp/isabelle.tar.gz
-          tar -xzf /tmp/isabelle.tar.gz -C ~/isabelle-dist
-          rm /tmp/isabelle.tar.gz
+          curl -fL --retry 3 --retry-delay 10 --connect-timeout 30 \
+            "$ISABELLE_DIST/${{ matrix.bundle }}?token=Isabelle" -o /tmp/isabelle-bundle
+          case "${{ matrix.bundle }}" in
+            # The Windows bundle is a self-extracting 7z, so 7z unpacks it without running
+            # it. 7-Zip is preinstalled on the runner.
+            *.exe) 7z x -y -o"$HOME/isabelle-dist" /tmp/isabelle-bundle > /dev/null ;;
+            *)     tar -xzf /tmp/isabelle-bundle -C ~/isabelle-dist ;;
+          esac
+          rm /tmp/isabelle-bundle
 
-      # Found rather than hardcoded: the Linux bundle unpacks to a plain directory and the
-      # macOS one to an .app with the distribution nested inside it, and neither layout is
-      # promised to stay put across releases. bin/isabelle plus etc/symbols is what the
+      # Found rather than hardcoded: the Linux bundle unpacks to a plain directory, the
+      # macOS one to an .app with the distribution nested inside, and the Windows one to
+      # whatever the archive happens to hold. bin/isabelle beside etc/symbols is what the
       # extension itself looks for (isDistribution), so this locates the same thing.
       - name: Locate the distribution
         run: |
+          set -euo pipefail
           home=$(dirname "$(dirname "$(find ~/isabelle-dist -path '*/bin/isabelle' | head -1)")")
           if [ -z "$home" ] || [ ! -f "$home/etc/symbols" ]; then
             echo "no Isabelle distribution under ~/isabelle-dist"; find ~/isabelle-dist -maxdepth 2; exit 1
           fi
-          echo "ISABELLE_HOME=$home" >> "$GITHUB_ENV"
+          echo "ISABELLE_POSIX=$home" >> "$GITHUB_ENV"
+          # The extension is a Node app and wants a native path.
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            echo "ISABELLE_HOME=$(cygpath -w "$home")" >> "$GITHUB_ENV"
+          else
+            echo "ISABELLE_HOME=$home" >> "$GITHUB_ENV"
+          fi
+
+      # A released Windows bundle ships Cygwin uninitialized: symlinks are stripped into
+      # contrib/cygwin/isabelle/symlinks and a marker file `uninitialized` is left behind.
+      # Environment.cygwin_init restores them and runs rebaseall + postinstall, but it runs
+      # from the Java launcher -- and this extension starts the server by calling
+      # contrib/cygwin/bin/bash.exe directly, which bypasses it. A user never notices,
+      # because the installer already initialized the copy on disk. Here nothing has, so
+      # do it explicitly: any setup-jar operation triggers Environment.init, and
+      # `classpath` is the harmless headless one. It is a no-op once the marker is gone.
+      - name: Initialize Cygwin
+        if: runner.os == 'Windows'
+        run: |
+          set -euo pipefail
+          java=$(find "$ISABELLE_POSIX/contrib" -path '*x86_64-windows/bin/java.exe' | head -1)
+          jar=$(find "$ISABELLE_POSIX/contrib" -name isabelle_setup.jar | head -1)
+          [ -n "$java" ] && [ -n "$jar" ] || { echo "bundled JDK or setup jar missing"; exit 1; }
+          "$java" -Disabelle.root="$ISABELLE_HOME" \
+                  -Dcygwin.root="$ISABELLE_HOME\\contrib\\cygwin" \
+                  -cp "$(cygpath -w "$jar")" isabelle.setup.Setup classpath > /dev/null
+          echo "Cygwin initialized"
 
       # The release ships prebuilt Pure and HOL images, which is what makes this job
       # affordable: building HOL from source would cost half an hour before the first
@@ -105,8 +146,8 @@ jobs:
       # take vastly longer, so fail loudly here instead.
       - name: Check the prebuilt heaps are there
         run: |
-          "$ISABELLE_HOME/bin/isabelle" version
-          ls -la "$ISABELLE_HOME/heaps/"*/ || { echo "no prebuilt heap images"; exit 1; }
+          set -euo pipefail
+          ls -la "$ISABELLE_POSIX/heaps/"*/ || { echo "no prebuilt heap images"; exit 1; }
 
       # Two at a time: a suite is a whole VS Code plus a JVM and a Poly/ML process, and
       # these runners have far fewer cores than the machine the default was chosen on.
