@@ -1,6 +1,8 @@
+import * as cp from 'child_process'
 import * as vscode from 'vscode'
-import { CloseAction, ErrorAction, ErrorHandler, LanguageClient, LanguageClientOptions, State }
-  from 'vscode-languageclient/node'
+import { CloseAction, ErrorAction, ErrorHandler, LanguageClient, LanguageClientOptions,
+  ServerOptions, State } from 'vscode-languageclient/node'
+import { isRunning, killTree } from './process_tree'
 import { buildServerOptions, findIsabelleHome, IsabelleNotFound } from './isabelle'
 import { SymbolTable } from './symbols'
 import { SymbolRenderer } from './decorations'
@@ -36,6 +38,12 @@ let lastError: string | undefined
 /* Panels and PIDE decorations subscribe to a specific LanguageClient, so their
    registrations live and die with it rather than with the extension. */
 let clientScope: vscode.Disposable[] = []
+/* The server process, held here because the language client will not hand it back: with
+   the function form of ServerOptions it never records the child at all, and even the
+   Executable form only ever kills the process it spawned, which is the outer Cygwin bash
+   rather than the JVM below it. See process_tree.ts. */
+let serverProcess: cp.ChildProcess | undefined
+let serverOwnsGroup = false
 let pide: PideDecorations | undefined
 let statePanel: StatePanel | undefined
 let outputPanel: OutputPanel | undefined
@@ -85,6 +93,15 @@ function logicLabel(): string {
   return cfg.get<boolean>('logicRequirements') ? `${logic} (requirements)` : logic
 }
 
+/**
+ * How long the prover gets to stop on its own before the tree is killed.
+ *
+ * The client's own default is 2s, which is short for a session that has to bring down a
+ * Poly/ML process. Overrunning this is not a disaster -- an interactive session writes no
+ * build results, so there is nothing half-written to lose -- but it is worth waiting for.
+ */
+const SHUTDOWN_TIMEOUT_MS = 5000
+
 async function startClient(): Promise<void> {
   lastError = undefined
   // Re-resolve on every start rather than reusing the value cached at activation:
@@ -96,8 +113,42 @@ async function startClient(): Promise<void> {
     isabelleHome = home
     table = SymbolTable.load(home)
   }
-  const serverOptions = buildServerOptions(home)
-  log(`Launching: ${serverOptions.command} ${(serverOptions.args ?? []).join(' ')}`)
+  const executable = buildServerOptions(home)
+  log(`Launching: ${executable.command} ${(executable.args ?? []).join(' ')}`)
+
+  /* Spawn the server ourselves rather than handing the client an Executable, for the one
+     reason that we need its pid: the process to kill is a tree, and neither the client's
+     `checkProcessDied` nor closing the pipe brings the prover down (process_tree.ts).
+     Everything else the Executable form does -- pipe stdio, relay stderr to the output
+     channel -- the client still does with a ChildProcess, minus the "server process
+     exited" line, which is re-added below so a crash still says so. */
+  serverOwnsGroup = executable.options?.detached === true
+  const serverOptions: ServerOptions = async () => {
+    /* The client restarts itself on CloseAction.Restart without going through
+       stopClient(), so this is the only place that sees the previous server. Usually it
+       is already dead -- its connection closing is what triggered the restart -- but a
+       connection can also close over a live process, and nothing else would ever come
+       back for that one. */
+    const previous = serverProcess
+    serverProcess = undefined
+    if (previous?.pid !== undefined && isRunning(previous.pid)) {
+      log(`previous server ${previous.pid} outlived its connection; killing its tree`)
+      await killTree(previous.pid, { ownGroup: serverOwnsGroup, log })
+    }
+    const child = cp.spawn(executable.command, executable.args ?? [], executable.options)
+    // A failed spawn reports asynchronously, so an unhandled 'error' would take the
+    // extension host down with it; pid is the synchronous half of the same news.
+    child.on('error', err => log(`server process error: ${err}`))
+    if (child.pid === undefined) {
+      throw new Error(`Launching the Isabelle server using ${executable.command} failed.`)
+    }
+    child.on('exit', (code, signal) => {
+      if (code !== null) log(`Server process exited with code ${code}.`)
+      if (signal !== null) log(`Server process exited with signal ${signal}.`)
+    })
+    serverProcess = child
+    return child
+  }
 
   /* Restart policy. Without an errorHandler the client uses its default, which gives up
      only when five closes land inside three minutes -- a window a ~20 minute heap build
@@ -222,8 +273,19 @@ async function stopClient(): Promise<void> {
   graphview = undefined
   const c = client
   client = undefined
+  const proc = serverProcess
+  serverProcess = undefined
   if (c) {
-    try { await c.stop() } catch (err) { output.appendLine(`stop failed: ${err}`) }
+    try { await c.stop(SHUTDOWN_TIMEOUT_MS) } catch (err) {
+      output.appendLine(`stop failed: ${err}`)
+    }
+  }
+  /* `shutdown` + `exit` is what *should* end the server, and when it does this finds
+     nothing to do. When it does not -- a wedged prover, a shutdown that outran the
+     timeout, a client that never got as far as a handshake -- the process is still there
+     with the JVM below it, and killing the tree is the only thing that ends it. */
+  if (proc?.pid !== undefined && isRunning(proc.pid)) {
+    await killTree(proc.pid, { ownGroup: serverOwnsGroup, log })
   }
 }
 

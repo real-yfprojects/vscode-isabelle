@@ -164,7 +164,12 @@ export function buildServerOptions(
   // Pin cwd: the extension host's own cwd may be somewhere Cygwin cannot chdir into,
   // and CHERE_INVOKING makes the login shell try to stay there.
   const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? isabelleHome
-  const options = { env: childEnv(platform), shell: false, cwd }
+  /* Own process group, so the whole prover stack can be signalled as a unit: the JVM sits
+     below the process we spawn and killing only our own child orphans it (process_tree.ts
+     has the full story). Windows is deliberately excluded -- there `detached` means a new
+     console rather than a new group, and taskkill /T walks the tree instead. */
+  const options =
+    { env: childEnv(platform), shell: false, cwd, detached: platform !== 'win32' }
 
   if (platform === 'win32') {
     const bash = cygwinBash(isabelleHome)
