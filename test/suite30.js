@@ -21,15 +21,26 @@ const wait = ms => new Promise(r => setTimeout(r, ms))
 let passed = 0
 const pass = m => { passed++; console.log('PASS: ' + m) }
 
-async function pollFor(what, predicate, timeoutMs, intervalMs = 1000) {
+/**
+ * Poll until `predicate` returns something.
+ *
+ * `describe` reports what was actually seen when it times out. Without it the failure
+ * reads "timed out waiting for a graph: undefined", which says only that the thing did
+ * not happen -- not whether the panel exists, whether the server ever answered, or
+ * whether it answered with an empty graph. Those three need different fixes.
+ */
+async function pollFor(what, predicate, timeoutMs, describe = undefined, intervalMs = 1000) {
   const deadline = Date.now() + timeoutMs
   let last
+  let seen
   while (Date.now() < deadline) {
     try { last = await predicate() } catch { last = undefined }
     if (last !== undefined && last !== false) return last
+    if (describe !== undefined) { try { seen = await describe() } catch { /* ignore */ } }
     await wait(intervalMs)
   }
-  throw new Error(`timed out after ${timeoutMs}ms waiting for ${what}: ${JSON.stringify(last)}`)
+  throw new Error(
+    `timed out after ${timeoutMs}ms waiting for ${what}; last state: ${JSON.stringify(seen)}`)
 }
 
 async function run() {
@@ -62,7 +73,7 @@ async function run() {
   // real session.
   await pollFor('the server to reach Running',
     async () => (await vscode.commands.executeCommand('isabelle.serverState'))?.state === 'Running',
-    240000)
+    240000, () => vscode.commands.executeCommand('isabelle.serverState'))
   pass('the patched server starts and reaches Running')
 
   // --- simplifier trace ------------------------------------------------------------
@@ -73,39 +84,74 @@ async function run() {
   editor.selection = new vscode.Selection(lemmaLine, 2, lemmaLine, 2)
   await vscode.commands.executeCommand('isabelle.simplifierTrace')
 
-  const traceState = await pollFor('the server to answer simplifier_trace_request',
+  /* The response arriving is only the protocol handshake -- the server answers a
+     request immediately, long before Trace.thy has been elaborated, so `supported`
+     alone proves nothing about the trace. What must be waited for is a *question*,
+     which exists only once the simplifier has actually suspended.
+
+     On timeout the Output panel is what separates the two possible faults: it carries
+     the prover's own "See simplifier trace" active area when a step is genuinely
+     asking, so text there with no question means the client is failing to pick the
+     question up, and no text means the prover never asked. */
+  const describeTrace = async () => ({
+    trace: await vscode.commands.executeCommand('isabelle.simplifierTraceState'),
+    output: String(await vscode.commands.executeCommand('isabelle.outputPanelContent') ?? '')
+      .replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200),
+  })
+
+  const traceState = await pollFor('a pending simplifier trace question',
     async () => {
       const s = await vscode.commands.executeCommand('isabelle.simplifierTraceState')
-      return s && s.supported ? s : undefined
-    }, 120000)
-  // The response arriving at all is the protocol check: the server understood the
-  // request, produced the shape the client parses, and the notification round-tripped.
+      return s && s.supported && s.serial !== undefined ? s : undefined
+    }, 180000, describeTrace)
   pass('the server answers PIDE/simplifier_trace_request with a parsable response')
 
-  // A suspended simplifier is timing-dependent -- the question exists only while the
-  // proof is blocked -- so a question is reported when present rather than required.
-  if (traceState.serial !== undefined) {
-    assert.ok(traceState.answers.length > 0, 'a question must offer answers')
-    // Answers come from the prover; these are Simplifier_Trace.Answer.step's names.
-    assert.ok(traceState.answers.includes('continue'),
-      `a rewrite step should offer continue: ${traceState.answers}`)
-    console.log(`  (question ${traceState.serial}, answers: ${traceState.answers.join(', ')})`)
-    pass('a suspended simplifier reports a question with the prover\'s own answers')
-  } else {
-    console.log('  (no question pending -- the trace had already run to completion)')
-  }
+  assert.ok(traceState.answers.length > 0, 'a question must offer answers')
+  // Answers come from the prover; these are Simplifier_Trace.Answer.step's names.
+  assert.ok(traceState.answers.includes('continue'),
+    `a rewrite step should offer continue: ${traceState.answers}`)
+  console.log(`  (question ${traceState.serial}, answers: ${traceState.answers.join(', ')})`)
+  pass("a suspended simplifier reports a question with the prover's own answers")
+
+  /* Answering is the half that a read-only panel would never exercise: the reply has to
+     reach Simplifier_Trace's manager, quote a serial it recognises, and unblock the ML
+     future. If it does not, the question simply stays put. */
+  await vscode.commands.executeCommand('isabelle.simplifierTraceReply',
+    traceState.serial, 'continue_disable')
+  const answered = await pollFor('the question to clear after answering',
+    async () => {
+      const s = await vscode.commands.executeCommand('isabelle.simplifierTraceState')
+      return s && s.serial !== traceState.serial ? s : undefined
+    }, 60000, describeTrace)
+  console.log(`  (after continue_disable: serial ${answered.serial}, pending ${answered.pending})`)
+  pass('answering unblocks the simplifier instead of leaving the question pending')
 
   // --- graph view ------------------------------------------------------------------
-  const depsLine = doc.getText().split(/\r?\n/).findIndex(l => l.trim() === 'thy_deps')
-  assert.ok(depsLine > 0, 'fixture should contain a thy_deps command')
-  editor.selection = new vscode.Selection(depsLine, 0, depsLine, 0)
+  /* A separate theory, because the traced proof in Trace.thy suspends the simplifier
+     and nothing after a suspended command in the same file is ever processed. */
+  const depsDoc = await vscode.workspace.openTextDocument(
+    vscode.Uri.file(path.join(ws, 'Deps.thy')))
+  const depsEditor = await vscode.window.showTextDocument(depsDoc)
+
+  const depsLine = depsDoc.getText().split(/\r?\n/).findIndex(l => l.trim() === 'thy_deps')
+  assert.ok(depsLine > 0, 'Deps.thy should contain a thy_deps command')
+  depsEditor.selection = new vscode.Selection(depsLine, 0, depsLine, 0)
   await vscode.commands.executeCommand('isabelle.graphview')
+
+  /* If this times out, the Output panel says which half is at fault: text from the
+     command means the results reached the client and the server's search is wrong;
+     nothing means the command never ran. */
+  const describeGraph = async () => ({
+    graph: await vscode.commands.executeCommand('isabelle.graphviewState'),
+    output: String(await vscode.commands.executeCommand('isabelle.outputPanelContent') ?? '')
+      .replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200),
+  })
 
   const graph = await pollFor('a graph from thy_deps',
     async () => {
       const s = await vscode.commands.executeCommand('isabelle.graphviewState')
       return s && s.supported && s.nodes > 0 ? s : undefined
-    }, 180000)
+    }, 180000, describeGraph)
 
   assert.strictEqual(graph.error, undefined, `graph decode failed: ${graph.error}`)
   // Main's import graph. The exact size is Isabelle's business, but a real thy_deps is
@@ -116,12 +162,12 @@ async function run() {
   pass('thy_deps output is found in command results, decoded and published')
 
   // Moving off the command must clear it, or a stale graph reads as current.
-  editor.selection = new vscode.Selection(0, 0, 0, 0)
+  depsEditor.selection = new vscode.Selection(0, 0, 0, 0)
   const cleared = await pollFor('the graph to clear when the caret moves away',
     async () => {
       const s = await vscode.commands.executeCommand('isabelle.graphviewState')
       return s && s.nodes === 0 ? s : undefined
-    }, 60000)
+    }, 60000, () => vscode.commands.executeCommand('isabelle.graphviewState'))
   assert.strictEqual(cleared.nodes, 0)
   pass('moving the caret off the command clears the graph instead of leaving it stale')
 

@@ -54,7 +54,10 @@ export class SimplifierTracePanel implements vscode.WebviewViewProvider {
         await vscode.commands.executeCommand('isabelle-simplifier-trace.focus')
         this.request()
       }),
-      // Test hook.
+      /* Test hooks. The reply one goes through the same `reply` the webview button
+         posts, so what suite30 drives is the shipped path and not a parallel one. */
+      vscode.commands.registerCommand('isabelle.simplifierTraceReply',
+        (serial: number, answer: string) => this.reply(serial, answer)),
       vscode.commands.registerCommand('isabelle.simplifierTraceState', () => ({
         supported: this.supported,
         pending: this.state?.pending ?? 0,
