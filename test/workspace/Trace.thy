@@ -4,12 +4,15 @@ begin
 
 (* Fixture for suite30: both features need something real to act on.
 
-   simp_trace_new suspends the simplifier at each rewrite step and waits for an answer,
-   which is what makes PIDE/simplifier_trace_response carry a question at all. The
-   simplification below is deliberately trivial: the point is that it rewrites, not that
-   it is hard. *)
+   The `interactive` keyword is load-bearing and easy to miss: it is a separate flag in
+   the attribute, defaulting to false (Simplifier_Trace.interactive_parser), and without
+   it a step is downgraded to simp_trace_log and never sends a request. mode=full alone
+   produces a trace that logs and never asks, so the panel would sit empty forever.
 
-declare [[simp_trace_new mode=full]]
+   The simplification below is deliberately trivial: the point is that it rewrites, not
+   that it is hard. *)
+
+declare [[simp_trace_new interactive mode=full]]
 
 lemma traced: "(x::nat) + 0 = x"
   by simp

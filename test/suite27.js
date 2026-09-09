@@ -41,7 +41,14 @@ async function run() {
   assert.ok(/No simplifier question pending/.test(idle))
   assert.ok(/simp_trace_new/.test(idle),
     'an idle panel must say how to enable tracing, or it reads as broken')
-  pass('an idle panel explains how to enable tracing')
+  // `interactive` is a separate flag in the attribute and defaults to false. Without it
+  // the simplifier logs the trace instead of asking about it, so the panel stays empty
+  // forever -- a user following a hint that omits it concludes the feature is broken.
+  // This was found by running the real thing: the fixture said mode=full and no question
+  // ever arrived.
+  assert.ok(/interactive/.test(idle),
+    'the hint must include the interactive keyword, or following it cannot work')
+  pass('an idle panel explains how to enable tracing, including the interactive keyword')
 
   // Suspended is the load-bearing state: the proof is blocked until an answer.
   const one = statusLine({ auto_update: true, pending: 1, question: question() })

@@ -33,8 +33,14 @@ export interface TraceEntry { serial: number; text: string; content: string }
 export function statusLine(state: TraceResponse | undefined): string {
   if (state === undefined) return 'Waiting for the prover.'
   if (state.question === undefined) {
+    /* `interactive` is the load-bearing word and is easy to leave out: it is a separate
+       flag in the attribute, defaulting to false, and without it the simplifier logs the
+       trace instead of asking about it -- so the panel stays empty forever and looks
+       broken. Naming the whole incantation is the entire point of this message. */
     return 'No simplifier question pending. Enable tracing in the theory with ' +
-      'declare [[simp_trace_new mode=full]] and put the caret in a proof that simplifies.'
+      'declare [[simp_trace_new interactive mode=full]] -- the "interactive" keyword is ' +
+      'required, without it the trace only logs -- and put the caret in a proof that ' +
+      'simplifies.'
   }
   const queued = state.pending - 1
   return queued > 0
