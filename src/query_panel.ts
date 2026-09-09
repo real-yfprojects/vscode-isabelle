@@ -24,6 +24,11 @@ import { isabelleCss, scriptNonce } from './webview'
 const FIND_THEOREMS = 'find_theorems'
 const FIND_CONSTS = 'find_consts'
 
+const STARTING = 'Starting…'
+const NO_CONTEXT =
+  'No reply yet. A query runs at the caret, as jEdit’s Query panel does: open a theory ' +
+  'and put the cursor inside a command that has been checked.'
+
 export class QueryPanel implements vscode.WebviewViewProvider {
   static readonly viewType = 'isabelle-query'
 
@@ -31,6 +36,8 @@ export class QueryPanel implements vscode.WebviewViewProvider {
   private supported: boolean | undefined
   private status = ''
   private output = ''
+  /** Serial of the most recent request, so a stale watchdog cannot overwrite a newer status. */
+  private pending = 0
 
   constructor(
     private readonly client: LanguageClient,
@@ -64,10 +71,35 @@ export class QueryPanel implements vscode.WebviewViewProvider {
       vscode.commands.registerCommand('isabelle.runQuery',
         async (operation: string, args: string[]) => {
           this.output = ''
-          this.status = ''
-          await this.client.sendNotification('PIDE/query_request', { operation, args })
+          await this.request(operation, args)
         }),
     )
+  }
+
+  /**
+   * Send a query, and say so locally first.
+   *
+   * The server is entitled to answer with complete silence: Query_Operation.apply_query
+   * gives up without a single PIDE/query_status when the editor has no caret context --
+   * no theory open, or the file closed again since -- because its whole mechanism is a
+   * document overlay on the command under the caret. Waiting for the server to speak
+   * therefore leaves Apply looking like a dead button in exactly the case where the user
+   * most needs to be told something. The Sledgehammer panel already echoes "Starting…"
+   * for the same reason; the watchdog below turns a continued silence into the actual
+   * explanation rather than an indefinite one.
+   */
+  private async request(operation: string, args: string[]): Promise<void> {
+    this.status = STARTING
+    this.post({ type: 'status', operation, message: this.status })
+    this.log(`query ${operation}: ${JSON.stringify(args)}`)
+    const token = ++this.pending
+    setTimeout(() => {
+      if (this.pending === token && this.status === STARTING) {
+        this.status = NO_CONTEXT
+        this.post({ type: 'status', operation, message: this.status })
+      }
+    }, 8000)
+    await this.client.sendNotification('PIDE/query_request', { operation, args })
   }
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -76,8 +108,7 @@ export class QueryPanel implements vscode.WebviewViewProvider {
     view.webview.onDidReceiveMessage(async (m: any) => {
       switch (m?.command) {
         case 'apply':
-          await this.client.sendNotification('PIDE/query_request',
-            { operation: m.operation, args: m.args })
+          await this.request(m.operation, m.args)
           break
         case 'cancel':
           await this.client.sendNotification('PIDE/query_cancel', { operation: m.operation })
@@ -87,8 +118,14 @@ export class QueryPanel implements vscode.WebviewViewProvider {
           break
       }
     })
+    // Re-render on theme change: the stylesheet embeds the resolved palette. The new
+    // document starts blank, so replay what the panel is currently showing -- otherwise
+    // switching theme silently discards a result the user is still reading.
     const themeListener = vscode.window.onDidChangeActiveColorTheme(() => {
       view.webview.html = this.html()
+      if (this.supported !== undefined) this.post({ type: 'supported', supported: this.supported })
+      if (this.status) this.post({ type: 'status', message: this.status })
+      if (this.output) this.post({ type: 'output', content: this.output })
     })
     view.onDidDispose(() => { themeListener.dispose(); this.view = undefined })
     view.webview.html = this.html()
@@ -223,10 +260,25 @@ ${isabelleCss()}
     walk(parsed.documentElement, out);
   }
 
+  // Every query opens with an empty output, so "finished and still empty" is the only
+  // way to tell "no results" from "results not in yet" -- and it is worth telling,
+  // because an unchecked command under the caret finishes with nothing to show.
+  let gotOutput = false;
+
   window.addEventListener('message', e => {
     const m = e.data;
-    if (m.type === 'status') $('status').textContent = m.message;
-    else if (m.type === 'output') renderOutput(m.content);
+    if (m.type === 'status') {
+      $('status').textContent = m.message;
+      if (m.message === ${JSON.stringify(STARTING)}) { gotOutput = false; $('out').textContent = ''; }
+      else if (m.message === 'Finished' && !gotOutput) {
+        $('out').textContent =
+          'No output. Either nothing matched, or the caret was not inside a checked command.';
+      }
+    }
+    else if (m.type === 'output') {
+      renderOutput(m.content);
+      if (m.content) gotOutput = true;
+    }
     else if (m.type === 'supported') {
       $('unsupported').style.display = m.supported ? 'none' : 'block';
       for (const b of document.querySelectorAll('#buttons button')) b.disabled = !m.supported;
