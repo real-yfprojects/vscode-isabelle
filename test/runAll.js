@@ -23,10 +23,10 @@ const path = require('path')
 // (15, 17) or a project workspace (24) skip themselves, so they are not listed here.
 const REGRESSION = ['suite', 'suite2', 'suite4', 'suite6', 'suite12', 'suite16',
                     'suite18', 'suite19', 'suite21', 'suite23', 'suite26', 'suite27',
-                    'suite28']
+                    'suite28', 'suite29']
 
 /** Suites that need no editor at all, and so cost nothing to run. */
-const PURE = new Set(['suite25', 'suite27', 'suite28'])
+const PURE = new Set(['suite25', 'suite27', 'suite28', 'suite29'])
 
 /**
  * Suites that assert nothing the prover produces.
