@@ -227,11 +227,19 @@ without -- a prover.
 
 The one difference worth knowing before choosing is the encoding. It has no equivalent of
 the presentation-only rendering and the save-time normaliser described above: its
-`Convert Symbols to Unicode` command rewrites the buffer to literal glyphs, its PIDE
-abbreviation completion inserts them, and no save participant converts them back. That
-survives interactive checking, because the server re-encodes whatever the editor sends,
-but the file on disk stops building. Verified against Isabelle2025-2 -- a theory holding a
-literal `∀` fails `isabelle build` with `Inner lexical error ... at "?x::nat. x = x"`.
+`Convert Symbols to Unicode` command rewrites the buffer to literal glyphs, `Insert Symbol`
+inserts them one at a time, and no save participant converts them back -- the inverse
+command exists, but running it is left to the user. Completion is the exception: both its
+offline symbol completion and its PIDE abbrev completion insert the ASCII token. The
+deeper reason is that it has no rendering layer at all -- no `contentText` decorations, no
+inlay hints, its decorations being PIDE status and error squiggles -- so glyphs in the
+buffer are the only way to read a theory in symbols there. Which is silent while you work:
+they survive interactive checking, because the server re-encodes whatever the editor
+sends, while the file on disk stops building.
+Verified against Isabelle2025-2 by running their own `symbolsToUnicode` over a theory and
+building both forms with the same `isabelle build -d <root> <session>` their own build
+runner constructs: the ASCII original succeeds, the converted file fails with
+`Inner lexical error ... at "?x::nat. x = x"`.
 
 ## License
 
