@@ -271,7 +271,7 @@
         "isabelle.simplifierTrace": {
           "type": "boolean",
           "default": false,
-          "description": "Show the Simplifier Trace panel. The PIDE/simplifier_trace_* messages exist only on the vscode-simplifier-trace branch of mirror-isabelle, so against a stock distribution this view would stay empty. Enable tracing in a theory with declare [[simp_trace_new mode=full]]."
+          "description": "Show the Simplifier Trace panel. The PIDE/simplifier_trace_* messages exist only on the vscode-simplifier-trace branch of mirror-isabelle, so against a stock distribution this view would stay empty. Enable tracing with `declare [[simp_trace_new interactive mode=full]]` before the simp call, or `using [[simp_trace_new interactive mode=full]]` on the simp call itself."
         },
         "isabelle.spellChecker": {
           "type": "boolean",

@@ -36,11 +36,15 @@ export function statusLine(state: TraceResponse | undefined): string {
     /* `interactive` is the load-bearing word and is easy to leave out: it is a separate
        flag in the attribute, defaulting to false, and without it the simplifier logs the
        trace instead of asking about it -- so the panel stays empty forever and looks
-       broken. Naming the whole incantation is the entire point of this message. */
-    return 'No simplifier question pending. Enable tracing in the theory with ' +
-      'declare [[simp_trace_new interactive mode=full]] -- the "interactive" keyword is ' +
-      'required, without it the trace only logs -- and put the caret in a proof that ' +
-      'simplifies.'
+       broken. Naming the whole incantation is the entire point of this message.
+       Either form has to precede the simp call it is meant to catch: declare sets a
+       context option that only affects commands after it in the theory text, and using
+       attaches the option only to the one proof step it is written on. */
+    return 'No simplifier question pending. Enable tracing with ' +
+      '`declare [[simp_trace_new interactive mode=full]]` before the simp call, or ' +
+      '`using [[simp_trace_new interactive mode=full]]` on the simp call itself -- the ' +
+      '"interactive" keyword is required, without it the trace only logs -- and put the ' +
+      'caret in that proof.'
   }
   const queued = state.pending - 1
   return queued > 0
