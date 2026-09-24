@@ -21,7 +21,24 @@ export interface TraceResponse {
   question?: TraceQuestion
 }
 
-export interface TraceEntry { serial: number; text: string; content: string }
+/**
+ * One item of the full trace, as PIDE/simplifier_trace_full sends it.
+ *
+ * `kind` is the markup without its simp_trace_ prefix: `recurse` (a simplifier
+ * invocation), `step` (a rewrite the prover asked about), `log` (a rewrite recorded
+ * without asking), `hint` (a step's outcome, `success` saying which) and `ignore` (a
+ * failed step being redone). `content` is rendered HTML; `plain` the same as one-line
+ * text, for summaries and search.
+ */
+export interface TraceEntry {
+  serial: number
+  parent?: number
+  kind?: string
+  text: string
+  content: string
+  plain?: string
+  success?: boolean
+}
 
 /**
  * What the panel says about itself above the question.
@@ -39,12 +56,19 @@ export function statusLine(state: TraceResponse | undefined): string {
        broken. Naming the whole incantation is the entire point of this message.
        Either form has to precede the simp call it is meant to catch: declare sets a
        context option that only affects commands after it in the theory text, and using
-       attaches the option only to the one proof step it is written on. */
-    return 'No simplifier question pending. Enable tracing with ' +
-      '`declare [[simp_trace_new interactive mode=full]]` before the simp call, or ' +
-      '`using [[simp_trace_new interactive mode=full]]` on the simp call itself -- the ' +
-      '"interactive" keyword is required, without it the trace only logs -- and put the ' +
-      'caret in that proof.'
+       attaches the option only to the one proof step it is written on.
+
+       Breakpoints come first because the default mode=normal asks *only* at them
+       (Simplifier_Trace.mk_generic_result: `Normal => triggered`). mode=full asks at every
+       rewrite, which on a real simpset is hundreds of questions about rules nobody
+       suspected -- the way to lose track of the one that matters. */
+    return 'No simplifier question pending. Trace a simp call with ' +
+      '`using [[simp_trace_new interactive]]` on it, or ' +
+      '`declare [[simp_trace_new interactive]]` before it, and put the caret in that proof. ' +
+      'It then stops only at breakpoints: mark a rule with `declare my_rule [simp_break]` ' +
+      'or a term shape with `using [[simp_break "pattern"]]`. Add `mode=full` to stop at ' +
+      'every rewrite instead. The "interactive" keyword is required -- without it the ' +
+      'trace only logs. "Show trace tree" lists what was rewritten either way.'
   }
   const queued = state.pending - 1
   return queued > 0

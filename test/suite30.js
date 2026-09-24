@@ -146,6 +146,16 @@ async function drive() {
   console.log(`  (full trace: ${full.full} entries)`)
   pass('simplifier_trace_show returns the assembled trace, not just the question')
 
+  /* The tree needs each entry's kind and parent. The unit tests build trees from
+     fixtures written against Simplifier_Trace.ML; this is where the server has to
+     actually send those fields, and the ML actually nest a step under its invocation. */
+  assert.ok(full.kinds.includes('recurse') && full.kinds.includes('step'),
+    `entries must carry their kind; saw ${JSON.stringify(full.kinds)}`)
+  assert.ok(full.tree && full.tree.invocations > 0 && full.tree.steps > 0,
+    `the tree should find invocations with steps under them: ${JSON.stringify(full.tree)}`)
+  console.log(`  (tree: ${JSON.stringify(full.tree)})`)
+  pass('the full trace carries kinds and parents, and builds into a tree of steps')
+
   /* Auto-update is the one piece of state the client cannot infer: it lives on the
      server and comes back only in the response. Both edges have to publish, or the
      panel's checkbox silently disagrees with the server after being turned off. */

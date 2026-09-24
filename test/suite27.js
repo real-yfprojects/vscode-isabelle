@@ -9,6 +9,8 @@ const path = require('path')
 
 const { statusLine, answerButtons } =
   require(path.join(__dirname, '..', 'out', 'simplifier_trace_view.js'))
+const { buildTraceTree, outcome, nodeView, ruleApplication, traceStats, statsLine, renderTraceTree } =
+  require(path.join(__dirname, '..', 'out', 'simplifier_trace_tree.js'))
 
 let passed = 0
 const pass = m => { passed++; console.log('PASS: ' + m) }
@@ -77,6 +79,122 @@ async function run() {
   assert.deepStrictEqual(answerButtons(undefined), [],
     'no question offers no answers -- a stale button would quote a dead serial')
   pass('answers are taken from the question, never assumed')
+
+  // Breakpoints are the way to not drown: the default mode asks only at them.
+  assert.ok(/simp_break/.test(idle), 'the idle hint must mention breakpoints')
+  assert.ok(/mode=full/.test(idle), 'the idle hint must still say how to stop everywhere')
+  pass('an idle panel explains breakpoints as well as mode=full')
+
+  // --- the trace tree --------------------------------------------------------------
+  // Fixtures shaped like Simplifier_Trace.ML's output: parents thread through the
+  // context, hints report a step's outcome, text of the chunks is newline-separated.
+  const e = (serial, parent, kind, text, plain, extra) => Object.assign(
+    { serial, parent, kind, text, plain, content: `<pre class="source">#${serial}</pre>` }, extra)
+  const conditional = [
+    e(10, 1, 'recurse', 'Simplifier invoked', 'f (g x) = y'),
+    e(11, 10, 'step', 'Apply conditional rewrite rule?',
+      'Instance of Foo.bar: P x ⟹ g x ≡ x\nTrying to rewrite: g x'),
+    e(12, 11, 'recurse', 'Simplifier invoked', 'P x'),
+    e(13, 12, 'step', 'Apply rewrite rule?', 'Instance of Foo.P_def: P x ≡ True\nTrying to rewrite: P x'),
+    e(14, 13, 'hint', 'Successfully rewrote', 'P x ≡ True', { success: true }),
+    e(15, 11, 'hint', 'Successfully rewrote', 'g x ≡ x', { success: true }),
+    e(16, 10, 'step', 'Apply rewrite rule?',
+      'Instance of ??.??.unknown: f x ≡ y\nTrying to rewrite: f x'),
+  ]
+  const roots = buildTraceTree(conditional)
+  assert.deepStrictEqual(roots.map(n => n.entry.serial), [10],
+    'the first invocation hangs under the prover context, which is not an item -- it is a root')
+  const [top] = roots
+  assert.deepStrictEqual(top.children.map(n => n.entry.serial), [11, 16])
+  const [cond, unnamed] = top.children
+  assert.deepStrictEqual(cond.children.map(n => n.entry.serial), [12],
+    'a side-condition invocation belongs under the step it decides')
+  assert.deepStrictEqual(cond.hints.map(h => h.serial), [15],
+    'a step\'s outcome is folded into the step, not listed as a row of its own')
+  pass('the tree follows parent links: invocation > step > side condition > its steps')
+
+  assert.deepStrictEqual(
+    buildTraceTree([...conditional].reverse()).map(n => n.entry.serial), [10],
+    'emission order, not arrival order, decides the structure')
+  pass('entries arriving out of order build the same tree')
+
+  assert.strictEqual(outcome(cond), 'rewrote')
+  assert.strictEqual(outcome(unnamed), 'none', 'no hint yet: nothing is claimed')
+  assert.strictEqual(outcome(unnamed, 16), 'pending')
+  pass('step outcomes: rewrote from its hint, pending when it is the open question, else none')
+
+  assert.strictEqual(nodeView(top).label, 'Simplifier invoked')
+  assert.strictEqual(nodeView(cond.children[0]).label, 'Side condition',
+    'an invocation under a step is that step\'s side condition, and has to say so')
+  const cv = nodeView(cond)
+  assert.strictEqual(cv.label, 'Conditional rewrite')
+  assert.strictEqual(cv.rule, 'Foo.bar')
+  assert.strictEqual(cv.term, 'g x', 'the summary names the subterm being rewritten')
+  assert.strictEqual(nodeView(unnamed).rule, 'unnamed rule',
+    '"??.??.unknown" reads like a malfunction; it is a rule without a name')
+  pass('node labels say what happened, to what, with which rule')
+
+  assert.deepStrictEqual(traceStats(roots), { invocations: 2, steps: 3, rewrites: 2, failures: 0 })
+  assert.strictEqual(statsLine(traceStats(roots)), '2 simplifier calls · 2 rewrites · 0 failed attempts')
+  pass('the summary counts calls, rewrites and failures across the whole tree')
+
+  // A failed step, then Redo: the prover replays the step, and the abandoned attempt goes.
+  const failed = [
+    e(20, 1, 'recurse', 'Simplifier invoked', 'g y'),
+    e(21, 20, 'step', 'Apply conditional rewrite rule?',
+      'Instance of Foo.bar: P y ⟹ g y ≡ y\nTrying to rewrite: g y'),
+    e(22, 21, 'hint', 'Step failed',
+      'In an instance of Foo.bar: P y ⟹ g y ≡ y\nWas trying to rewrite: g y', { success: false }),
+  ]
+  const [before] = buildTraceTree(failed)
+  assert.strictEqual(outcome(before.children[0]), 'failed')
+  assert.strictEqual(outcome(before.children[0], 22), 'pending',
+    'a failure is itself a question (Redo/Exit), so the step is pending while it waits')
+  const redone = buildTraceTree([...failed,
+    e(23, 21, 'ignore', 'Ignore', ''),
+    e(24, 20, 'step', 'Apply conditional rewrite rule?',
+      'Instance of Foo.bar: P y ⟹ g y ≡ y\nTrying to rewrite: g y')])
+  assert.deepStrictEqual(redone[0].children.map(n => n.entry.serial), [24],
+    'the ignore names the step being redone; that attempt is dropped and the replay stays')
+  pass('a failed step reads as failed, and Redo replaces the attempt instead of piling up')
+
+  // Normal mode without breakpoints records no steps -- only invocations and hints. Those
+  // hints are then the whole story and have to be rows, not folded into a missing step.
+  const quiet = buildTraceTree([
+    e(30, 1, 'recurse', 'Simplifier invoked', 'h (a + 0)'),
+    e(31, 30, 'hint', 'Successfully rewrote', 'a + 0 ≡ a', { success: true }),
+    e(32, 30, 'hint', 'Step failed',
+      'In an instance of Foo.baz: Q x ⟹ h x ≡ x\nWas trying to rewrite: h a', { success: false }),
+  ])
+  const [ok, no] = quiet[0].children
+  assert.strictEqual(nodeView(ok).label, 'Rewrote')
+  assert.strictEqual(nodeView(ok).badge, '✓')
+  assert.strictEqual(nodeView(no).label, 'Failed')
+  assert.strictEqual(nodeView(no).rule, 'Foo.baz')
+  assert.strictEqual(nodeView(no).term, 'h a')
+  assert.deepStrictEqual(traceStats(quiet), { invocations: 1, steps: 0, rewrites: 1, failures: 1 })
+  pass('untraced rewrites still show as rewrote/failed rows under their invocation')
+
+  assert.deepStrictEqual(ruleApplication(
+    'Instance of X.y: a ≡ b\nTrying to rewrite: a\nMatching terms:\n• a'),
+    { rule: 'X.y', instance: 'a ≡ b', term: 'a' }, 'Matching terms are not part of the term')
+  assert.deepStrictEqual(ruleApplication('P x'), {})
+  pass('rule applications parse, including the breakpoint "Matching terms" tail')
+
+  // Rendering: the pending path opens, plain text is escaped, server HTML is not.
+  const html = renderTraceTree(roots, 16)
+  const openOf = serial => new RegExp(`data-serial="${serial}"[^>]*><details open>`).test(html)
+  assert.ok(openOf(10) && openOf(16), 'the path to the waiting step starts open')
+  assert.ok(!openOf(11), 'unrelated steps start closed')
+  assert.ok(html.includes('outcome-pending'))
+  assert.ok(html.includes('<pre class="source">#16</pre>'), 'server HTML goes in as markup')
+  const hostile = renderTraceTree(buildTraceTree([
+    e(40, 1, 'recurse', 'Simplifier invoked', '<img src=x onerror=alert(1)> "q"')]))
+  assert.ok(!hostile.includes('<img'), 'text derived from plain must be escaped')
+  assert.ok(hostile.includes('data-search="simplifier invoked  &lt;img src=x onerror=alert(1)&gt; &quot;q&quot;"'),
+    `search text is lowercase and attribute-escaped: ${hostile}`)
+  assert.ok(/No trace recorded/.test(renderTraceTree([])))
+  pass('rendering opens the pending path, escapes derived text and keeps server markup')
 
   console.log(passed + ' checks passed')
   console.log('SUITE27_OK')
