@@ -196,7 +196,9 @@ This documents tracks features and tasks that might already be tracked in other 
 - [x] symbols view: option to jump to category
   - category dropdown above the filter box; not visually confirmed yet
 - [ ] status bar widget
-- [ ] when opening an isabelle language file, the isabelle lsp should be started without opening the isabelle panel first.
+- [x] when opening an isabelle language file, the isabelle lsp should be started without opening the isabelle panel first.
+  - already the case: `activationEvents` is `onLanguage:isabelle` and `activate` calls
+    `startClient()` unless `isabelle.autoStart` is off
 - [x] bug when cursor jumps around glyphs: it also jumps over a preceeding whitespace
   - the caret *offsets* were always right; the trajectory across `A \<and> B` is
     19 -> 18 -> 12 -> 11, exactly one visual unit per press. The bug was where the caret
@@ -237,7 +239,10 @@ This documents tracks features and tasks that might already be tracked in other 
     Fixed by adding a symbolic-operator alternative, which also makes double-click select
     `-->` and `::` sensibly
 - [ ] expose isabelle cygwin terminal in vscode
-- [ ] in theory view parent items should also have the update spinner animation if chilren are running
+- [x] in theory view parent items should also have the update spinner animation if chilren are running
+  - `sessionIcon` spins exactly when a child row's own icon does, so a failed-but-running
+    child shows its error and does not set the parent spinning; a theory still resolving
+    its imports does count
 - [ ] delimiters (e.g. \<open>...\<close>) shouldn't be part of the word (e.g. when double clicking or using ctrl+left/right to jump between words)
 - [ ] VSCode Getting Started Guide for the extension, including how to install and configure Isabelle, how to use the extension, and how to troubleshoot common issues.
 - [ ] when starting up with a session selected that hasn't been build yet, startup takes ages and the only progress update you get are in the isabelle extension output panel. You have to wait an eternity until you can use the extension. Can we detect a rebuild and run it in the background while using the lsp with a smaller theory that doesn't need rebuild. When the cache build has finished we can restart the lsp with the session. This is just one idea for a fix. Think whether there is a better/cleaner.more seemless way.

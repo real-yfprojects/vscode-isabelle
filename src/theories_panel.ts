@@ -121,6 +121,18 @@ export function sessionDescription(nodes: readonly NodeStatus[], loading = false
   return parts.join(' · ')
 }
 
+/**
+ * A session row spins exactly when one of its theory rows does, so a collapsed library
+ * session still shows that work is going on inside it. Mirroring the children's icon
+ * rather than testing `running` directly keeps the two in step: a theory that already
+ * failed shows its error, not a spinner, and so does not set its parent spinning either.
+ */
+export function sessionIcon(nodes: readonly NodeStatus[], loading = false): vscode.ThemeIcon {
+  return nodes.some(n => statusIcon(n, loading).id === 'sync~spin')
+    ? new vscode.ThemeIcon('sync~spin')
+    : new vscode.ThemeIcon('library')
+}
+
 function tooltip(node: NodeStatus): vscode.MarkdownString {
   const md = new vscode.MarkdownString()
   md.appendMarkdown(`**${node.theory}**\n\n`)
@@ -205,7 +217,7 @@ class TheoriesProvider implements vscode.TreeDataProvider<TheoryItem> {
              : vscode.TreeItemCollapsibleState.Collapsed)
       item.id = 'session:' + element.session
       item.description = sessionDescription(element.nodes, this.loading)
-      item.iconPath = new vscode.ThemeIcon('library')
+      item.iconPath = sessionIcon(element.nodes, this.loading)
       item.contextValue = 'isabelleSession'
       return item
     }

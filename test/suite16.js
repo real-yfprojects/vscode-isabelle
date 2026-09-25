@@ -6,7 +6,7 @@ const assert = require('assert')
 const path = require('path')
 
 const { progressBar, statusIcon, statusDescription, splitTheory, groupBySession,
-        sessionDescription, sessionIsBusy, settling } =
+        sessionDescription, sessionIsBusy, sessionIcon, settling } =
   require(path.join(__dirname, '..', 'out', 'theories_panel.js'))
 const { documentBody } = require(path.join(__dirname, '..', 'out', 'webview.js'))
 
@@ -80,6 +80,18 @@ async function run() {
   assert.strictEqual(sessionIsBusy(grouped[1].nodes), true,
     'the session being worked on stays open')
   pass('theories are grouped by session so label and status both fit')
+
+  // A collapsed session hides its children's spinners, so the row itself has to show it.
+  assert.strictEqual(sessionIcon(grouped[0].nodes).id, 'library', 'an idle session keeps its icon')
+  assert.strictEqual(
+    sessionIcon([node({}), node({ running: 2, percentage: 60, finished: 60 })]).id, 'sync~spin',
+    'one running theory sets the whole session spinning')
+  assert.strictEqual(
+    sessionIcon([node({ initialized: false, failed: 1, percentage: 10 })], true).id, 'sync~spin',
+    'a theory still resolving its imports counts as work in progress')
+  assert.strictEqual(sessionIcon([node({ failed: 1, running: 1 })]).id, 'library',
+    'the parent spins exactly when a child row does, and a failed child shows its error')
+  pass('a session row spins while one of its theories does')
 
   // Preview: the server returns a whole Browser_Info document, and its inlined
   // isabelle.css hardcodes a white page. Embedded as-is it lands after our stylesheet
