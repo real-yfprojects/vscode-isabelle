@@ -100,6 +100,12 @@ This documents tracks features and tasks that might already be tracked in other 
     gutter progress bars (`taskgutter.ts`) for per-command elaboration status, and its
     abbreviation help/"show all abbreviations" command
   - note their Infoview is itself a webview, so it is not an argument for native widgets
+  - [x] their `\` abbreviations: `src/shorthands.ts` adapts a short table *by meaning in
+    Isabelle* (`\to` is `\<Rightarrow>`, `\imp` is `\<longrightarrow>`), never shadowing an
+    Isabelle name (`\a` stays `\<a>`, not their alpha). Pairs keyed by the opening half
+    (`\[[` -> `\<lbrakk>|\<rbrakk>`) because VS Code auto-closes brackets; `\_x`/`\^d`
+    sub/superscripts; hover shows every way to type a symbol;
+    `isabelle.input.customShorthands`. Tests: suite34 (pure), suite35 (editor)
 - [ ] compare to features of the python vscode extension and see whether any feature is useful for isabelle as well.
   - [ ] find references
 - [~] compare to `Arthur742Ramos/Isabelle-VSCode` (MIT, `0.1.0-alpha.6`), an independent

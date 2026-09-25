@@ -215,7 +215,15 @@
         "isabelle.expandAbbreviations": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Expand `\\forall` into `\\<forall>` as you type."
+          "markdownDescription": "Expand `\\forall` into `\\<forall>` as you type, and the short forms such as `\\all`, `\\ne`, `\\iff`, `\\_1` or `\\[[` (caret inside `\\<lbrakk>…\\<rbrakk>`). Hover a symbol to see every way to type it."
+        },
+        "isabelle.input.customShorthands": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "markdownDescription": "Your own `\\` shorthands, added to the built-in ones and overriding them: `{\"cup\": \"∪\", \"pair\": \"\\\\<langle>$CURSOR\\\\<rangle>\"}` makes `\\cup` type `\\<union>`. Write the symbol as a glyph or as `\\<name>`; the file always gets the ASCII escape. `$CURSOR` marks where the caret goes."
         },
         "isabelle.graphview": {
           "type": "boolean",

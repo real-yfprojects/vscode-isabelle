@@ -312,7 +312,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   renderer = new SymbolRenderer(table)
   renderer.register(context)
   registerAbbreviations(context, table, ISABELLE_SELECTOR, abbrevs,
-    () => client?.state === State.Running)
+    () => client?.state === State.Running, log)
   registerNormalizer(context, table, log)
   registerAtomicMotion(context, table)
   new SymbolsPanel(table).register(context.subscriptions)

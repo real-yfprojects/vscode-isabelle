@@ -1,0 +1,123 @@
+// `\` shorthands in a real editor, typed through VS Code's own typing path (the `type`
+// command), so auto-closed brackets and the rewriter's edits interleave as they do for a
+// user. No prover: the symbol table, the rewriter, the hover and the completion list are
+// all client-side.
+const vscode = require('vscode')
+const assert = require('assert')
+const fs = require('fs')
+const path = require('path')
+
+const wait = ms => new Promise(r => setTimeout(r, ms))
+let passed = 0
+const pass = m => { passed++; console.log('PASS: ' + m) }
+
+const LINE = 4
+
+async function run() {
+  const ext = vscode.extensions.getExtension('spike.isabelle-pide-stock')
+  await ext.activate()
+
+  const ws = vscode.workspace.workspaceFolders[0].uri.fsPath
+  const file = path.join(ws, 'Shorth.thy')
+  fs.writeFileSync(file, ['theory Shorth', '  imports Main', 'begin', '', '', '', 'end', ''].join('\n'))
+  const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file))
+  const editor = await vscode.window.showTextDocument(doc, { preview: false })
+  await wait(500)
+
+  /** Clear the probe line, then type `text` one character at a time. */
+  async function type(text) {
+    await editor.edit(b => b.replace(doc.lineAt(LINE).range, ''))
+    const start = new vscode.Position(LINE, 0)
+    await vscode.window.showTextDocument(doc, { preview: false, preserveFocus: false })
+    await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup')
+    editor.selection = new vscode.Selection(start, start)
+    for (const ch of text) {
+      await vscode.commands.executeCommand('type', { text: ch })
+      await wait(80)
+    }
+    await wait(200)
+    return { line: doc.lineAt(LINE).text, caret: editor.selection.active.character }
+  }
+
+  let r = await type('\\forall')
+  if (r.line !== '\\<forall>') console.log('document now: ' + JSON.stringify(doc.getText()))
+  assert.strictEqual(r.line, '\\<forall>', 'an Isabelle name still expands at once')
+  pass('\\forall -> \\<forall>, as before')
+
+  r = await type('\\all x')
+  assert.strictEqual(r.line, '\\<forall> x')
+  r = await type('\\ne ')
+  assert.strictEqual(r.line, '\\<noteq> ', '\\ne waits (\\neg, \\neq ...) and expands on the blank')
+  r = await type('\\iff')
+  assert.strictEqual(r.line, '\\<longleftrightarrow>')
+  pass('aliases: \\all, \\ne (on a terminator), \\iff')
+
+  r = await type('\\<->')
+  assert.strictEqual(r.line, '\\<longleftrightarrow>', '\\<-> is a key, though it starts like an escape')
+  r = await type('\\<- ')
+  assert.strictEqual(r.line, '\\<leftarrow> ', '\\<- waits for \\<-> and expands on the blank')
+  r = await type('\\==>')
+  assert.strictEqual(r.line, '\\<Longrightarrow>')
+  pass('punctuation keys: \\<->, \\<-, \\==>')
+
+  r = await type('\\<forall>')
+  assert.strictEqual(r.line, '\\<forall>', 'a raw escape typed by hand is left alone')
+  r = await type('x\\_1')
+  assert.strictEqual(r.line, 'x\\<^sub>1')
+  pass('raw escapes are untouched; \\_1 gives a subscript')
+
+  r = await type('\\[[')
+  console.log(`after \\[[: ${JSON.stringify(r)}`)
+  assert.strictEqual(r.line, '\\<lbrakk>\\<rbrakk>', 'the brackets VS Code closed go with the key')
+  assert.strictEqual(r.caret, '\\<lbrakk>'.length, 'the caret sits between the halves')
+  await vscode.commands.executeCommand('type', { text: 'A' })
+  await wait(150)
+  assert.strictEqual(doc.lineAt(LINE).text, '\\<lbrakk>A\\<rbrakk>')
+  r = await type('\\<>')
+  assert.strictEqual(r.line, '\\<langle>\\<rangle>')
+  assert.strictEqual(r.caret, '\\<langle>'.length)
+  pass('pairs: \\[[ and \\<> leave the caret inside')
+
+  // ---------- hover: every way to type the symbol under the mouse ----------
+  await editor.edit(b => b.replace(doc.lineAt(LINE).range, 'x \\<forall>y'))
+  await wait(150)
+  const hovers = await vscode.commands.executeCommand(
+    'vscode.executeHoverProvider', doc.uri, new vscode.Position(LINE, 5))
+  const text = (hovers || []).flatMap(h => h.contents).map(c => c.value ?? String(c)).join('\n')
+  console.log('hover: ' + JSON.stringify(text))
+  assert.ok(text.includes('`\\forall`') && text.includes('`\\all`') && text.includes('`ALL`'),
+    'the hover lists the name, the shorthand and the ASCII abbrev')
+  pass('hovering a symbol shows how to type it')
+
+  // ---------- completion: shorthands are listed with their result ----------
+  await editor.edit(b => b.replace(doc.lineAt(LINE).range, '\\al'))
+  await wait(100)
+  const list = await vscode.commands.executeCommand(
+    'vscode.executeCompletionItemProvider', doc.uri, new vscode.Position(LINE, 3))
+  const all = list.items.find(i => (typeof i.label === 'string' ? i.label : i.label.label) === '\\all')
+  assert.ok(all, 'the \\all shorthand should be offered for \\al')
+  assert.ok(all.detail.includes('∀'), `detail shows the glyph: ${all.detail}`)
+  await editor.edit(b => b.replace(doc.lineAt(LINE).range, '\\[['))
+  const pairs = await vscode.commands.executeCommand(
+    'vscode.executeCompletionItemProvider', doc.uri, new vscode.Position(LINE, 3))
+  const brakk = pairs.items.find(i => (typeof i.label === 'string' ? i.label : i.label.label) === '\\[[')
+  assert.ok(brakk && brakk.insertText instanceof vscode.SnippetString, 'a pair completes as a snippet')
+  assert.strictEqual(brakk.insertText.value, '\\\\<lbrakk>$0\\\\<rbrakk>')
+  pass('shorthands appear in the completion list, pairs as snippets')
+
+  // ---------- custom shorthands ----------
+  const cfg = vscode.workspace.getConfiguration('isabelle')
+  await cfg.update('input.customShorthands', { cup: '∪' }, vscode.ConfigurationTarget.Global)
+  await wait(300)
+  r = await type('\\cup')
+  assert.strictEqual(r.line, '\\<union>', 'a custom shorthand written with a glyph types the escape')
+  await cfg.update('input.customShorthands', undefined, vscode.ConfigurationTarget.Global)
+  pass('custom shorthands from settings, glyph stored as escape')
+
+  await editor.edit(b => b.replace(doc.lineAt(LINE).range, ''))
+  await doc.save()
+  console.log(passed + ' checks passed')
+  console.log('SUITE35_OK')
+}
+
+module.exports = { run }

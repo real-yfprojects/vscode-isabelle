@@ -23,10 +23,12 @@ const path = require('path')
 // (15, 17, 30) or a project workspace (24) skip themselves, so they are not listed here.
 const REGRESSION = ['suite', 'suite2', 'suite4', 'suite6', 'suite12', 'suite16',
                     'suite18', 'suite19', 'suite21', 'suite23', 'suite25', 'suite26',
-                    'suite27', 'suite28', 'suite29', 'suite31', 'suite32']
+                    'suite27', 'suite28', 'suite29', 'suite31', 'suite32',
+                    'suite34', 'suite35']
 
 /** Suites that need no editor at all, and so cost nothing to run. */
-const PURE = new Set(['suite25', 'suite27', 'suite28', 'suite29', 'suite31', 'suite32'])
+const PURE = new Set(['suite25', 'suite27', 'suite28', 'suite29', 'suite31', 'suite32',
+                    'suite34'])
 
 /**
  * Suites that assert nothing the prover produces.
@@ -40,7 +42,7 @@ const PURE = new Set(['suite25', 'suite27', 'suite28', 'suite29', 'suite31', 'su
  * panel fed by the server. When in doubt leave it out: the cost of being wrong is a
  * confusing failure, and the cost of being conservative is half a minute.
  */
-const NO_PROVER = new Set(['suite4', 'suite16', 'suite19', 'suite21', 'suite26'])
+const NO_PROVER = new Set(['suite4', 'suite16', 'suite19', 'suite21', 'suite26', 'suite35'])
 
 function copyWorkspace(name) {
   const dest = fs.mkdtempSync(path.join(os.tmpdir(), `isa-ws-${name}-`))
