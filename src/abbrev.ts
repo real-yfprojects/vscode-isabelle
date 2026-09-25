@@ -40,28 +40,60 @@ export function registerAbbreviations(
   table: SymbolTable,
   selector: vscode.DocumentSelector,
   abbrevs: AbbrevStore,
+  serverRunning: () => boolean,
 ): void {
   context.subscriptions.push(
     vscode.languages.registerCompletionItemProvider(
       selector, new SymbolCompletionProvider(table), '\\'),
     vscode.languages.registerCompletionItemProvider(
-      selector, new SessionAbbrevProvider(abbrevs)),
+      selector, new SessionAbbrevProvider(abbrevs, serverRunning)),
     vscode.workspace.onDidChangeTextDocument(e => void rewriteOnType(e, table)),
   )
+}
+
+/** What SymbolCompletionProvider completes: a backslash and a partial symbol name. */
+const SYMBOL_WORD_RE = /^\\[A-Za-z0-9_^']*$/
+
+/**
+ * Drop the server's plain symbol items for a `\name` word. SymbolCompletionProvider offers
+ * the same symbols with substring matching, the glyph and documentation, and both would
+ * otherwise be listed. Symbols reached through ASCII abbrevs such as `==>`, and symbol
+ * templates (kind Snippet), are the server's alone and stay.
+ */
+export function dropDuplicateSymbols<T extends vscode.CompletionItem[] | vscode.CompletionList>(
+  doc: vscode.TextDocument,
+  result: T | null | undefined,
+): T | null | undefined {
+  if (!result) return result
+  const keep = (item: vscode.CompletionItem): boolean => {
+    if (item.kind !== vscode.CompletionItemKind.Operator) return true
+    const range = item.range instanceof vscode.Range ? item.range : item.range?.replacing
+    return !range || !SYMBOL_WORD_RE.test(doc.getText(range))
+  }
+  if (Array.isArray(result)) return result.filter(keep) as T
+  result.items = result.items.filter(keep)
+  return result
 }
 
 /**
  * Completion for session abbreviations. Deliberately has no trigger characters and
  * requires a match of at least two characters: these are arbitrary strings like "===",
  * and firing on a single character would be noise in the middle of a proof.
+ *
+ * Silent while the server runs: it completes the same abbrevs itself, and only where the
+ * language context allows them.
  */
 class SessionAbbrevProvider implements vscode.CompletionItemProvider {
-  constructor(private readonly abbrevs: AbbrevStore) {}
+  constructor(
+    private readonly abbrevs: AbbrevStore,
+    private readonly serverRunning: () => boolean,
+  ) {}
 
   provideCompletionItems(
     doc: vscode.TextDocument,
     position: vscode.Position,
   ): vscode.CompletionItem[] {
+    if (this.serverRunning()) return []
     const line = doc.lineAt(position.line).text.slice(0, position.character)
     const tail = line.slice(-16)
     return this.abbrevs.matching(tail).map(([from, to]) => {
@@ -97,8 +129,9 @@ class SymbolCompletionProvider implements vscode.CompletionItemProvider {
       const matchesAbbrev = entry.abbrevs.some(a => a.toLowerCase().startsWith(typed))
       if (typed && !matchesName && !matchesAbbrev) continue
 
+      // Operator, as the server marks symbols too: Text is the icon of plain words.
       const item = new vscode.CompletionItem(
-        `\\${inner}`, vscode.CompletionItemKind.Text)
+        `\\${inner}`, vscode.CompletionItemKind.Operator)
       item.detail = entry.glyph ? `${entry.glyph}   ${entry.name}` : entry.name
       item.documentation = new vscode.MarkdownString(
         [entry.glyph ? `**${entry.glyph}**` : undefined,

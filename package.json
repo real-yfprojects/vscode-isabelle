@@ -191,7 +191,12 @@
     ],
     "configurationDefaults": {
       "[isabelle]": {
-        "editor.wordSeparators": "`~!@#$%^&*()-=+[{]}|;:\",./?"
+        "editor.wordSeparators": "`~!@#$%^&*()-=+[{]}|;:\",./?",
+        "editor.quickSuggestions": {
+          "other": "on",
+          "comments": "off",
+          "strings": "on"
+        }
       }
     },
     "configuration": {

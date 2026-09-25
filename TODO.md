@@ -253,7 +253,22 @@ This documents tracks features and tasks that might already be tracked in other 
 - [ ] when starting up with a session selected that hasn't been build yet, startup takes ages and the only progress update you get are in the isabelle extension output panel. You have to wait an eternity until you can use the extension. Can we detect a rebuild and run it in the background while using the lsp with a smaller theory that doesn't need rebuild. When the cache build has finished we can restart the lsp with the session. This is just one idea for a fix. Think whether there is a better/cleaner.more seemless way.
 - [ ] Look at these features: https://github.com/Arthur742Ramos/Isabelle-VSCode#-features and decide which we are missing.
 - [ ] LLM integration into vscode copilot or claude.
-- [ ] Code completion
+- [~] Code completion -- `vscode-completion` mirror branch + client dedupe, `test/suite33.js`
+  - server: templates are snippets (caret inside `\<open>|\<close>`, `@{|}`), item kinds
+    by source (fact, constant, method, keyword, symbol, file...), `sortText` keeps
+    Isabelle's ranking, word characters no longer commit a unique item
+  - semantic names were almost never offered: `semantic_completion` is `None` while the
+    snapshot is outdated, which is every keystroke. The server now reuses the last
+    complete list the prover reported when the word only grew, and otherwise waits for
+    the prover off the message loop, at most `vscode_completion_delay` (0.5s)
+  - VS Code's own model: lists are returned whole (not prefix-narrowed), `isIncomplete`
+    only until a complete list covers the word, no letters as trigger characters, no
+    `filterText` for words -- so VS Code filters as you type and fuzzily (`addMono` finds
+    `add_set_mono`). The prover's lists are capped at `vscode_completion_limit` (1000)
+    instead of `completion_limit` (40); quick suggestions are on inside strings/cartouches
+  - client: server `\name` symbol items dropped (ours match substrings and show the
+    glyph); session abbrevs left to the server while it runs
+  - [ ] not done: persistent `completion_history` shared with jEdit
 - [ ] For instantiations add skeleton for missing attributes
 - [ ] marketplace extension
 - [ ] code formatting / prettier extension

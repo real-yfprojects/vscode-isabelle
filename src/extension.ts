@@ -6,7 +6,7 @@ import { isRunning, killTree } from './process_tree'
 import { buildServerOptions, findIsabelleHome, IsabelleNotFound } from './isabelle'
 import { SymbolTable } from './symbols'
 import { SymbolRenderer } from './decorations'
-import { AbbrevStore, registerAbbreviations } from './abbrev'
+import { AbbrevStore, dropDuplicateSymbols, registerAbbreviations } from './abbrev'
 import { registerNormalizer } from './normalize'
 import { registerAtomicMotion } from './atomic'
 import { PideDecorations } from './pide_decorations'
@@ -187,6 +187,8 @@ async function startClient(): Promise<void> {
         renderer?.markLink(document, position, found)
         return result
       },
+      provideCompletionItem: async (document, position, context, token, next) =>
+        dropDuplicateSymbols(document, await next(document, position, context, token)),
     },
   }
 
@@ -309,7 +311,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   renderer = new SymbolRenderer(table)
   renderer.register(context)
-  registerAbbreviations(context, table, ISABELLE_SELECTOR, abbrevs)
+  registerAbbreviations(context, table, ISABELLE_SELECTOR, abbrevs,
+    () => client?.state === State.Running)
   registerNormalizer(context, table, log)
   registerAtomicMotion(context, table)
   new SymbolsPanel(table).register(context.subscriptions)
