@@ -49,7 +49,7 @@ export function emptyMessage(state: GraphviewResponse | undefined): string {
   if (state === undefined) return 'Waiting for the prover.'
   if (state.error !== undefined) return `Could not display the graph: ${state.error}`
   return 'No graph in the command under the caret. Put the caret on a thy_deps, ' +
-    'class_deps, locale_deps, thm_deps or code_deps command.'
+    'class_deps, locale_deps or code_deps command.'
 }
 
 export function escapeHtml(s: string): string {

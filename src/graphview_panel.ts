@@ -4,7 +4,7 @@
  *   PIDE/graphview_request  -> _response { graph?: {nodes, edges}, error? }
  *
  * This one is pull, not push: nothing appears unless a theory asks for it with thy_deps,
- * class_deps, locale_deps, thm_deps or code_deps. jEdit opens the dockable when the user
+ * class_deps, locale_deps or code_deps. jEdit opens the dockable when the user
  * clicks an active area in the output, but Active is jEdit-only, so the server finds the
  * `graphview` markup in the current command's output instead and this panel shows
  * whatever the caret's command produced.
@@ -12,6 +12,11 @@
  * Drawn as inline SVG rather than with a graph library: the CSP here forbids remote
  * script, the layout is ours (graphview_layout.ts) because Isabelle's is Swing-bound, and
  * a dependency DAG of this size needs boxes and lines rather than a physics engine.
+ *
+ * Two hosts show the same graph: the view, and optionally an editor tab. A webview *view*
+ * can be moved between the side bars and the panel but never into the editor area, and a
+ * graph of a hundred nodes wants the width only the editor area has -- so the tab is a
+ * separate WebviewPanel rendered from the same state, not a relocated view.
  */
 
 import * as vscode from 'vscode'
@@ -26,6 +31,7 @@ export class GraphviewPanel implements vscode.WebviewViewProvider {
   static readonly viewType = 'isabelle-graphview'
 
   private view: vscode.WebviewView | undefined
+  private editorPanel: vscode.WebviewPanel | undefined
   private state: GraphviewResponse | undefined
   private supported = false
 
@@ -47,13 +53,17 @@ export class GraphviewPanel implements vscode.WebviewViewProvider {
         await vscode.commands.executeCommand('isabelle-graphview.focus')
         this.request()
       }),
+      vscode.commands.registerCommand('isabelle.graphviewOpenInEditor', () => this.openInEditor()),
       // Test hook.
       vscode.commands.registerCommand('isabelle.graphviewState', () => ({
         supported: this.supported,
         nodes: this.state?.graph?.nodes.length ?? 0,
         edges: this.state?.graph?.edges.length ?? 0,
         error: this.state?.error,
+        names: this.state?.graph?.nodes.map(n => n.name) ?? [],
+        inEditor: this.editorPanel !== undefined,
       })),
+      { dispose: () => this.editorPanel?.dispose() },
     )
     this.request()
   }
@@ -68,18 +78,36 @@ export class GraphviewPanel implements vscode.WebviewViewProvider {
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view
     view.webview.options = { enableScripts: true }
-    view.webview.onDidReceiveMessage((msg: { type: string }) => {
-      if (msg.type === 'update') this.request()
-    })
+    view.webview.onDidReceiveMessage((msg: { type: string }) => this.onMessage(msg))
     this.render()
   }
 
-  private render(): void {
-    if (this.view === undefined) return
-    this.view.webview.html = this.html()
+  /** Open the graph as an editor tab, beside the theory so the caret stays in reach. */
+  private openInEditor(): void {
+    if (this.editorPanel) { this.editorPanel.reveal(undefined, true); return }
+    const panel = vscode.window.createWebviewPanel('isabelle-graphview-editor', 'Graph View',
+      { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
+      { enableScripts: true, retainContextWhenHidden: true })
+    this.editorPanel = panel
+    panel.webview.onDidReceiveMessage((msg: { type: string }) => this.onMessage(msg))
+    panel.onDidDispose(() => { this.editorPanel = undefined })
+    this.render()
+    this.request()
   }
 
-  private html(): string {
+  private onMessage(msg: { type: string }): void {
+    switch (msg.type) {
+      case 'update': this.request(); break
+      case 'openInEditor': this.openInEditor(); break
+    }
+  }
+
+  private render(): void {
+    if (this.view) this.view.webview.html = this.html(false)
+    if (this.editorPanel) this.editorPanel.webview.html = this.html(true)
+  }
+
+  private html(inEditor: boolean): string {
     const graph = this.state?.graph
     const svg = graph !== undefined && graph.nodes.length > 0
       ? graphSvg(layoutGraph(graph))
@@ -104,12 +132,15 @@ export class GraphviewPanel implements vscode.WebviewViewProvider {
 </head><body>
 <div class="controls">
   <button id="update">Update</button>
+  ${inEditor ? '' : '<button id="open-in-editor" title="Open the graph in an editor tab">Open in Editor</button>'}
   ${graph ? `<span class="empty"> ${graph.nodes.length} nodes, ${graph.edges.length} edges</span>` : ''}
 </div>
 ${svg ? `<div class="scroll">${svg}</div>` : `<div class="empty">${escapeHtml(emptyMessage(this.state))}</div>`}
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi()
   document.getElementById('update').addEventListener('click', () => vscode.postMessage({ type: 'update' }))
+  document.getElementById('open-in-editor')?.addEventListener('click',
+    () => vscode.postMessage({ type: 'openInEditor' }))
 </script>
 </body></html>`
   }

@@ -114,6 +114,11 @@
       {
         "command": "isabelle.graphview",
         "title": "Isabelle: Show Graph View"
+      },
+      {
+        "command": "isabelle.graphviewOpenInEditor",
+        "title": "Isabelle: Open Graph View in Editor",
+        "icon": "$(link-external)"
       }
     ],
     "keybindings": [
@@ -174,7 +179,7 @@
         "isabelle.graphview": {
           "type": "boolean",
           "default": false,
-          "description": "Show the Graph View panel, which draws the output of thy_deps, class_deps, locale_deps, thm_deps and code_deps. The PIDE/graphview_* messages exist only on the vscode-graphview branch of mirror-isabelle."
+          "description": "Show the Graph View panel, which draws the output of thy_deps, class_deps, locale_deps and code_deps. The PIDE/graphview_* messages exist only on the vscode-graphview branch of mirror-isabelle."
         },
         "isabelle.home": {
           "type": "string",
@@ -393,6 +398,11 @@
           "command": "isabelle.theoriesRefresh",
           "when": "view == isabelle-theories",
           "group": "navigation"
+        },
+        {
+          "command": "isabelle.graphviewOpenInEditor",
+          "when": "view == isabelle-graphview",
+          "group": "navigation"
         }
       ],
       "commandPalette": [
@@ -414,6 +424,10 @@
         },
         {
           "command": "isabelle.graphview",
+          "when": "config.isabelle.graphview"
+        },
+        {
+          "command": "isabelle.graphviewOpenInEditor",
           "when": "config.isabelle.graphview"
         }
       ]

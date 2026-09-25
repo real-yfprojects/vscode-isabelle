@@ -3,7 +3,7 @@
  * Isabelle has a layout engine already (src/Tools/Graphview/layout.scala), but it is
  * Swing-bound and produces coordinates for a Java2D canvas, so it cannot be reused here.
  * This is a layered ("Sugiyama-lite") layout, which is the right family for what these
- * graphs are: thy_deps, class_deps, locale_deps and thm_deps are all dependency DAGs that
+ * graphs are: thy_deps, class_deps, locale_deps and code_deps are all dependency DAGs that
  * a reader wants to see flowing in one direction, imports at the top.
  *
  * The two steps that matter are layering and ordering. Layering is the easy half and
@@ -50,9 +50,10 @@ export function nodeWidth(name: string): number {
  * Assign each node to a layer: one below its deepest parent.
  *
  * Longest-path layering, so every edge points strictly downwards. Nodes in a cycle
- * cannot satisfy that; the server sends `transitive_reduction_acyclic` output so cycles
- * should not arrive, but a cycle here must degrade rather than hang, hence the visited
- * set rather than a bare recursion.
+ * cannot satisfy that, and cycles do arrive: `locale_deps` is legitimately cyclic (two
+ * locales each a sublocale of the other), and the server sends such a graph unreduced.
+ * A cycle must degrade rather than hang, hence the visited set rather than a bare
+ * recursion; one edge of each cycle then points upwards.
  */
 export function assignLayers(graph: Graph): Map<string, number> {
   const parents = new Map<string, string[]>()

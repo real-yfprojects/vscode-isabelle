@@ -56,8 +56,13 @@ is why suite30's fixture keeps the traced lemma last and puts `thy_deps` in its 
 
 ## Graph view
 
-Draws what `thy_deps`, `class_deps`, `locale_deps`, `thm_deps` and `code_deps` produce.
-Pull, not push: nothing appears unless a theory asks for it.
+Draws what `thy_deps`, `class_deps`, `locale_deps` and `code_deps` produce.
+Pull, not push: nothing appears unless a theory asks for it. `thm_deps` is not on that
+list: it prints a text list of theorems (`Thm_Deps.pretty_thm_deps`), in jEdit too.
+
+Shown in a view, or as an editor tab (**Open in Editor**). A webview *view* can move
+between the side bars and the panel but never into the editor area, and a wide graph
+needs that width, so the tab is a separate `WebviewPanel` rendered from the same state.
 
 ```
 PIDE/graphview_request -> _response { graph?: { nodes, edges }, error? }
@@ -103,6 +108,18 @@ instead of the graph -- an empty panel beside an Output pane that plainly says "
 graph". jEdit never meets this because its `Active.Handler` receives an element the
 rendering layer has already resolved, so its pattern is not the shape raw command results
 have. Match `XML.Wrapped_Elem` first.
+
+**`locale_deps` speaks the old format.** It calls `Graph_Display.display_graph_old`,
+which emits `browser` markup, not `graphview`, around the old Graph Browser's text
+format, one node per line:
+
+```
+"name" "ident" "dir" + "path" > "parent_ident" ... ;
+```
+
+jEdit never parses it; its `Active.Handler` writes it to a file and starts `isabelle
+browser`. The server reads it back into the same `Graph_Display.Graph` as the new format,
+so matching `GRAPHVIEW` alone drew nothing for `locale_deps`.
 
 
 ## Theories and Timing

@@ -237,6 +237,29 @@ async function drive() {
   console.log(`  (thy_deps: ${graph.nodes} nodes, ${graph.edges} edges)`)
   pass('thy_deps output is found in command results, decoded and published')
 
+  // The editor tab is a second host for the same state, not a second request stream.
+  await vscode.commands.executeCommand('isabelle.graphviewOpenInEditor')
+  const inEditor = await vscode.commands.executeCommand('isabelle.graphviewState')
+  assert.ok(inEditor.inEditor, 'Open in Editor should create the editor tab')
+  assert.strictEqual(inEditor.nodes, graph.nodes, 'the tab should show the same graph')
+  pass('the graph opens as an editor tab showing the same graph')
+
+  /* locale_deps is emitted in the old Graph Browser format under `browser` markup, so a
+     server that only knows `graphview` publishes nothing here. */
+  const localeLine = depsDoc.getText().split(/\r?\n/).findIndex(l => l.trim() === 'locale_deps')
+  assert.ok(localeLine > depsLine, 'Deps.thy should contain a locale_deps command')
+  depsEditor.selection = new vscode.Selection(localeLine, 0, localeLine, 0)
+  const locales = await pollFor('a graph from locale_deps',
+    async () => {
+      const s = await vscode.commands.executeCommand('isabelle.graphviewState')
+      return s && s.names.some(n => /DepsD$/.test(n)) ? s : undefined
+    }, 120000, describeGraph)
+  assert.strictEqual(locales.error, undefined, `locale graph failed: ${locales.error}`)
+  for (const l of ['DepsA', 'DepsB', 'DepsC'])
+    assert.ok(locales.names.some(n => n.endsWith(l)), `locale_deps should include ${l}`)
+  console.log(`  (locale_deps: ${locales.nodes} nodes, ${locales.edges} edges)`)
+  pass('locale_deps, in the old browser format, is parsed and published')
+
   // Moving off the command must clear it, or a stale graph reads as current.
   depsEditor.selection = new vscode.Selection(0, 0, 0, 0)
   const cleared = await pollFor('the graph to clear when the caret moves away',
