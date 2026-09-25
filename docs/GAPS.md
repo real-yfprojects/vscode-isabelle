@@ -44,7 +44,7 @@ corrupt" banner. Building a fork is the only stable way to get the encoding in.
 | Sub/superscript, bold | decorations on control symbols |
 | Symbol input (`\forall` → `\<forall>`) | rewriter + completion, table from `etc/symbols` |
 | Unicode-safe saving | `onWillSaveTextDocument` normaliser |
-| Symbol-atomic caret motion | rebound motion commands + `wordSeparators`/`wordPattern` |
+| Symbol-atomic caret motion | rebound character and word motion commands; double-click by `wordSeparators` only |
 | **PIDE markup colouring and status** | `PIDE/decoration` → editor decorations, palette ported from Isabelle's own `text_color` defaults |
 | **Output panel** | webview over `PIDE/dynamic_output` |
 | **State panel** | webview over `PIDE/state_*`, with Update / Auto / Locate |

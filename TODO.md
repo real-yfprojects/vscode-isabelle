@@ -243,7 +243,12 @@ This documents tracks features and tasks that might already be tracked in other 
   - `sessionIcon` spins exactly when a child row's own icon does, so a failed-but-running
     child shows its error and does not set the parent spinning; a theory still resolving
     its imports does count
-- [ ] delimiters (e.g. \<open>...\<close>) shouldn't be part of the word (e.g. when double clicking or using ctrl+left/right to jump between words)
+- [~] delimiters (e.g. \<open>...\<close>) shouldn't be part of the word (e.g. when double clicking or using ctrl+left/right to jump between words)
+  - done for Ctrl+arrow and Ctrl+Backspace/Delete: rebound in `atomic.ts`, VS Code's own
+    word rules run over units in `words.ts`, a rendered symbol being one unit
+  - [ ] double-click: VS Code uses only `editor.wordSeparators` for it (never `wordPattern`),
+    and offers no hook. Workaround would be a mouse-kind selection listener that narrows
+    a selection equal to the built-in word around the preceding click
 - [ ] VSCode Getting Started Guide for the extension, including how to install and configure Isabelle, how to use the extension, and how to troubleshoot common issues.
 - [ ] when starting up with a session selected that hasn't been build yet, startup takes ages and the only progress update you get are in the isabelle extension output panel. You have to wait an eternity until you can use the extension. Can we detect a rebuild and run it in the background while using the lsp with a smaller theory that doesn't need rebuild. When the cache build has finished we can restart the lsp with the session. This is just one idea for a fix. Think whether there is a better/cleaner.more seemless way.
 - [ ] Look at these features: https://github.com/Arthur742Ramos/Isabelle-VSCode#-features and decide which we are missing.

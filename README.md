@@ -36,8 +36,10 @@ only.** Nothing can desynchronise, because there is only one representation.
   Unicode back to `\<name>` before the file is written, so pasted or code-action-inserted
   Unicode cannot produce an unbuildable file.
 - **Atomic motion** — arrow keys, shift-arrows, backspace and delete treat `\<forall>` as
-  one unit; `wordPattern` and a per-language `editor.wordSeparators` cover double-click
-  selection and Ctrl+arrow declaratively.
+  one unit. Ctrl+arrow and Ctrl+Backspace/Delete are rebound too, with each symbol one
+  character: `\<alpha>` and `\<^sub>` stay inside a name, while `\<open>`, `\<close>` and
+  operators like `\<forall>` are words of their own. Double-click still goes by the
+  per-language `editor.wordSeparators`, which cannot make that distinction.
 - **PIDE markup** — syntax colouring and processing status from `PIDE/decoration`.
   Colouring is served as **semantic tokens**, so the active colour theme applies to
   checked text just as it does to unchecked text; processing status, message underlines

@@ -151,11 +151,47 @@
         "command": "isabelle.deleteRight",
         "key": "delete",
         "when": "editorTextFocus && !editorReadonly && editorLangId == isabelle && config.isabelle.renderSymbols"
+      },
+      {
+        "command": "isabelle.cursorWordLeft",
+        "key": "ctrl+left",
+        "mac": "alt+left",
+        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols"
+      },
+      {
+        "command": "isabelle.cursorWordEndRight",
+        "key": "ctrl+right",
+        "mac": "alt+right",
+        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols"
+      },
+      {
+        "command": "isabelle.cursorWordLeftSelect",
+        "key": "ctrl+shift+left",
+        "mac": "alt+shift+left",
+        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols"
+      },
+      {
+        "command": "isabelle.cursorWordEndRightSelect",
+        "key": "ctrl+shift+right",
+        "mac": "alt+shift+right",
+        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols"
+      },
+      {
+        "command": "isabelle.deleteWordLeft",
+        "key": "ctrl+backspace",
+        "mac": "alt+backspace",
+        "when": "editorTextFocus && !editorReadonly && editorLangId == isabelle && config.isabelle.renderSymbols"
+      },
+      {
+        "command": "isabelle.deleteWordRight",
+        "key": "ctrl+delete",
+        "mac": "alt+delete",
+        "when": "editorTextFocus && !editorReadonly && editorLangId == isabelle && config.isabelle.renderSymbols"
       }
     ],
     "configurationDefaults": {
       "[isabelle]": {
-        "editor.wordSeparators": "`~!@#$%^&*()-=+[{]}|;:'\",./?"
+        "editor.wordSeparators": "`~!@#$%^&*()-=+[{]}|;:\",./?"
       }
     },
     "configuration": {
@@ -501,7 +537,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "dev": "node ./test/dev.js",
-    "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29",
+    "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29 suite32",
     "test": "node ./test/runTest.js",
     "package": "vsce package --out isabelle-pide-stock.vsix"
   },

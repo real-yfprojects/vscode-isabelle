@@ -186,6 +186,38 @@ async function run() {
   assert.strictEqual(r.linked, 0, 'moving off the glyph withdraws the underline')
   pass('the underline is withdrawn when the offer moves elsewhere')
 
+  // ==================== word motion ====================
+  // editor.wordSeparators leaves out `\`, `<` and `>` to keep `\<forall>` whole, which also
+  // made `\<open>foo bar\<close>` a single word to Ctrl+arrow. The rules themselves are in
+  // suite32; this checks that the rebound commands reach them from a real editor.
+  const cart = await open('Words.thy', [
+    'theory Words', '  imports Main', 'begin', '',
+    'text \\<open>foo bar\\<close>', '', 'end', '',
+  ])
+  const wordProbe = dir => vscode.commands.executeCommand('isabelle.wordProbe', dir)
+  await setCaret(cart.editor, 4, 5)
+  assert.deepStrictEqual(await wordProbe('right'), { delegate: false, line: 4, target: 15 },
+    'Ctrl+Right from before the open delimiter stops after foo, not after the close one')
+  await setCaret(cart.editor, 4, 27)
+  assert.deepStrictEqual(await wordProbe('left'), { delegate: false, line: 4, target: 16 },
+    'Ctrl+Left from the line end stops before bar')
+  pass('Ctrl+arrows stop at the words inside a cartouche')
+
+  // These commands are ours and set the selection themselves, so their effect is reliable
+  // even in the unfocused test window.
+  await setCaret(cart.editor, 4, 12)
+  await vscode.commands.executeCommand('isabelle.cursorWordEndRight')
+  assert.strictEqual(cart.editor.selection.active.character, 15)
+  await vscode.commands.executeCommand('isabelle.cursorWordLeftSelect')
+  assert.strictEqual(cart.editor.selection.anchor.character, 15, 'the selecting variant keeps its anchor')
+  assert.strictEqual(cart.editor.selection.active.character, 12)
+  await setCaret(cart.editor, 4, 15)
+  await vscode.commands.executeCommand('isabelle.deleteWordLeft')
+  await wait(200)
+  assert.strictEqual(cart.doc.lineAt(4).text, 'text \\<open> bar\\<close>',
+    'Ctrl+Backspace after foo leaves the delimiter in place')
+  pass('the rebound word commands move, select and delete by those stops')
+
   // Symbolic operators must be words too. Isabelle's server answers a definition request
   // with a plain Location and no originSelectionRange, so VS Code derives the Ctrl+hover
   // underline from the *word* at that position. The wordPattern matched escapes and
