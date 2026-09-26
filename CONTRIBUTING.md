@@ -5,13 +5,7 @@ You need Node.js, VS Code and an Isabelle2025-2.
 ```sh
 npm install
 npm run compile      # or: npm run watch
-scripts/build-server-jar.sh ~/Isabelle/Isabelle2025-2
 ```
-
-The last line builds the extended server, `server/Isabelle2025-2.jar` (see
-[Getting Started, step 2](README.md#2-turn-on-the-extended-server-optional-recommended)).
-It takes a few minutes and leaves your Isabelle untouched. The dev launcher and the tests
-for the experimental panels use it.
 
 ## Trying your changes
 
@@ -21,8 +15,13 @@ in `.dev-profile/`. Your normal VS Code settings and extensions are left alone. 
 profile turns on the extended server and the experimental panels.
 
 The launcher uses the Isabelle the extension would find (`ISABELLE_HOME`, or the newest one
-in `~/Isabelle`) and stops with a hint if the jar for it isn't built yet. To use a
-hand-patched Isabelle instead, set `ISABELLE_PATCHED_HOME`.
+in `~/Isabelle`), with the extended server, `server/Isabelle2025-2.jar` (see
+[Getting Started, step 2](README.md#2-turn-on-the-extended-server-optional-recommended)).
+It rebuilds that jar first whenever the server's source has changed since the last build,
+which takes a few minutes; otherwise it starts right away. The source is your checkout of
+the server at `../mirror-2025-2` if you have one (or wherever `ISABELLE_SERVER_SOURCE`
+points), else the commit in `server/Isabelle2025-2.ref`. To use a hand-patched Isabelle
+instead, set `ISABELLE_PATCHED_HOME`.
 
 ## Tests
 
@@ -61,8 +60,10 @@ macOS and Windows, and builds the `.vsix` with the same jar in it.
 
 The extended server is branch `vscode-2025-2` of
 [mirror-isabelle](https://github.com/real-yfprojects/mirror-isabelle): the Isabelle2025-2
-release plus our changes. Work in a checkout of that branch and build the jar from it,
-uncommitted changes included:
+release plus our changes. Work in a checkout of that branch at `../mirror-2025-2`
+(`git worktree add ../mirror-2025-2 vscode-2025-2` in your mirror-isabelle clone): the dev
+launcher then builds the jar from it, uncommitted changes included. The tests use whatever
+jar is there, so after changing the server run the launcher once, or build by hand:
 
 ```sh
 scripts/build-server-jar.sh ~/Isabelle/Isabelle2025-2 ../mirror-2025-2

@@ -30,6 +30,7 @@ docs/**
 # The extended server: ship the jar and Isabelle's copyright notice that must travel
 # with it, not the pointer to the commit it is built from.
 server/*.ref
+server/*.jar.source
 .server-build/**
 
 node_modules/**

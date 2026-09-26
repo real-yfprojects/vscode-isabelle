@@ -3,12 +3,15 @@
 # Build server/<IDENTIFIER>.jar: the Isabelle/Scala module of a released Isabelle,
 # compiled from the backport branch of mirror-isabelle for that release.
 #
-# Usage: scripts/build-server-jar.sh ISABELLE_HOME [SOURCE]
+# Usage: scripts/build-server-jar.sh [--if-stale] ISABELLE_HOME [SOURCE]
 #
 #   ISABELLE_HOME  the released distribution the jar is for; provides the toolchain
 #   SOURCE         a checkout of the backport, e.g. a worktree of vscode-2025-2, built
 #                  as it stands, uncommitted changes included. Without it, the commit
 #                  named in server/<IDENTIFIER>.ref is fetched from $MIRROR_URL.
+#   --if-stale     build only if the jar was not built from exactly this source: the
+#                  commit, the uncommitted changes and new files of a checkout, and this
+#                  script. The dev launcher uses it on every start.
 #
 # The extension puts that jar ahead of the distribution's own lib/classes/isabelle.jar
 # (extendedServer in src/isabelle.ts), so users get the extra panels without patching,
@@ -36,8 +39,10 @@ work="$repo/.server-build"
 # sources: resolved in whatever shell started this, which has git
 
 if [ -z "${BUILD_SERVER_JAR_INNER:-}" ]; then
+  if_stale=""
+  if [ "${1:-}" = "--if-stale" ]; then if_stale=1; shift; fi
   if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
-    echo "usage: $0 ISABELLE_HOME [SOURCE]" >&2
+    echo "usage: $0 [--if-stale] ISABELLE_HOME [SOURCE]" >&2
     exit 2
   fi
   home="$(cd "$1" && pwd)"
@@ -53,11 +58,33 @@ if [ -z "${BUILD_SERVER_JAR_INNER:-}" ]; then
   fi
   commit="$(grep -v '^#' "$ref_file" | grep -m 1 -o '[0-9a-f]\{40\}')"
 
+  # What the jar is built from, as one hash: the source's commit, for a checkout also its
+  # uncommitted changes and new files under what Setup reads, and this script, whose
+  # changes alter the jar too. Recorded beside the jar after a build.
+  if [ "$#" -eq 2 ]; then
+    source="$(cd "$2" && pwd)"
+    key="$({
+      git -C "$source" rev-parse HEAD
+      git -C "$source" diff HEAD -- src etc/build.props lib/services
+      git -C "$source" ls-files --others --exclude-standard -- src etc lib |
+        while IFS= read -r f; do echo "$f $(git -C "$source" hash-object -- "$f")"; done
+      git hash-object -- "$0"
+    } | git hash-object --stdin)"
+  else
+    source=""
+    key="$({ echo "$commit"; git hash-object -- "$0"; } | git hash-object --stdin)"
+  fi
+  stamp="$repo/server/$ident.jar.source"
+  if [ -n "$if_stale" ] && [ -f "$repo/server/$ident.jar" ] && [ -f "$stamp" ] &&
+     [ "$(cat "$stamp")" = "$key" ]; then
+    echo "server/$ident.jar is up to date"
+    exit 0
+  fi
+
   rm -rf "$work"
   trap 'rm -rf "$work"' EXIT
 
-  if [ "$#" -eq 2 ]; then
-    source="$(cd "$2" && pwd)"
+  if [ -n "$source" ]; then
     head="$(git -C "$source" rev-parse HEAD 2>/dev/null || true)"
     if [ "$head" != "$commit" ]; then
       echo "note: building $source at ${head:-an unknown commit}, not $commit from $ref_file" >&2
@@ -83,7 +110,8 @@ if [ -z "${BUILD_SERVER_JAR_INNER:-}" ]; then
       script_w="$(cygpath -m "$(cd "$(dirname "$0")" && pwd)/$(basename "$0")")"
       # The login shell sets up Cygwin's PATH; the script itself runs in a plain child,
       # since run as the login shell it exits silently before its first line.
-      BUILD_SERVER_JAR_INNER=1 exec "$(cygpath -m "$home")/contrib/cygwin/bin/bash.exe" -l \
+      BUILD_SERVER_JAR_INNER=1 BUILD_SERVER_JAR_KEY="$key" \
+        exec "$(cygpath -m "$home")/contrib/cygwin/bin/bash.exe" -l \
         -c 'exec bash "$0" "$1" "$2"' "$script_w" "$(cygpath -m "$home")" "$(cygpath -m "$source")"
       ;;
   esac
@@ -92,6 +120,8 @@ else
   home="$(cd "$1" && pwd)"
   source="$(cd "$2" && pwd)"
   ident="$(cat "$home/etc/ISABELLE_IDENTIFIER")"
+  key="${BUILD_SERVER_JAR_KEY:-}"
+  stamp="$repo/server/$ident.jar.source"
   trap 'rm -rf "$work"' EXIT
 fi
 
@@ -182,4 +212,5 @@ awk '
 )
 
 cp "$comp/lib/isabelle.jar" "$out"
+if [ -n "$key" ]; then echo "$key" > "$stamp"; else rm -f "$stamp"; fi
 echo "built $out"

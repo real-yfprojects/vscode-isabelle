@@ -197,7 +197,11 @@ included, and has to merge with whatever the user keeps there; the fallback is s
 scripts/build-server-jar.sh <path to Isabelle2025-2> [<checkout of vscode-2025-2>]
 ```
 
-With a checkout it builds that tree as it stands; without one it fetches the commit in
+With `--if-stale` it builds only when the jar was not made from exactly this source --
+the commit, a checkout's uncommitted changes and new files, and the script itself, hashed
+into `server/<IDENTIFIER>.jar.source` after each build; the dev launcher runs it that way on
+every start. With a checkout it builds that tree as it stands; without one it fetches the
+commit in
 `server/Isabelle2025-2.ref` -- one commit, no history, and of its tree only the Scala and
 Java sources and `etc/build.props` (`MIRROR_URL` overrides where from). Either way it
 writes `server/Isabelle2025-2.jar` in a few minutes and only reads the distribution: the

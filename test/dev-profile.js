@@ -9,6 +9,7 @@
 // Runnable on its own (`node test/dev-profile.js`) or required by test/dev.js and the
 // F5 launch config's preLaunchTask.
 
+const { spawnSync } = require('child_process')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
@@ -65,14 +66,54 @@ function resolveHome() {
   } catch {
     throw new Error(`${stock} is not a released Isabelle (no etc/ISABELLE_IDENTIFIER).`)
   }
+  const serverSource = ensureJar(stock)
   const jar = path.join(REPO, 'server', `${identifier}.jar`)
-  if (!fs.existsSync(jar)) {
-    throw new Error(
-      `No extended server for ${identifier}. Build it with\n` +
-      `  scripts/build-server-jar.sh ${stock} [<checkout of vscode-2025-2>]\n` +
-      'or set ISABELLE_PATCHED_HOME to a patched build.')
+  return {
+    home: stock, extended: true,
+    source: `stock, with ${path.relative(REPO, jar)} from ${serverSource}`,
   }
-  return { home: stock, extended: true, source: `stock, with ${path.relative(REPO, jar)}` }
+}
+
+/**
+ * The checkout the extended server is built from: ISABELLE_SERVER_SOURCE, else the
+ * vscode-2025-2 worktree beside this repository if there is one. Without either, the
+ * commit pinned in server/<IDENTIFIER>.ref.
+ */
+function serverSource() {
+  if (process.env.ISABELLE_SERVER_SOURCE) return path.resolve(process.env.ISABELLE_SERVER_SOURCE)
+  const sibling = path.join(REPO, '..', 'mirror-2025-2')
+  return fs.existsSync(path.join(sibling, '.git')) ? sibling : undefined
+}
+
+/** Git's bash: on Windows, the first `bash` on PATH can be WSL's. */
+function gitBash() {
+  if (process.platform !== 'win32') return 'bash'
+  const exec = spawnSync('git', ['--exec-path'], { encoding: 'utf8' }).stdout.trim()
+  for (const candidate of ['../../../bin/bash.exe', '../../../usr/bin/bash.exe']) {
+    const bash = path.resolve(exec, candidate)
+    if (fs.existsSync(bash)) return bash
+  }
+  throw new Error('Git Bash not found; the extended server is built by a bash script.')
+}
+
+/**
+ * Rebuild server/<IDENTIFIER>.jar unless it was built from exactly the current source.
+ * The build script decides (--if-stale), from a hash of the commit, the uncommitted
+ * changes and itself, so an unchanged source costs a second and a changed one a full
+ * Isabelle/Scala compile of a few minutes.
+ */
+function ensureJar(stock) {
+  const source = serverSource()
+  const slashes = p => p.replace(/\\/g, '/')  // bash takes C:/..., not C:\...
+  const args = [slashes(path.join(REPO, 'scripts', 'build-server-jar.sh')), '--if-stale',
+    slashes(stock)]
+  if (source) args.push(slashes(source))
+  const r = spawnSync(gitBash(), args, { cwd: REPO, stdio: 'inherit' })
+  if (r.status !== 0) {
+    throw new Error('Building the extended server failed (see above). Set ' +
+      'ISABELLE_PATCHED_HOME to use a patched build instead.')
+  }
+  return source ?? `server/*.ref`
 }
 
 function seed() {

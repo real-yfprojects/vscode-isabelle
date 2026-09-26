@@ -28,4 +28,5 @@ test/workspace/.vscode/
 # scripts/build-server-jar.sh: the jar is built from the commit in server/*.ref, in CI or
 # locally, and its scratch directory only exists while it runs.
 server/*.jar
+server/*.jar.source
 .server-build/
