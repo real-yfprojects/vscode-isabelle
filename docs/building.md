@@ -54,6 +54,7 @@ carries the backport as ordinary commits, so there is one place for it and git d
 bookkeeping:
 
 ```
+437a3bd673 Send the categories of a term that the text colours leave plain
 e9d097fc51 Indent Isar text on ENTER, after a keyword, and on Format Selection
 1fb089268c Fall back to the default completion options when they are undeclared
 07729686c2 Make VS Code completion follow VS Code's model, ...   (cherry-picked from main)
@@ -127,7 +128,7 @@ substitute for a full component set if the change touches those files.
 
 ## Which Isabelle this client targets
 
-Building the branches against a released Isabelle2025-2 turned up four places where the
+Building the branches against a released Isabelle2025-2 turned up five places where the
 development tree has moved on. They matter because the client speaks to the *development*
 server, so a released distribution is not a supported target:
 
@@ -137,6 +138,7 @@ server, so a released distribution is not a supported target:
 | `Channel.Delay` | `Delay.last(t, channel.Error_Logger)` |
 | `Nodes_Status.command_timings` keyed by `Document_ID.Command` | keyed by `Command`; no `Snapshot.get_command` |
 | `this.class_name` | `getClass.getName` |
+| `Markup.Entity(entry)`, a `Name_Space.Entry` | `Markup.Entity(kind, name)` |
 
 The first is the load-bearing one, and it was found the hard way: `suite17` asserted that
 the caret moved after `PIDE/goto_command` and it never did, because the released server
@@ -164,7 +166,8 @@ The commit named in `server/Isabelle2025-2.ref`, currently the tip of `vscode-20
 above: `main` of mirror-isabelle, including the completion work, plus the two
 `vscode-simplifier-trace` commits not yet merged there -- adapted to the release as in the
 table above -- and indentation (onTypeFormatting and rangeFormatting, jEdit's indentation
-rule), which was written on this branch first. And two things from the development tree
+rule) and the `semantic_*` categories of inner syntax, both written on this branch first.
+And two things from the development tree
 that 2025-2 lacks:
 `PIDE/goto_command`, and upstream's `f425404488`, without which one failing delayed event
 kills the JVM's only timer thread and with it every later delayed event of the server
