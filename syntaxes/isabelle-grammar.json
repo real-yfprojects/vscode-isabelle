@@ -1,15 +1,21 @@
 {
   "name": "Isabelle",
   "scopeName": "source.isabelle",
-  "fileTypes": ["thy"],
-  "uuid": "703935dc-2c04-43b4-b66b-acd6f077320d",
+  "fileTypes": [
+    "thy"
+  ],
+  "uuid": "9d14fba1-ae7c-4d3f-99bc-daa94cfd2ea0",
   "repository": {
     "comment": {
       "patterns": [
         {
           "name": "comment.block.isabelle",
           "begin": "\\(\\*",
-          "patterns": [{ "include": "#comment" }],
+          "patterns": [
+            {
+              "include": "#comment"
+            }
+          ],
           "end": "\\*\\)"
         }
       ]
@@ -19,8 +25,293 @@
         {
           "name": "string.quoted.other.multiline.isabelle",
           "begin": "(?:\\\\<open>|‹)",
-          "patterns": [{ "include": "#cartouche" }],
-          "end": "(?:\\\\<close>|›)"
+          "end": "(?:\\\\<close>|›)",
+          "patterns": [
+            {
+              "include": "#cartouche"
+            }
+          ]
+        }
+      ]
+    },
+    "marker": {
+      "patterns": [
+        {
+          "name": "comment.block.marker.isabelle",
+          "begin": "(?:\\\\<comment>|―)\\s*(?:\\\\<open>|‹)",
+          "end": "(?:\\\\<close>|›)",
+          "patterns": [
+            {
+              "include": "#cartouche"
+            }
+          ]
+        }
+      ]
+    },
+    "string": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.isabelle",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.isabelle",
+              "match": "\\\\[\"]|\\\\\\d\\d\\d"
+            }
+          ]
+        }
+      ]
+    },
+    "inner": {
+      "patterns": [
+        {
+          "name": "comment.block.isabelle",
+          "begin": "\\(\\*(?!\\))",
+          "end": "\\*\\)",
+          "patterns": [
+            {
+              "include": "#comment"
+            }
+          ]
+        },
+        {
+          "include": "#marker"
+        },
+        {
+          "name": "string.quoted.other.inner.isabelle",
+          "begin": "(?:\\\\<open>|‹)",
+          "end": "(?:\\\\<close>|›)",
+          "patterns": [
+            {
+              "include": "#cartouche"
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.inner.isabelle",
+          "begin": "''",
+          "end": "''"
+        },
+        {
+          "name": "string.quoted.double.inner.isabelle",
+          "begin": "\"",
+          "end": "\""
+        },
+        {
+          "name": "keyword.other.inner.isabelle",
+          "match": "\\b(?:GREATEST|LEAST|SOME|case|else|then|THE|div|dvd|let|mod|if|in|of)(?!(?:(?:[A-Za-z]|\\\\<(?:Upsilon|epsilon|upsilon|Lambda|Delta|Gamma|Omega|Sigma|Theta|alpha|delta|gamma|kappa|omega|sigma|theta|beta|iota|zeta|Phi|Psi|chi|eta|phi|psi|rho|tau|AA|BB|CC|DD|EE|FF|GG|HH|II|JJ|KK|LL|MM|NN|OO|PP|Pi|QQ|RR|SS|TT|UU|VV|WW|XX|Xi|YY|ZZ|aa|bb|cc|dd|ee|ff|gg|hh|ii|jj|kk|ll|mm|mu|nn|nu|oo|pi|pp|qq|rr|ss|tt|uu|vv|ww|xi|xx|yy|zz|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z|a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z)>|Γ|Δ|Θ|Λ|Ξ|Π|Σ|Υ|Φ|Ψ|Ω|α|β|γ|δ|ε|ζ|η|θ|ι|κ|μ|ν|ξ|π|ρ|σ|τ|υ|φ|χ|ψ|ω|ℋ|ℌ|ℐ|ℑ|ℒ|ℛ|ℜ|ℨ|ℬ|ℭ|ℰ|ℱ|ℳ)|[0-9_']|\\\\<\\^sub>))"
+        },
+        {
+          "match": "(?:[A-Za-z]|\\\\<(?:Upsilon|epsilon|upsilon|Lambda|Delta|Gamma|Omega|Sigma|Theta|alpha|delta|gamma|kappa|omega|sigma|theta|beta|iota|zeta|Phi|Psi|chi|eta|phi|psi|rho|tau|AA|BB|CC|DD|EE|FF|GG|HH|II|JJ|KK|LL|MM|NN|OO|PP|Pi|QQ|RR|SS|TT|UU|VV|WW|XX|Xi|YY|ZZ|aa|bb|cc|dd|ee|ff|gg|hh|ii|jj|kk|ll|mm|mu|nn|nu|oo|pi|pp|qq|rr|ss|tt|uu|vv|ww|xi|xx|yy|zz|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z|a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z)>|Γ|Δ|Θ|Λ|Ξ|Π|Σ|Υ|Φ|Ψ|Ω|α|β|γ|δ|ε|ζ|η|θ|ι|κ|μ|ν|ξ|π|ρ|σ|τ|υ|φ|χ|ψ|ω|ℋ|ℌ|ℐ|ℑ|ℒ|ℛ|ℜ|ℨ|ℬ|ℭ|ℰ|ℱ|ℳ)(?:(?:[A-Za-z]|\\\\<(?:Upsilon|epsilon|upsilon|Lambda|Delta|Gamma|Omega|Sigma|Theta|alpha|delta|gamma|kappa|omega|sigma|theta|beta|iota|zeta|Phi|Psi|chi|eta|phi|psi|rho|tau|AA|BB|CC|DD|EE|FF|GG|HH|II|JJ|KK|LL|MM|NN|OO|PP|Pi|QQ|RR|SS|TT|UU|VV|WW|XX|Xi|YY|ZZ|aa|bb|cc|dd|ee|ff|gg|hh|ii|jj|kk|ll|mm|mu|nn|nu|oo|pi|pp|qq|rr|ss|tt|uu|vv|ww|xi|xx|yy|zz|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z|a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z)>|Γ|Δ|Θ|Λ|Ξ|Π|Σ|Υ|Φ|Ψ|Ω|α|β|γ|δ|ε|ζ|η|θ|ι|κ|μ|ν|ξ|π|ρ|σ|τ|υ|φ|χ|ψ|ω|ℋ|ℌ|ℐ|ℑ|ℒ|ℛ|ℜ|ℨ|ℬ|ℭ|ℰ|ℱ|ℳ)|[0-9_']|\\\\<\\^sub>)*(?:\\.(?:[A-Za-z]|\\\\<(?:Upsilon|epsilon|upsilon|Lambda|Delta|Gamma|Omega|Sigma|Theta|alpha|delta|gamma|kappa|omega|sigma|theta|beta|iota|zeta|Phi|Psi|chi|eta|phi|psi|rho|tau|AA|BB|CC|DD|EE|FF|GG|HH|II|JJ|KK|LL|MM|NN|OO|PP|Pi|QQ|RR|SS|TT|UU|VV|WW|XX|Xi|YY|ZZ|aa|bb|cc|dd|ee|ff|gg|hh|ii|jj|kk|ll|mm|mu|nn|nu|oo|pi|pp|qq|rr|ss|tt|uu|vv|ww|xi|xx|yy|zz|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z|a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z)>|Γ|Δ|Θ|Λ|Ξ|Π|Σ|Υ|Φ|Ψ|Ω|α|β|γ|δ|ε|ζ|η|θ|ι|κ|μ|ν|ξ|π|ρ|σ|τ|υ|φ|χ|ψ|ω|ℋ|ℌ|ℐ|ℑ|ℒ|ℛ|ℜ|ℨ|ℬ|ℭ|ℰ|ℱ|ℳ)(?:(?:[A-Za-z]|\\\\<(?:Upsilon|epsilon|upsilon|Lambda|Delta|Gamma|Omega|Sigma|Theta|alpha|delta|gamma|kappa|omega|sigma|theta|beta|iota|zeta|Phi|Psi|chi|eta|phi|psi|rho|tau|AA|BB|CC|DD|EE|FF|GG|HH|II|JJ|KK|LL|MM|NN|OO|PP|Pi|QQ|RR|SS|TT|UU|VV|WW|XX|Xi|YY|ZZ|aa|bb|cc|dd|ee|ff|gg|hh|ii|jj|kk|ll|mm|mu|nn|nu|oo|pi|pp|qq|rr|ss|tt|uu|vv|ww|xi|xx|yy|zz|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z|a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z)>|Γ|Δ|Θ|Λ|Ξ|Π|Σ|Υ|Φ|Ψ|Ω|α|β|γ|δ|ε|ζ|η|θ|ι|κ|μ|ν|ξ|π|ρ|σ|τ|υ|φ|χ|ψ|ω|ℋ|ℌ|ℐ|ℑ|ℒ|ℛ|ℜ|ℨ|ℬ|ℭ|ℰ|ℱ|ℳ)|[0-9_']|\\\\<\\^sub>)*)*"
+        },
+        {
+          "name": "entity.name.type.parameter.inner.isabelle",
+          "match": "\\??'(?:[A-Za-z]|\\\\<(?:Upsilon|epsilon|upsilon|Lambda|Delta|Gamma|Omega|Sigma|Theta|alpha|delta|gamma|kappa|omega|sigma|theta|beta|iota|zeta|Phi|Psi|chi|eta|phi|psi|rho|tau|AA|BB|CC|DD|EE|FF|GG|HH|II|JJ|KK|LL|MM|NN|OO|PP|Pi|QQ|RR|SS|TT|UU|VV|WW|XX|Xi|YY|ZZ|aa|bb|cc|dd|ee|ff|gg|hh|ii|jj|kk|ll|mm|mu|nn|nu|oo|pi|pp|qq|rr|ss|tt|uu|vv|ww|xi|xx|yy|zz|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z|a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z)>|Γ|Δ|Θ|Λ|Ξ|Π|Σ|Υ|Φ|Ψ|Ω|α|β|γ|δ|ε|ζ|η|θ|ι|κ|μ|ν|ξ|π|ρ|σ|τ|υ|φ|χ|ψ|ω|ℋ|ℌ|ℐ|ℑ|ℒ|ℛ|ℜ|ℨ|ℬ|ℭ|ℰ|ℱ|ℳ)(?:(?:[A-Za-z]|\\\\<(?:Upsilon|epsilon|upsilon|Lambda|Delta|Gamma|Omega|Sigma|Theta|alpha|delta|gamma|kappa|omega|sigma|theta|beta|iota|zeta|Phi|Psi|chi|eta|phi|psi|rho|tau|AA|BB|CC|DD|EE|FF|GG|HH|II|JJ|KK|LL|MM|NN|OO|PP|Pi|QQ|RR|SS|TT|UU|VV|WW|XX|Xi|YY|ZZ|aa|bb|cc|dd|ee|ff|gg|hh|ii|jj|kk|ll|mm|mu|nn|nu|oo|pi|pp|qq|rr|ss|tt|uu|vv|ww|xi|xx|yy|zz|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z|a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z)>|Γ|Δ|Θ|Λ|Ξ|Π|Σ|Υ|Φ|Ψ|Ω|α|β|γ|δ|ε|ζ|η|θ|ι|κ|μ|ν|ξ|π|ρ|σ|τ|υ|φ|χ|ψ|ω|ℋ|ℌ|ℐ|ℑ|ℒ|ℛ|ℜ|ℨ|ℬ|ℭ|ℰ|ℱ|ℳ)|[0-9_']|\\\\<\\^sub>)*"
+        },
+        {
+          "name": "variable.other.constant.inner.isabelle",
+          "match": "\\?(?:[A-Za-z]|\\\\<(?:Upsilon|epsilon|upsilon|Lambda|Delta|Gamma|Omega|Sigma|Theta|alpha|delta|gamma|kappa|omega|sigma|theta|beta|iota|zeta|Phi|Psi|chi|eta|phi|psi|rho|tau|AA|BB|CC|DD|EE|FF|GG|HH|II|JJ|KK|LL|MM|NN|OO|PP|Pi|QQ|RR|SS|TT|UU|VV|WW|XX|Xi|YY|ZZ|aa|bb|cc|dd|ee|ff|gg|hh|ii|jj|kk|ll|mm|mu|nn|nu|oo|pi|pp|qq|rr|ss|tt|uu|vv|ww|xi|xx|yy|zz|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z|a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z)>|Γ|Δ|Θ|Λ|Ξ|Π|Σ|Υ|Φ|Ψ|Ω|α|β|γ|δ|ε|ζ|η|θ|ι|κ|μ|ν|ξ|π|ρ|σ|τ|υ|φ|χ|ψ|ω|ℋ|ℌ|ℐ|ℑ|ℒ|ℛ|ℜ|ℨ|ℬ|ℭ|ℰ|ℱ|ℳ)(?:(?:[A-Za-z]|\\\\<(?:Upsilon|epsilon|upsilon|Lambda|Delta|Gamma|Omega|Sigma|Theta|alpha|delta|gamma|kappa|omega|sigma|theta|beta|iota|zeta|Phi|Psi|chi|eta|phi|psi|rho|tau|AA|BB|CC|DD|EE|FF|GG|HH|II|JJ|KK|LL|MM|NN|OO|PP|Pi|QQ|RR|SS|TT|UU|VV|WW|XX|Xi|YY|ZZ|aa|bb|cc|dd|ee|ff|gg|hh|ii|jj|kk|ll|mm|mu|nn|nu|oo|pi|pp|qq|rr|ss|tt|uu|vv|ww|xi|xx|yy|zz|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z|a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z)>|Γ|Δ|Θ|Λ|Ξ|Π|Σ|Υ|Φ|Ψ|Ω|α|β|γ|δ|ε|ζ|η|θ|ι|κ|μ|ν|ξ|π|ρ|σ|τ|υ|φ|χ|ψ|ω|ℋ|ℌ|ℐ|ℑ|ℒ|ℛ|ℜ|ℨ|ℬ|ℭ|ℰ|ℱ|ℳ)|[0-9_']|\\\\<\\^sub>)*(?:\\.[0-9]+)?"
+        },
+        {
+          "name": "constant.numeric.inner.isabelle",
+          "match": "[0-9]+(?:\\.[0-9]+)?"
+        },
+        {
+          "name": "keyword.operator.type.inner.isabelle",
+          "match": "::"
+        },
+        {
+          "name": "keyword.operator.inner.isabelle",
+          "match": "\\\\<(?:longlonglongrightarrow|longlonglongleftarrow|Longleftrightarrow|longleftrightarrow|longlongrightarrow|longlongleftarrow|rightleftharpoons|downharpoonright|rightharpoondown|downharpoonleft|leftharpoondown|Leftrightarrow|Longrightarrow|guillemotright|hookrightarrow|leftrightarrow|longrightarrow|rightharpoonup|Longleftarrow|greaterapprox|guillemotleft|hookleftarrow|leftharpoonup|longleftarrow|threequarters|triangleright|upharpoonleft|hungarumlaut|ordmasculine|questiondown|triangleleft|Rrightarrow|diamondsuit|ordfeminine|restriction|Lleftarrow|Rightarrow|TTurnstile|Ztypecolon|exclamdown|greatersim|interleave|lessapprox|longmapsto|onequarter|registered|rightarrow|sqsubseteq|sqsupseteq|tturnstile|Leftarrow|Turnstile|checkmark|copyright|crossmark|diamondop|heartsuit|leftarrow|minusplus|ointegral|paragraph|plusminus|spadesuit|stileturn|triangleq|turnstile|Midarrow|Parallel|Zproject|clubsuit|currency|dieresis|emptyset|ggreater|infinity|integral|midarrow|parallel|setminus|sqsubset|sqsupset|subseteq|supseteq|triangle|Sqinter|Squnion|cedilla|complex|ddagger|diamond|inverse|leadsto|lesssim|llangle|lozenge|natural|newline|nexists|onehalf|partial|rrangle|section|sqinter|squnion|Coprod|Otimes|Updown|Zinbag|Zndres|Znrres|Zprime|Zpsurj|approx|bottom|bowtie|bullet|circle|dagger|degree|exists|forall|hyphen|lambda|langle|lbrace|lbrakk|lfloor|mapsto|ominus|oslash|otimes|pounds|preceq|propto|rangle|rbrace|rbrakk|rfloor|sslash|subset|succeq|supset|updown|Colon|Inter|Oplus|Union|Uplus|Zcomp|Zdres|Zffun|Zfinj|Zhide|Zpfun|Zpinj|Zrres|Zsemi|Zspot|Zsurj|acute|aleph|amalg|angle|asymp|cdots|doteq|eight|equiv|frown|index|inter|lblot|lceil|lless|lparr|nabla|noteq|notin|oplus|rblot|rceil|rparr|seven|sharp|simeq|smile|sqdot|three|times|union|unlhd|unrhd|uplus|wrong|Down|Join|Odot|Prod|Zbij|Zcat|Zinj|bbar|bbbA|bbbD|bbbE|bbbF|bbbG|bbbH|bbbI|bbbJ|bbbK|bbbL|bbbM|bbbO|bbbP|bbbS|bbbT|bbbU|bbbV|bbbW|bbbX|bbbY|bind|bool|cdot|cent|circ|cong|dots|down|euro|five|flat|four|hole|nine|odot|prec|real|some|star|succ|surd|then|zero|And|Sum|and|bar|box|div|int|lhd|mho|nat|not|one|rat|rhd|sim|six|top|two|yen|Or|Up|ge|in|le|or|up|wp)>|𝔸|𝔹|𝔻|𝔼|𝔽|𝔾|𝕀|𝕁|𝕂|𝕃|𝕄|𝕆|𝕊|𝕋|𝕌|𝕍|𝕎|𝕏|𝕐|𝟬|𝟭|𝟮|𝟯|𝟰|𝟱|𝟲|𝟳|𝟴|𝟵|¡|¢|£|¤|¥|¦|§|¨|©|ª|«|¬|®|¯|°|±|´|¶|·|¸|º|»|¼|½|¾|¿|×|÷|ı|˝|λ|ϵ|‐|‖|†|‡|…|′|⁀|€|ℂ|ℍ|ℕ|℘|ℙ|ℚ|ℝ|ℤ|℧|ℵ|←|↑|→|↓|↔|↕|↝|↠|↣|↦|↩|↪|↼|↽|↾|↿|⇀|⇁|⇂|⇃|⇌|⇐|⇑|⇒|⇓|⇔|⇕|⇚|⇛|⇠|⇢|⇸|⇻|∀|∂|∃|∄|∅|∇|∈|∉|∏|∐|∑|∓|∖|∘|∙|√|∝|∞|∠|∥|∧|∨|∩|∪|∫|∮|∷|∼|≀|≃|≅|≈|≍|≐|≜|≠|≡|≤|≥|≪|≫|≲|≳|≺|≻|≼|≽|⊂|⊃|⊆|⊇|⊎|⊏|⊐|⊑|⊒|⊓|⊔|⊕|⊖|⊗|⊘|⊙|⊢|⊣|⊤|⊥|⊨|⊩|⊫|⊲|⊳|⊴|⊵|⋀|⋁|⋂|⋃|⋄|⋅|⋆|⋈|⋯|⋿|⌈|⌉|⌊|⌋|⌑|⌢|⌣|⏎|─|═|□|△|▷|▹|◁|◃|◇|◊|○|♠|♡|♢|♣|♭|♮|♯|✓|✗|⟦|⟧|⟨|⟩|⟪|⟫|⟵|⟶|⟷|⟸|⟹|⟺|⟼|⤀|⤎|⤏|⤔|⤕|⤖|⤜|⦁|⦂|⦃|⦄|⦇|⦈|⦉|⦊|⧹|⨀|⨁|⨂|⨄|⨅|⨆|⨝|⨟|⨡|⨾|⨿|⩤|⩥|⪅|⪆|⪢|⫴|⫽|⫿"
+        },
+        {
+          "name": "keyword.operator.inner.isabelle",
+          "match": "\\\\<\\^[A-Za-z_]+>"
+        },
+        {
+          "name": "keyword.operator.inner.isabelle",
+          "match": "[!#$%&*+\\-/<=>@^|~:.,;()\\[\\]{}]+"
+        }
+      ]
+    },
+    "term-string": {
+      "patterns": [
+        {
+          "name": "meta.term.isabelle",
+          "begin": "\"",
+          "beginCaptures": {
+            "0": {
+              "name": "string.quoted.other.isabelle punctuation.definition.term.begin.isabelle"
+            }
+          },
+          "end": "\"",
+          "endCaptures": {
+            "0": {
+              "name": "string.quoted.other.isabelle punctuation.definition.term.end.isabelle"
+            }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.isabelle",
+              "match": "\\\\[\"]|\\\\\\d\\d\\d"
+            },
+            {
+              "include": "#inner"
+            }
+          ]
+        }
+      ]
+    },
+    "term-cartouche": {
+      "patterns": [
+        {
+          "name": "meta.term.isabelle",
+          "begin": "(?:\\\\<open>|‹)",
+          "beginCaptures": {
+            "0": {
+              "name": "string.quoted.other.isabelle punctuation.definition.term.begin.isabelle"
+            }
+          },
+          "end": "(?:\\\\<close>|›)",
+          "endCaptures": {
+            "0": {
+              "name": "string.quoted.other.isabelle punctuation.definition.term.end.isabelle"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#inner"
+            }
+          ]
+        }
+      ]
+    },
+    "ml-cartouche": {
+      "patterns": [
+        {
+          "name": "meta.embedded.block.ml.isabelle",
+          "begin": "(?:\\\\<open>|‹)",
+          "beginCaptures": {
+            "0": {
+              "name": "string.quoted.other.isabelle punctuation.section.embedded.begin.isabelle"
+            }
+          },
+          "end": "(?:\\\\<close>|›)",
+          "endCaptures": {
+            "0": {
+              "name": "string.quoted.other.isabelle punctuation.section.embedded.end.isabelle"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#cartouche"
+            }
+          ]
+        }
+      ]
+    },
+    "document-command": {
+      "patterns": [
+        {
+          "name": "meta.command.document.isabelle",
+          "begin": "\\b(subsubsection|subparagraph|subsection|paragraph|text_raw|chapter|section|text|txt)\\b",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.isabelle"
+            }
+          },
+          "end": "(?<=›|\\\\<close>|\")|(?=\\b(?:scala_build_generated_files|compile_generated_files|print_ML_antiquotations|print_case_translations|typed_print_translation|export_generated_files|global_interpretation|parse_ast_translation|print_ast_translation|print_context_tracing|no_adhoc_overloading|print_antiquotations|quickcheck_generator|print_term_bindings|quotient_definition|sledgehammer_params|chapter_definition|print_induct_rules|syntax_declaration|SML_file_no_debug|adhoc_overloading|find_unused_assms|free_constructors|parse_translation|print_definitions|print_quotientsQ3|print_trans_rules|print_translation|quickcheck_params|ML_file_no_debug|no_type_notation|old_rep_datatype|partial_function|print_attributes|print_defn_rules|print_inductives|print_quotconsts|print_quotmapsQ3|attribute_setup|code_identifier|coinductive_set|datatype_compat|inductive_cases|inductive_simps|lift_definition|no_translations|nunchaku_params|primcorecursive|print_codesetup|print_coercions|print_quot_maps|print_quotients|print_statement|SML_file_debug|axiomatization|interpretation|lifting_forget|lifting_update|named_theorems|nitpick_params|print_codeproc|print_commands|print_theorems|schematic_goal|ML_file_debug|code_datatype|code_printing|code_reserved|external_file|find_theorems|generate_file|inductive_set|instantiation|print_abbrevs|print_bundles|print_classes|print_context|print_interps|print_locales|print_methods|print_options|print_simpset|quotient_type|realizability|setup_lifting|simproc_setup|specification|subsubsection|syntax_consts|type_notation|abbreviation|code_reflect|default_sort|extract_type|method_setup|print_claset|print_locale|print_orders|print_record|print_syntax|print_theory|sledgehammer|solve_direct|subparagraph|syntax_types|translations|type_synonym|bibtex_file|coinductive|declaration|export_code|find_consts|local_setup|locale_deps|no_notation|nonterminal|open_bundle|overloading|print_cases|print_facts|print_rules|print_state|proposition|termination|thm_oracles|unused_thms|ML_command|ROOTS_file|SML_export|SML_import|class_deps|codatatype|code_monad|definition|experiment|hide_class|hide_const|print_bnfs|quickcheck|smt_status|subsection|type_alias|ultimately|ML_export|apply_end|code_deps|code_pred|code_thms|corollary|fun_cases|hide_fact|hide_type|including|inductive|interpret|no_syntax|paragraph|primcorec|realizers|sublocale|unfolding|SML_file|\\\\\\<proof\\>|consider|copy_bnf|datatype|full_prf|function|instance|judgment|lift_bnf|moreover|notation|nunchaku|subclass|text_raw|thm_deps|thy_deps|typedecl|unbundle|ML_file|chapter|context|declare|extract|finally|functor|include|nitpick|notepad|presume|primrec|section|session|subgoal|theorem|typedef|welcome|ML_prf|ML_val|assume|bundle|consts|define|lemmas|locale|obtain|oracle|prefer|record|supply|syntax|theory|values|alias|apply|class|defer|hence|lemma|proof|setup|sorry|using|value|write|also|back|case|done|from|have|help|next|note|oops|prop|show|term|text|then|thus|try0|with|bnf|end|fix|fun|let|prf|qed|thm|try|txt|typ|\\.\\.|ML|by|\\.|\\{|\\})\\b)",
+          "patterns": [
+            {
+              "include": "#comment"
+            },
+            {
+              "include": "#cartouche"
+            },
+            {
+              "include": "#string"
+            }
+          ]
+        }
+      ]
+    },
+    "ml-command": {
+      "patterns": [
+        {
+          "name": "meta.command.ml.isabelle",
+          "begin": "\\b(typed_print_translation|parse_ast_translation|print_ast_translation|syntax_declaration|parse_translation|print_translation|attribute_setup|simproc_setup|method_setup|declaration|local_setup|ML_command|SML_export|SML_import|ML_export|ML_prf|ML_val|oracle|setup|ML)\\b",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.isabelle"
+            }
+          },
+          "end": "(?<=›|\\\\<close>)|(?=\\b(?:scala_build_generated_files|compile_generated_files|print_ML_antiquotations|print_case_translations|typed_print_translation|export_generated_files|global_interpretation|parse_ast_translation|print_ast_translation|print_context_tracing|no_adhoc_overloading|print_antiquotations|quickcheck_generator|print_term_bindings|quotient_definition|sledgehammer_params|chapter_definition|print_induct_rules|syntax_declaration|SML_file_no_debug|adhoc_overloading|find_unused_assms|free_constructors|parse_translation|print_definitions|print_quotientsQ3|print_trans_rules|print_translation|quickcheck_params|ML_file_no_debug|no_type_notation|old_rep_datatype|partial_function|print_attributes|print_defn_rules|print_inductives|print_quotconsts|print_quotmapsQ3|attribute_setup|code_identifier|coinductive_set|datatype_compat|inductive_cases|inductive_simps|lift_definition|no_translations|nunchaku_params|primcorecursive|print_codesetup|print_coercions|print_quot_maps|print_quotients|print_statement|SML_file_debug|axiomatization|interpretation|lifting_forget|lifting_update|named_theorems|nitpick_params|print_codeproc|print_commands|print_theorems|schematic_goal|ML_file_debug|code_datatype|code_printing|code_reserved|external_file|find_theorems|generate_file|inductive_set|instantiation|print_abbrevs|print_bundles|print_classes|print_context|print_interps|print_locales|print_methods|print_options|print_simpset|quotient_type|realizability|setup_lifting|simproc_setup|specification|subsubsection|syntax_consts|type_notation|abbreviation|code_reflect|default_sort|extract_type|method_setup|print_claset|print_locale|print_orders|print_record|print_syntax|print_theory|sledgehammer|solve_direct|subparagraph|syntax_types|translations|type_synonym|bibtex_file|coinductive|declaration|export_code|find_consts|local_setup|locale_deps|no_notation|nonterminal|open_bundle|overloading|print_cases|print_facts|print_rules|print_state|proposition|termination|thm_oracles|unused_thms|ML_command|ROOTS_file|SML_export|SML_import|class_deps|codatatype|code_monad|definition|experiment|hide_class|hide_const|print_bnfs|quickcheck|smt_status|subsection|type_alias|ultimately|ML_export|apply_end|code_deps|code_pred|code_thms|corollary|fun_cases|hide_fact|hide_type|including|inductive|interpret|no_syntax|paragraph|primcorec|realizers|sublocale|unfolding|SML_file|\\\\\\<proof\\>|consider|copy_bnf|datatype|full_prf|function|instance|judgment|lift_bnf|moreover|notation|nunchaku|subclass|text_raw|thm_deps|thy_deps|typedecl|unbundle|ML_file|chapter|context|declare|extract|finally|functor|include|nitpick|notepad|presume|primrec|section|session|subgoal|theorem|typedef|welcome|ML_prf|ML_val|assume|bundle|consts|define|lemmas|locale|obtain|oracle|prefer|record|supply|syntax|theory|values|alias|apply|class|defer|hence|lemma|proof|setup|sorry|using|value|write|also|back|case|done|from|have|help|next|note|oops|prop|show|term|text|then|thus|try0|with|bnf|end|fix|fun|let|prf|qed|thm|try|txt|typ|\\.\\.|ML|by|\\.|\\{|\\})\\b)",
+          "patterns": [
+            {
+              "include": "#comment"
+            },
+            {
+              "include": "#ml-cartouche"
+            },
+            {
+              "include": "#term-string"
+            }
+          ]
+        }
+      ]
+    },
+    "load-command": {
+      "patterns": [
+        {
+          "name": "meta.command.load.isabelle",
+          "begin": "\\b(SML_file_no_debug|ML_file_no_debug|SML_file_debug|ML_file_debug|external_file|bibtex_file|ROOTS_file|SML_file|ML_file)\\b",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.isabelle"
+            }
+          },
+          "end": "(?<=›|\\\\<close>|\")|(?=\\b(?:scala_build_generated_files|compile_generated_files|print_ML_antiquotations|print_case_translations|typed_print_translation|export_generated_files|global_interpretation|parse_ast_translation|print_ast_translation|print_context_tracing|no_adhoc_overloading|print_antiquotations|quickcheck_generator|print_term_bindings|quotient_definition|sledgehammer_params|chapter_definition|print_induct_rules|syntax_declaration|SML_file_no_debug|adhoc_overloading|find_unused_assms|free_constructors|parse_translation|print_definitions|print_quotientsQ3|print_trans_rules|print_translation|quickcheck_params|ML_file_no_debug|no_type_notation|old_rep_datatype|partial_function|print_attributes|print_defn_rules|print_inductives|print_quotconsts|print_quotmapsQ3|attribute_setup|code_identifier|coinductive_set|datatype_compat|inductive_cases|inductive_simps|lift_definition|no_translations|nunchaku_params|primcorecursive|print_codesetup|print_coercions|print_quot_maps|print_quotients|print_statement|SML_file_debug|axiomatization|interpretation|lifting_forget|lifting_update|named_theorems|nitpick_params|print_codeproc|print_commands|print_theorems|schematic_goal|ML_file_debug|code_datatype|code_printing|code_reserved|external_file|find_theorems|generate_file|inductive_set|instantiation|print_abbrevs|print_bundles|print_classes|print_context|print_interps|print_locales|print_methods|print_options|print_simpset|quotient_type|realizability|setup_lifting|simproc_setup|specification|subsubsection|syntax_consts|type_notation|abbreviation|code_reflect|default_sort|extract_type|method_setup|print_claset|print_locale|print_orders|print_record|print_syntax|print_theory|sledgehammer|solve_direct|subparagraph|syntax_types|translations|type_synonym|bibtex_file|coinductive|declaration|export_code|find_consts|local_setup|locale_deps|no_notation|nonterminal|open_bundle|overloading|print_cases|print_facts|print_rules|print_state|proposition|termination|thm_oracles|unused_thms|ML_command|ROOTS_file|SML_export|SML_import|class_deps|codatatype|code_monad|definition|experiment|hide_class|hide_const|print_bnfs|quickcheck|smt_status|subsection|type_alias|ultimately|ML_export|apply_end|code_deps|code_pred|code_thms|corollary|fun_cases|hide_fact|hide_type|including|inductive|interpret|no_syntax|paragraph|primcorec|realizers|sublocale|unfolding|SML_file|\\\\\\<proof\\>|consider|copy_bnf|datatype|full_prf|function|instance|judgment|lift_bnf|moreover|notation|nunchaku|subclass|text_raw|thm_deps|thy_deps|typedecl|unbundle|ML_file|chapter|context|declare|extract|finally|functor|include|nitpick|notepad|presume|primrec|section|session|subgoal|theorem|typedef|welcome|ML_prf|ML_val|assume|bundle|consts|define|lemmas|locale|obtain|oracle|prefer|record|supply|syntax|theory|values|alias|apply|class|defer|hence|lemma|proof|setup|sorry|using|value|write|also|back|case|done|from|have|help|next|note|oops|prop|show|term|text|then|thus|try0|with|bnf|end|fix|fun|let|prf|qed|thm|try|txt|typ|\\.\\.|ML|by|\\.|\\{|\\})\\b)",
+          "patterns": [
+            {
+              "include": "#comment"
+            },
+            {
+              "include": "#cartouche"
+            },
+            {
+              "include": "#string"
+            }
+          ]
+        }
+      ]
+    },
+    "theory-header": {
+      "patterns": [
+        {
+          "name": "meta.theory-header.isabelle",
+          "begin": "\\b(imports|keywords|abbrevs)\\b",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.other.unit.isabelle"
+            }
+          },
+          "end": "(?=\\bbegin\\b)",
+          "patterns": [
+            {
+              "include": "#comment"
+            },
+            {
+              "include": "#cartouche"
+            },
+            {
+              "include": "#string"
+            },
+            {
+              "name": "keyword.other.unit.isabelle",
+              "match": "\\b(imports|keywords|abbrevs|and)\\b"
+            }
+          ]
         }
       ]
     }
@@ -30,38 +321,42 @@
       "include": "#comment"
     },
     {
-      "include": "#cartouche"
+      "include": "#marker"
+    },
+    {
+      "include": "#document-command"
+    },
+    {
+      "include": "#load-command"
+    },
+    {
+      "include": "#ml-command"
+    },
+    {
+      "include": "#theory-header"
     },
     {
       "name": "keyword.control.isabelle",
-      "match": "\\b(\\.|\\.\\.|ML|ML_command|ML_export|ML_file|ML_file_debug|ML_file_no_debug|ML_prf|ML_val|ROOTS_file|SML_export|SML_file|SML_file_debug|SML_file_no_debug|SML_import|\\\\\\<proof\\>|abbreviation|adhoc_overloading|alias|also|apply|apply_end|attribute_setup|axiomatization|back|bibtex_file|bnf|bundle|by|chapter|chapter_definition|class|class_deps|codatatype|code_datatype|code_deps|code_identifier|code_monad|code_pred|code_printing|code_reflect|code_reserved|code_thms|coinductive|coinductive_set|compile_generated_files|consider|consts|context|copy_bnf|corollary|datatype|datatype_compat|declaration|declare|default_sort|defer|definition|done|experiment|export_code|export_generated_files|external_file|extract|extract_type|finally|find_consts|find_theorems|find_unused_assms|free_constructors|from|full_prf|fun|fun_cases|function|functor|generate_file|global_interpretation|have|help|hence|hide_class|hide_const|hide_fact|hide_type|include|including|inductive|inductive_cases|inductive_set|inductive_simps|instance|instantiation|interpret|interpretation|judgment|lemma|lemmas|let|lift_bnf|lift_definition|lifting_forget|lifting_update|local_setup|locale|locale_deps|method_setup|moreover|named_theorems|next|nitpick|nitpick_params|no_adhoc_overloading|no_notation|no_syntax|no_translations|no_type_notation|nonterminal|notation|note|notepad|nunchaku|nunchaku_params|old_rep_datatype|oops|open_bundle|oracle|overloading|paragraph|parse_ast_translation|parse_translation|partial_function|prefer|prf|primcorec|primcorecursive|primrec|print_ML_antiquotations|print_abbrevs|print_antiquotations|print_ast_translation|print_attributes|print_bnfs|print_bundles|print_case_translations|print_cases|print_claset|print_classes|print_codeproc|print_codesetup|print_coercions|print_commands|print_context|print_context_tracing|print_definitions|print_defn_rules|print_facts|print_induct_rules|print_inductives|print_interps|print_locale|print_locales|print_methods|print_options|print_orders|print_quot_maps|print_quotconsts|print_quotients|print_quotientsQ3|print_quotmapsQ3|print_record|print_rules|print_simpset|print_state|print_statement|print_syntax|print_term_bindings|print_theorems|print_theory|print_trans_rules|print_translation|proof|prop|proposition|qed|quickcheck|quickcheck_generator|quickcheck_params|quotient_definition|quotient_type|realizability|realizers|record|scala_build_generated_files|schematic_goal|section|session|setup|setup_lifting|simproc_setup|sledgehammer|sledgehammer_params|smt_status|solve_direct|sorry|specification|subclass|subgoal|sublocale|subparagraph|subsection|subsubsection|supply|syntax|syntax_consts|syntax_declaration|syntax_types|term|termination|text|text_raw|then|theorem|theory|thm|thm_deps|thm_oracles|thy_deps|translations|try|try0|txt|typ|type_alias|type_notation|type_synonym|typed_print_translation|typedecl|typedef|ultimately|unbundle|unfolding|unused_thms|using|value|values|welcome|with|write|\\{|\\})\\b"
+      "match": "\\b(scala_build_generated_files|compile_generated_files|print_ML_antiquotations|print_case_translations|typed_print_translation|export_generated_files|global_interpretation|parse_ast_translation|print_ast_translation|print_context_tracing|no_adhoc_overloading|print_antiquotations|quickcheck_generator|print_term_bindings|quotient_definition|sledgehammer_params|chapter_definition|print_induct_rules|syntax_declaration|SML_file_no_debug|adhoc_overloading|find_unused_assms|free_constructors|parse_translation|print_definitions|print_quotientsQ3|print_trans_rules|print_translation|quickcheck_params|ML_file_no_debug|no_type_notation|old_rep_datatype|partial_function|print_attributes|print_defn_rules|print_inductives|print_quotconsts|print_quotmapsQ3|attribute_setup|code_identifier|coinductive_set|datatype_compat|inductive_cases|inductive_simps|lift_definition|no_translations|nunchaku_params|primcorecursive|print_codesetup|print_coercions|print_quot_maps|print_quotients|print_statement|SML_file_debug|axiomatization|interpretation|lifting_forget|lifting_update|named_theorems|nitpick_params|print_codeproc|print_commands|print_theorems|schematic_goal|ML_file_debug|code_datatype|code_printing|code_reserved|external_file|find_theorems|generate_file|inductive_set|instantiation|print_abbrevs|print_bundles|print_classes|print_context|print_interps|print_locales|print_methods|print_options|print_simpset|quotient_type|realizability|setup_lifting|simproc_setup|specification|subsubsection|syntax_consts|type_notation|abbreviation|code_reflect|default_sort|extract_type|method_setup|print_claset|print_locale|print_orders|print_record|print_syntax|print_theory|sledgehammer|solve_direct|subparagraph|syntax_types|translations|type_synonym|bibtex_file|coinductive|declaration|export_code|find_consts|local_setup|locale_deps|no_notation|nonterminal|open_bundle|overloading|print_cases|print_facts|print_rules|print_state|proposition|termination|thm_oracles|unused_thms|ML_command|ROOTS_file|SML_export|SML_import|class_deps|codatatype|code_monad|definition|experiment|hide_class|hide_const|print_bnfs|quickcheck|smt_status|subsection|type_alias|ultimately|ML_export|apply_end|code_deps|code_pred|code_thms|corollary|fun_cases|hide_fact|hide_type|including|inductive|interpret|no_syntax|paragraph|primcorec|realizers|sublocale|unfolding|SML_file|\\\\\\<proof\\>|consider|copy_bnf|datatype|full_prf|function|instance|judgment|lift_bnf|moreover|notation|nunchaku|subclass|text_raw|thm_deps|thy_deps|typedecl|unbundle|ML_file|chapter|context|declare|extract|finally|functor|include|nitpick|notepad|primrec|section|session|subgoal|theorem|typedef|welcome|ML_prf|ML_val|bundle|consts|lemmas|locale|oracle|prefer|record|supply|syntax|theory|values|alias|apply|class|defer|hence|lemma|proof|setup|sorry|using|value|write|also|back|done|from|have|help|next|note|oops|prop|term|text|then|try0|with|bnf|fun|let|prf|qed|thm|try|txt|typ|\\.\\.|ML|by|\\.|\\{|\\})\\b"
     },
     {
       "name": "keyword.other.unit.isabelle",
-      "match": "\\b(abbrevs|and|assumes|begin|binder|checking|class_instance|class_relation|code_module|congproc|constant|constrains|datatypes|defines|description|directories|document_files|document_theories|end|export_classpath|export_files|export_prefix|external_files|file|file_prefix|fixes|for|functions|global|identifier|if|imports|in|includes|infix|infixl|infixr|is|keywords|module_name|monos|morphisms|notes|obtains|open|opening|options|output|overloaded|parametric|passive|pervasive|premises|private|qualified|rewrites|sessions|shows|structure|theories|type_class|type_constructor|unchecked|weak_congproc|when|where)\\b"
+      "match": "\\b(document_theories|export_classpath|type_constructor|class_instance|class_relation|document_files|external_files|export_prefix|weak_congproc|export_files|code_module|description|directories|file_prefix|module_name|constrains|identifier|overloaded|parametric|type_class|datatypes|functions|morphisms|pervasive|qualified|structure|unchecked|checking|congproc|constant|includes|keywords|premises|rewrites|sessions|theories|abbrevs|assumes|defines|imports|obtains|opening|options|passive|private|binder|global|infixl|infixr|output|begin|fixes|infix|monos|notes|shows|where|file|open|when|and|end|for|if|in|is)\\b"
     },
     {
       "name": "keyword.operator.isabelle",
-      "match": "\\b(\\!|\\!\\!|%|\\(|\\)|\\+|,|/|:|::|;|\\<|\\<\\=|\\=|\\=\\=|\\=\\>|\\?|\\[|\\\\\\<comment\\>|\\\\\\<equiv\\>|\\\\\\<leftharpoondown\\>|\\\\\\<rightharpoonup\\>|\\\\\\<rightleftharpoons\\>|\\\\\\<subseteq\\>|\\]|\\||―|↽|⇀|⇌|≡|⊆)\\b"
+      "match": "\\b(\\\\\\<rightleftharpoons\\>|\\\\\\<leftharpoondown\\>|\\\\\\<rightharpoonup\\>|\\\\\\<subseteq\\>|\\\\\\<comment\\>|\\\\\\<equiv\\>|\\!\\!|::|\\<\\=|\\=\\=|\\=\\>|\\!|%|\\(|\\)|\\+|,|/|:|;|\\<|\\=|\\?|\\[|\\]|\\||―|↽|⇀|⇌|≡|⊆)\\b"
     },
     {
       "name": "entity.name.type.isabelle",
-      "match": "\\b(assume|case|define|fix|obtain|presume|show|thus)\\b"
+      "match": "\\b(presume|assume|define|obtain|case|show|thus|fix)\\b"
     },
     {
       "name": "constant.numeric.isabelle",
       "match": "\\b\\d*\\.?\\d+\\b"
     },
     {
-      "name": "string.quoted.double.isabelle",
-      "begin": "\"",
-      "patterns": [
-        {
-          "name": "constant.character.escape.isabelle",
-          "match": "\\\\[\\\"]|\\\\\\d\\d\\d"
-        }
-      ],
-      "end": "\""
+      "include": "#term-string"
     },
     {
       "name": "string.quoted.backtick.isabelle",
@@ -78,9 +373,14 @@
       "name": "string.quoted.verbatim.isabelle",
       "begin": "\\{\\*",
       "patterns": [
-        { "match": "[^*]+|\\*(?!\\})" }
+        {
+          "match": "[^*]+|\\*(?!\\})"
+        }
       ],
       "end": "\\*\\}"
+    },
+    {
+      "include": "#term-cartouche"
     }
   ]
 }

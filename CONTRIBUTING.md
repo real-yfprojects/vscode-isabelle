@@ -46,7 +46,8 @@ Set `ISABELLE_TEST_JOBS` to change how many suites `runAll.js` runs at once. Eac
 starts its own VS Code and, usually, its own Isabelle, so more than 3 at a time tends to
 cause timeouts.
 
-The suites for the experimental panels (`suite15`, `17`, `30`, `33`, `36`) run against the
+The suites for the experimental panels (`suite15`, `17`, `30`, `33`, `36`), for indentation
+(`suite37`) and for inner-syntax colours (`suite39`) run against the
 extended server when its jar is built, and skip themselves otherwise. Setting
 `ISABELLE_PATCHED_HOME` points them at a hand-patched Isabelle instead.
 
@@ -95,8 +96,10 @@ npm run package      # writes isabelle-pide-stock.vsix
 Two files are generated from an Isabelle distribution rather than written by hand. Rerun
 the scripts when moving to a new Isabelle release:
 
-- `syntaxes/isabelle-grammar.json` comes from Isabelle's keyword table:
-  `isabelle scala < scripts/gen_grammar.scala`
+- `syntaxes/isabelle-grammar.json` comes from Isabelle's keyword and symbol tables:
+  `echo ':load scripts/gen_grammar.scala' | isabelle scala`, from the repository root.
+  The outer half matches upstream's grammar. What it adds is inner syntax, so terms in
+  `"…"` and `‹…›` are not one string. `suite38` checks the result.
 - `src/colors.ts` comes from the colour palette of the official Isabelle/VSCode:
   `node scripts/gen_colors.js <isabelle-dir> src/colors.ts`
 

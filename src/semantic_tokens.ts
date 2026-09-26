@@ -21,13 +21,15 @@
 import * as vscode from 'vscode'
 import { PideDecorations } from './pide_decorations'
 
+type TokenSpec = { type: string; modifiers?: string[] }
+
 /**
  * Isabelle's text categories, mapped onto semantic tokens.
  *
  * `main` is deliberately absent: it is Isabelle's plain-text colour, and leaving those
  * ranges untokenised is what lets the theme's own editor foreground show through.
  */
-export const TOKEN_MAP: Record<string, { type: string; modifiers?: string[] }> = {
+export const TOKEN_MAP: Record<string, TokenSpec> = {
   keyword1: { type: 'keyword' },
   keyword2: { type: 'isabelleProofKeyword' },
   keyword3: { type: 'isabelleInnerKeyword' },
@@ -53,8 +55,33 @@ export const TOKEN_MAP: Record<string, { type: string; modifiers?: string[] }> =
   plain_text: { type: 'string' },
 }
 
+/**
+ * Categories the extended server adds as `semantic_*` (vscode_rendering.scala on the
+ * release branch): the parts of a term Isabelle's own palette leaves plain, which is
+ * everything but the variables. Constants, types and operators are what make a formula
+ * readable at a glance, so an editor with a theme can do better than jEdit here. A stock
+ * server never sends them.
+ *
+ * They only fill gaps -- the server drops a range that already has a text colour -- and
+ * in the `isabelle` palette the `text_main` decoration paints over them anyway, which
+ * keeps that mode faithful to jEdit.
+ */
+export const SEMANTIC_MAP: Record<string, TokenSpec> = {
+  constant: { type: 'isabelleConstant' },
+  type_name: { type: 'type' },
+  class: { type: 'class' },
+  operator: { type: 'operator' },
+  numeral: { type: 'number' },
+}
+
+/** Decoration-type prefixes that become tokens, in order of precedence on a tie. */
+const SOURCES: { prefix: string; map: Record<string, TokenSpec> }[] = [
+  { prefix: 'text_', map: TOKEN_MAP },
+  { prefix: 'semantic_', map: SEMANTIC_MAP },
+]
+
 export const TOKEN_TYPES: string[] =
-  [...new Set(Object.values(TOKEN_MAP).map(m => m.type))].sort()
+  [...new Set([...Object.values(TOKEN_MAP), ...Object.values(SEMANTIC_MAP)].map(m => m.type))].sort()
 export const TOKEN_MODIFIERS: string[] = ['readonly']
 
 export const LEGEND = new vscode.SemanticTokensLegend(TOKEN_TYPES, TOKEN_MODIFIERS)
@@ -78,35 +105,37 @@ export type RawToken = {
  * of every *following* token rather than merely mislabelling one word, so the failure
  * would be both spectacular and hard to trace back. The rule is document order: the
  * token that starts first wins, and among tokens starting together the shorter one does,
- * being the more specific markup.
+ * being the more specific markup. On an exact tie Isabelle's own `text_*` colours win
+ * over the `semantic_*` categories, which are meant to fill gaps only.
  */
 export function buildTokens(
   byType: ReadonlyMap<string, { items: { range: vscode.Range }[] }>,
   lineLength: (line: number) => number,
 ): RawToken[] {
-  const raw: RawToken[] = []
+  const raw: (RawToken & { rank: number })[] = []
   for (const [key, entry] of byType) {
-    if (!key.startsWith('text_')) continue
-    const mapped = TOKEN_MAP[key.slice('text_'.length)]
+    const rank = SOURCES.findIndex(s => key.startsWith(s.prefix))
+    if (rank < 0) continue
+    const mapped = SOURCES[rank].map[key.slice(SOURCES[rank].prefix.length)]
     if (!mapped) continue
     for (const { range } of entry.items) {
       for (let line = range.start.line; line <= range.end.line; line++) {
         const char = line === range.start.line ? range.start.character : 0
         const end = line === range.end.line ? range.end.character : lineLength(line)
         if (end > char) {
-          raw.push({ line, char, length: end - char, type: mapped.type, modifiers: mapped.modifiers ?? [] })
+          raw.push({ line, char, length: end - char, type: mapped.type, modifiers: mapped.modifiers ?? [], rank })
         }
       }
     }
   }
 
   raw.sort((a, b) =>
-    a.line - b.line || a.char - b.char || a.length - b.length)
+    a.line - b.line || a.char - b.char || a.length - b.length || a.rank - b.rank)
 
   const out: RawToken[] = []
   let lastLine = -1
   let lastEnd = 0
-  for (const token of raw) {
+  for (const { rank: _, ...token } of raw) {
     if (token.line !== lastLine) { lastLine = token.line; lastEnd = 0 }
     if (token.char < lastEnd) continue
     out.push(token)

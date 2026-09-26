@@ -94,6 +94,26 @@ async function run() {
   assert.deepStrictEqual(positions, [[1, 0], [1, 8], [3, 2], [5, 0]], JSON.stringify(positions))
   pass('tokens come out in document order across categories')
 
+  // The extended server's semantic_* categories: what text colours leave plain in a term.
+  const semantic = buildTokens(new Map([
+    ['semantic_constant', { items: [R(0, 0, 0, 3)] }],
+    ['semantic_type_name', { items: [R(0, 10, 0, 13)] }],
+    ['semantic_operator', { items: [R(0, 5, 0, 6)] }],
+    ['semantic_numeral', { items: [R(0, 7, 0, 8)] }],
+    ['semantic_class', { items: [R(0, 20, 0, 24)] }],
+    ['semantic_no_such_category', { items: [R(1, 0, 1, 4)] }],
+  ]), () => 80)
+  assert.deepStrictEqual(semantic.map(t => t.type),
+    ['isabelleConstant', 'operator', 'number', 'type', 'class'], JSON.stringify(semantic))
+  assert.ok(semantic.every(t => !('rank' in t)), 'the tie-break rank is internal')
+  // They only fill gaps: on an identical range, Isabelle's own category wins.
+  for (const order of [['text_free', 'semantic_constant'], ['semantic_constant', 'text_free']]) {
+    const tie = buildTokens(new Map(order.map(k => [k, { items: [R(0, 0, 0, 3)] }])), () => 80)
+    assert.strictEqual(tie.length, 1)
+    assert.strictEqual(tie[0].type, 'variable', `text_* must win a tie, whatever the order (${order})`)
+  }
+  pass('semantic_* categories become tokens, and lose every tie to text_*')
+
   console.log(`${passed} checks passed`)
   console.log('SUITE21_OK')
 }

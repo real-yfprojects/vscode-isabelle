@@ -51,6 +51,8 @@ extension comes with an extended version of the server that adds them. It gives 
   that line into place, and **Format Selection** re-indents the selected lines. `apply`
   lines are indented by the number of open subgoals. To turn off indentation while
   typing, set `editor.formatOnType` to off for Isabelle.
+- colours for the rest of a checked term: constants, type names, classes, operators
+  and numerals each get their own theme colour, not only the variables
 
 To turn it on, open the Settings (`Ctrl+,`, or `Cmd+,` on macOS), search for
 **Isabelle: Extended Server** and tick the box. When VS Code asks, click

@@ -139,6 +139,7 @@ shapes, the bugs found on the way, and what each is verified against — are in
 | Theories + Timing | `vscode-theories-panel`, behind `isabelle.theoriesPanel` | both dockables are views of one `Nodes_Status`. Shipped as native TreeViews — the only ones here |
 | Simplifier trace | `vscode-simplifier-trace`, behind `isabelle.simplifierTrace` | `mode=full` alone only *logs*; `interactive` is a separate flag, and the panel waits forever without it |
 | Graph view | `vscode-graphview` | `Graph_Display` wraps the graph in `xml_elem`; matching `GRAPHVIEW` alone finds nothing. It survived every unit test |
+| Colours inside a term | the grammar's inner syntax (`scripts/gen_grammar.scala`), and `semantic_*` markup from the extended server (`vscode-inner-syntax`) | not a jEdit gap -- jEdit colours only a term's variables too. `Rendering.text_color` gives `delimiter` the colour of `string` and none to `numeral` or entities, so the client could not tell operators, constants and types apart. The server now sends them as their own categories, which only ever fill gaps the text colours leave |
 | Sendback | nothing — LSP code actions | exposed twice over: code actions on the goal line *and* `<sendback>` in the panel stream |
 | Syslog | nothing — `window/logMessage` | already lands in the Isabelle output channel |
 | Info | nothing — VS Code hovers | jEdit needs a dockable only because it has no hovers |
@@ -177,7 +178,7 @@ than a bespoke panel.
 
 Moved to [docs/building.md](docs/building.md): how the `mirror-isabelle` feature branches
 are stacked, the two build routes (backporting a branch onto a released distribution, and
-compiling the mirror tree itself), and the four places where the development tree has
+compiling the mirror tree itself), and the five places where the development tree has
 moved on from Isabelle2025-2 — which is why a released distribution is not a supported
 target.
 

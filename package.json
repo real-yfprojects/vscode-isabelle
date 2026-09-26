@@ -336,7 +336,7 @@
         "isabelle.spellChecker": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Use Isabelle's own spell checker, which checks prose in comments and `text ‹…›` blocks by PIDE markup category (so antiquotations inside prose are excluded). Turn this off to avoid double underlining if you prefer a general spell-checking extension such as Code Spell Checker; the bundled TextMate grammar gives those extensions `comment.block.isabelle` and `string.quoted.*` scopes to target."
+          "markdownDescription": "Use Isabelle's own spell checker, which checks prose in comments and `text ‹…›` blocks by PIDE markup category (so antiquotations inside prose are excluded). Turn this off to avoid double underlining if you prefer a general spell-checking extension such as Code Spell Checker; the bundled TextMate grammar gives those extensions `comment.block.isabelle` and `string.quoted.*` scopes to target. Terms in `\"…\"` and `‹…›` are scoped as inner syntax, not as strings, so those extensions leave formulas alone."
         },
         "isabelle.textColorOverrides": {
           "type": "object",
@@ -517,6 +517,11 @@
         "id": "isabelleSchematic",
         "superType": "variable",
         "description": "Isabelle schematic variable"
+      },
+      {
+        "id": "isabelleConstant",
+        "superType": "function",
+        "description": "Isabelle constant (a logical constant such as `map` or `Suc`)"
       }
     ],
     "semanticTokenScopes": [
@@ -547,6 +552,10 @@
           "isabelleSchematic": [
             "variable.other.constant",
             "variable.other"
+          ],
+          "isabelleConstant": [
+            "entity.name.function.isabelle",
+            "entity.name.function"
           ]
         }
       }
@@ -557,7 +566,7 @@
     "build": "tsc -p ./ && node ./scripts/server-jar.js",
     "watch": "tsc -watch -p ./",
     "dev": "node ./test/dev.js",
-    "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29 suite32",
+    "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29 suite32 suite38",
     "test": "node ./test/runTest.js",
     "package": "vsce package --out isabelle-pide-stock.vsix"
   },
@@ -569,7 +578,9 @@
     "@types/vscode": "^1.85.0",
     "@vscode/test-electron": "^2.3.9",
     "@vscode/vsce": "^3.2.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.3.2"
   },
   "repository": {
     "type": "git",
