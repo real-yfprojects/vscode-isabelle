@@ -84,6 +84,23 @@ async function run() {
   assert.ok(html.includes('pin-2:goals') && !html.includes('No output.'))
   pass('a pin with goals only shows its goals')
 
+  // --- enclosing goals ------------------------------------------------------------
+  const inShow = Object.assign({}, live, {
+    goals: '<pre>goal (1 subgoal): 1. B</pre>',
+    outer: [{ line: 6, command: 'proof', source: 'proof', goals: '<pre>goal (2 subgoals)</pre>' },
+            { line: 2, command: 'proof', source: 'proof -', goals: '<pre>goal (1 subgoal): 1. C</pre>' }],
+  })
+  html = infoviewBody(model({ live: inShow }))
+  const goalsBlock = html.slice(html.indexOf('live:goals'), html.indexOf('live:messages'))
+  assert.ok(goalsBlock.indexOf('1. B') < goalsBlock.indexOf('2 subgoals') &&
+            goalsBlock.indexOf('2 subgoals') < goalsBlock.indexOf('1. C'),
+    'the current goal on top, then each enclosing level, innermost first, in the Goals block')
+  assert.ok(html.includes('data-command="revealLine" data-arg="file:///c%3A/work/Foo.thy#6"'))
+  assert.ok(html.includes('line 7'), 'enclosing lines are 1-based too')
+  html = infoviewBody(model({ live: Object.assign({}, inShow, { goals: '' }) }))
+  assert.ok(html.includes('live:goals'), 'enclosing goals alone still make a Goals block')
+  pass('enclosing goals follow the current one, each going to where it was printed')
+
   // --- escaping -------------------------------------------------------------------
   const hostile = {
     uri: 'file:///t/%3Cimg%20src%3Dx%3E.thy', line: 0,

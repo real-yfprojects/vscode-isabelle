@@ -21,7 +21,8 @@ PIDE/infoview_pin         { id, uri, line, character }
 PIDE/infoview_unpin       { id }
 PIDE/infoview_set_margin  { margin }
 PIDE/infoview_response    { live?, pins: [ { id?, uri, line, command, source, status,
-                                             goals, messages, stale? } ] }
+                                             goals, outer, messages, stale? } ] }
+                              outer: [ { line, command, source, goals } ], innermost first
 ```
 
 `goals` and `messages` are HTML, formatted to the one margin the view reports.
@@ -31,6 +32,23 @@ PIDE/infoview_response    { live?, pins: [ { id?, uri, line, command, source, st
 `Editor.output` then drops the state unless the *editor's* copy of that option is set.
 `VSCode_Infoview` keeps both halves and splits them with `Protocol.is_state`, putting
 urgent messages first, as `Editor.output` does. No print function or overlay is involved.
+
+**The goals around a `show`.** `Proof.pretty_state` prints only the innermost goal. So
+inside `have` or `show`, nothing the prover prints mentions the goals that statement is
+part of, and jEdit shows none either. The prover does not report a command's proof depth.
+`command_indent` exists, but it counts subgoals in `apply` scripts. The ML side cannot
+change either, because the extended server is Scala in a jar.
+
+The keywords give the nesting instead, as in `Text_Structure`'s indentation: a goal
+statement opens a level, and a qed closes one. Each enclosing level's goals were printed
+by the last command at that level before the inner block began. That is `proof` before
+a first `show`, or the `by` that closed a sibling before a later one. `enclosing` walks
+back from the command, skips closed blocks, and at each level takes the latest state that
+holds a goal. The goal header's `keyword1` "goal" identifies such a state; a state in
+chain mode has no header. The walk stops at the statement that opened the proof, at
+`oops`, and at any command outside a proof, so it never leaves the current lemma. The
+client puts these levels under the command's own goals, current first. That way every
+open goal is in view, with the one being proved on top.
 
 **A pin holds on to a place, not only a command.** `Query_Operation`, which the State panel
 pins with, holds a `Command`. Editing that command replaces it with a new one, and from

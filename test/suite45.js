@@ -2,8 +2,9 @@
 //
 // What only the extended server can do, and so what this suite is for: goals and messages
 // arrive apart, and a pin follows the text -- through an edit to the pinned command, which
-// replaces it with a new one, and through lines inserted above it. The stock backend is
-// covered by suite6.
+// replaces it with a new one, and through lines inserted above it -- and the goals of the
+// levels around a `show`, which Isabelle does not print. The stock backend is covered by
+// suite6.
 //
 // Runs against a patched Isabelle or the stock one with the extended server (see
 // test/server_target.js), and skips itself when there is neither.
@@ -93,7 +94,22 @@ async function drive() {
     'lemma refl: "x = (x::nat)"',                      // 12
     '  by simp',                                       // 13
     '',                                                // 14
-    'end',                                             // 15
+    'lemma conj: "B \\<and> A" if "A \\<and> B"',      // 15
+    'proof',                                           // 16
+    '  show B using that by simp',                     // 17
+    '  show A using that by simp',                     // 18
+    'qed',                                             // 19
+    '',                                                // 20
+    'lemma nest: "C \\<and> D" if "C" "D"',            // 21
+    'proof',                                           // 22
+    '  show C',                                        // 23
+    '  proof -',                                       // 24
+    '    show C using that(1) by simp',                // 25
+    '  qed',                                           // 26
+    '  show D using that(2) by simp',                  // 27
+    'qed',                                             // 28
+    '',                                                // 29
+    'end',                                             // 30
     '',
   ].join('\n'), 'utf8')
   const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file))
@@ -119,7 +135,31 @@ async function drive() {
     `the proof state belongs in goals, not messages: ${text(s.live.messages).slice(0, 120)}`)
   pass('the command at the cursor shows its goals apart from its messages')
 
+  // --- the goals around a show ------------------------------------------------------
+  // Isabelle prints only the innermost goal, so the server adds each enclosing level's.
+  // The cursor goes right after the statement: the rest of the line is its proof.
+  const at = (line, character) => { editor.selection = new vscode.Selection(line, character, line, character) }
+  const outerLines = s => (s.live?.outer ?? []).map(o => o.line)
+  at(17, 8)
+  s = await until('the goals around the first show',
+    s => s.live?.line === 17 && outerLines(s).length === 1 && /2 subgoals/.test(text(s.live.outer[0].goals)))
+  assert.ok(/1 subgoal/.test(text(s.live.goals)), `the show's own goal comes first: ${text(s.live.goals)}`)
+  assert.deepStrictEqual(outerLines(s), [16], 'the enclosing goals are the ones `proof` printed')
+  at(18, 8)
+  s = await until('the goals around the second show',
+    s => s.live?.line === 18 && outerLines(s).length === 1)
+  assert.deepStrictEqual(outerLines(s), [17],
+    'after a show is proved, the goals left are the ones its `by` printed')
+  assert.ok(/1 subgoal/.test(text(s.live.outer[0].goals)), text(s.live.outer[0].goals))
+  at(25, 10)
+  s = await until('the goals around a nested show', s => s.live?.line === 25 && outerLines(s).length === 2)
+  assert.deepStrictEqual(outerLines(s), [24, 22], 'innermost first, one entry per level')
+  assert.ok(/2 subgoals/.test(text(s.live.outer[1].goals)))
+  pass('inside show, the goals of every enclosing level follow the current one')
+
   // --- a pin stays put ---------------------------------------------------------------
+  caret(5)
+  await until('the cursor back on rule conjI', s => s.live?.line === 5)
   await vscode.commands.executeCommand('isabelle.infoviewPin')
   s = await until('the pin', s => s.pins.length === 1 && /2 subgoals/.test(text(s.pins[0].goals)))
   const pinId = s.pins[0].id

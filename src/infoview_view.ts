@@ -10,6 +10,17 @@ import { escapeAttr, escapeHtml } from './graphview_panel_view'
 
 export type CommandStatus = 'unprocessed' | 'running' | 'finished' | 'failed'
 
+/** The goals of a level around the command, as the command that last printed them left
+    them. Only the extended server sends these. */
+export interface OuterGoals {
+  /** 0-based. */
+  line: number
+  command: string
+  source: string
+  /** Server HTML. */
+  goals: string
+}
+
 /** One place the view shows: the command at the caret, or a pinned one. */
 export interface InfoSection {
   /** Pins only. */
@@ -25,6 +36,9 @@ export interface InfoSection {
   /** Server HTML. Absent when the server cannot tell goals apart (a stock pin shows only
       its proof state, as `goals`, and says nothing of messages). */
   goals?: string
+  /** The goals of each enclosing level, innermost first: Isabelle prints only the
+      innermost goal, so inside `have` or `show` these are the rest of the proof. */
+  outer?: OuterGoals[]
   messages?: string
   /** The pin's theory is closed or its command is gone; the content is the last seen. */
   stale?: boolean
@@ -73,9 +87,24 @@ function emptyText(section: InfoSection): string {
   }
 }
 
+/* Below the command's own goals, one entry per enclosing level, so all open goals are in
+   view with the current one on top. Each says where it was printed, and goes there. */
+function outerGoals(section: InfoSection): string {
+  return (section.outer ?? []).map(level => {
+    const where = section.uri ? `${section.uri}#${level.line}` : ''
+    return `<div class="outer">` +
+      `<div class="outer-head">Enclosing` +
+      (where ? ` <a class="location" data-command="revealLine" data-arg="${escapeAttr(where)}" ` +
+        `title="Go to the command">line ${level.line + 1}</a>` : '') +
+      (level.source ? ` <span class="cmdtext">${escapeHtml(level.source)}</span>` : '') +
+      `</div>${level.goals}</div>`
+  }).join('')
+}
+
 function sectionBody(section: InfoSection, key: string): string {
   const parts: string[] = []
-  if (section.goals) parts.push(block(`${key}:goals`, 'Goals', section.goals))
+  const outer = outerGoals(section)
+  if (section.goals || outer) parts.push(block(`${key}:goals`, 'Goals', (section.goals ?? '') + outer))
   if (section.messages) parts.push(block(`${key}:messages`, 'Messages', section.messages))
   if (parts.length === 0) parts.push(`<div class="empty">${escapeHtml(emptyText(section))}</div>`)
   return parts.join('')
@@ -152,4 +181,11 @@ export const INFOVIEW_CSS = `
   .output { margin: 2px 0 0 0; }
   .empty { opacity: .6; font-family: var(--vscode-font-family); }
   .pins-footer { text-align: right; }
+  .outer { margin-top: 6px; padding-top: 4px; border-top: 1px dashed var(--vscode-panel-border, rgba(128,128,128,.35)); }
+  .outer > .source { opacity: .75; }
+  .outer-head { font-family: var(--vscode-font-family); font-size: .9em; opacity: .7; margin-bottom: 2px;
+                display: flex; gap: 6px; align-items: baseline; }
+  .outer-head .location { border-bottom: none; color: var(--vscode-textLink-foreground); }
+  .outer-head .cmdtext { font-family: 'Isabelle DejaVu Sans Mono', var(--vscode-editor-font-family), monospace;
+                         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40ch; }
 `

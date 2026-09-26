@@ -247,7 +247,20 @@ export class Infoview implements vscode.WebviewViewProvider {
       case 'reveal':
         if (msg.arg) await this.backend?.reveal(msg.arg === 'live' ? 'live' : Number(msg.arg))
         break
+      case 'revealLine': if (msg.arg) await this.revealLine(msg.arg); break
       case 'open': if (msg.link) await openIsabelleLink(msg.link); break
+    }
+  }
+
+  /** `uri#line`, from an enclosing goal's header; the uri is the server's. */
+  private async revealLine(arg: string): Promise<void> {
+    const hash = arg.lastIndexOf('#')
+    if (hash < 0) return
+    try {
+      await revealLine(this.client.protocol2CodeConverter.asUri(arg.slice(0, hash)),
+        Number(arg.slice(hash + 1)))
+    } catch (err) {
+      this.log(`infoview: cannot reveal ${arg}: ${err}`)
     }
   }
 
