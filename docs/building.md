@@ -17,6 +17,7 @@ master                                     (clean mirror of upstream Isabelle)
      merged: vscode-requirements-build
       +- vscode-simplifier-trace          (+ build progress, + Simplifier trace)
           +- vscode-graphview             (+ Graph view)
+ +- vscode-indent                         (indentation; cherry-picked from vscode-2025-2)
 
 main                                       (all of the above, merged)
 
@@ -53,6 +54,7 @@ carries the backport as ordinary commits, so there is one place for it and git d
 bookkeeping:
 
 ```
+e9d097fc51 Indent Isar text on ENTER, after a keyword, and on Format Selection
 1fb089268c Fall back to the default completion options when they are undeclared
 07729686c2 Make VS Code completion follow VS Code's model, ...   (cherry-picked from main)
 83ee62f24f more robust Event_Timer.request: ...                   (cherry-picked from upstream)
@@ -102,7 +104,10 @@ things get in the way and none of them are obvious:
    `Unrecognized option: --sun-misc-unsafe-memory-access=allow`, a JDK 24+ flag in
    `ISABELLE_JAVA_SYSTEM_OPTIONS`, and `25 is not a valid choice for
    -java-output-version` in `ISABELLE_SCALAC_OPTIONS`. Dropping the flag and lowering the
-   target to 21 is enough.
+   target to 21 is enough for `lib/classes/isabelle.jar`. The Java components built after
+   it, the graph browser first, then stop at `invalid source release: 25` (localized:
+   `Ungültiges Quellrelease`) from `-source 25 -target 25` in `ISABELLE_JAVAC_OPTIONS`;
+   lower those too if they matter.
 4. **The setup jar is a prebuilt component**, and `src/Tools/Setup/etc/build.props` says
    `no_build = true`, so `scala_build` will not refresh it. The borrowed one predates the
    tree's `Environment.java` and produces a genuinely baffling error --
@@ -158,7 +163,9 @@ Anything else falls back to the standard server with a warning.
 The commit named in `server/Isabelle2025-2.ref`, currently the tip of `vscode-2025-2`
 above: `main` of mirror-isabelle, including the completion work, plus the two
 `vscode-simplifier-trace` commits not yet merged there -- adapted to the release as in the
-table above. And two things from the development tree that 2025-2 lacks:
+table above -- and indentation (onTypeFormatting and rangeFormatting, jEdit's indentation
+rule), which was written on this branch first. And two things from the development tree
+that 2025-2 lacks:
 `PIDE/goto_command`, and upstream's `f425404488`, without which one failing delayed event
 kills the JVM's only timer thread and with it every later delayed event of the server
 (output, caret updates, panel updates), while the server otherwise stays up.

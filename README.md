@@ -46,6 +46,11 @@ extension comes with an extended version of the server that adds them. It gives 
 - Go to Command
 - session images for projects whose sessions import from outside their parent session
   (see step 5)
+- automatic indentation, as in Isabelle/jEdit: pressing Enter indents the new line and
+  re-indents the one you left, typing a space after a keyword like `qed` or `show` moves
+  that line into place, and **Format Selection** re-indents the selected lines. `apply`
+  lines are indented by the number of open subgoals. To turn off indentation while
+  typing, set `editor.formatOnType` to off for Isabelle.
 
 To turn it on, open the Settings (`Ctrl+,`, or `Cmd+,` on macOS), search for
 **Isabelle: Extended Server** and tick the box. When VS Code asks, click
