@@ -1,25 +1,25 @@
 # Isabelle/PIDE for stock VS Code
 
-Isabelle/PIDE client for unmodified VS Code - no need to use a dedicated isabelle fork of VsCodium
+Isabelle/PIDE client for unmodified VS Code - no need to use a dedicated Isabelle fork of VSCodium
 
-Currently the Isabelle project ships with a fork of VsCodium that implements very
-limited Isabelle language support. This extension brings more than JEdit parity
+Currently the Isabelle project ships with a fork of VSCodium that implements very
+limited Isabelle language support. This extension brings more than jEdit parity
 in terms of Isabelle support as a standard VS Code extension that can be added
 to your existing installation.
-Since Isabelle source files do not support full unicode math glyphs, this
-extension renders these glyphs properly while leaving ascii the ascii representation
+Since Isabelle source files do not support full Unicode math glyphs, this
+extension renders these glyphs properly while leaving the ASCII representation
 in your `.thy` files.
 
 ## Features
 
-- *Writing*: renders math glyphs from ascii sources, symbol shorthands, Isar and inner syntax (e.g. HOL) completion,
-  Isar and inner syntax highlighting, linting information on hover, normalise any accidental, actual unicode characters to ASCII, spell checking of prose in comments and text blocks (with Isabelle's dictionary, shared with Isabelle/jEdit)
-- *Checking*: continous live PIDE verification, current proof state, command outputs
-- *Proving*: sledgehammer, find theorems and simplifier trace panels, overview over running theorems and timing
-- *Navigating*: outline, breadcrumbs, indexed code symbols, code folding, go to definition, Graph View for class/proof hierachies
+- *Writing*: renders math glyphs from ASCII sources; symbol shorthands, Isar and inner syntax (e.g. HOL) completion;
+  Isar and inner syntax highlighting (with semantic colours†); types and messages on hover; auto-indentation†; normalise any accidental actual Unicode characters to ASCII
+- *Checking*: continuous live PIDE verification, current proof state, command outputs; cache session management
+- *Proving*: sledgehammer, find theorems† and simplifier trace† panels, overview over checked theories and timing†
+- *Navigating*: outline, breadcrumbs, indexed code symbols, code folding, go to definition, Graph View† for theory, class, locale and code dependencies
 - *Docs*: preview, documentation panel
 
-† = these features need a patch to the Isabelle LSP. See installation instructions.
+† = these features need a patch to the Isabelle LSP. See [step 2](#2-turn-on-the-extended-server-optional-recommended).
 
 ## Getting Started
 
@@ -113,7 +113,7 @@ session you're working in. If you edit theories in several sessions, pick the lo
 meaning the one the others build on. Everything that session depends on is then loaded
 from a prebuilt image, and only your own theories are checked live. If you later edit a
 theory that is part of the image, the extension warns you, because that change won't
-reach the verificatoin cache the other theories build upon.
+reach the verification cache the other theories build upon.
 
 The first start after choosing a session builds its image, which takes a while. Later
 starts reuse it.
@@ -126,7 +126,7 @@ images work.
 ## Other VS Code extensions
 
 [Isabelle-VSCode](https://github.com/Arthur742Ramos/Isabelle-VSCode) is another
-extension for unmodified VS Code. It's still an alpha and, to the date of writing, not on the
+extension for unmodified VS Code. It's still an alpha and, at the time of writing, not on the
 Marketplace yet. It also uses Isabelle's own language server for live checking. Beyond that
 they're built differently:
 
@@ -139,7 +139,7 @@ they're built differently:
 - **Interface to Isabelle.** Isabelle-VSCode ships its own backend, written in Scala,
   that uses Isabelle's Headless API next to the language server. That gives it things the
   language server doesn't offer, such as proof minimisation, without changing Isabelle.
-  In contrast, this extension talks only to the language server, which it extends with patches that can be contributed upstream. The patches are written to be proposed to Isabelle itself.
+  In contrast, this extension talks only to the language server, which it extends with patches written to be proposed to Isabelle itself.
   Once they're merged, the features are part of Isabelle's language server, so any
   editor that speaks the protocol can use them, and this extension needs no backend of
   its own to keep in step with Isabelle's internals.
