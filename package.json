@@ -365,7 +365,7 @@
         "isabelle.spellChecker": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Use Isabelle's own spell checker, which checks prose in comments and `text ‹…›` blocks by PIDE markup category (so antiquotations inside prose are excluded). Turn this off to avoid double underlining if you prefer a general spell-checking extension such as Code Spell Checker; the bundled TextMate grammar gives those extensions `comment.block.isabelle` and `string.quoted.*` scopes to target. Terms in `\"…\"` and `‹…›` are scoped as inner syntax, not as strings, so those extensions leave formulas alone."
+          "markdownDescription": "Use Isabelle's own spell checker, which checks prose in comments and `text ‹…›` blocks by PIDE markup category (so antiquotations inside prose are excluded). General spell-checking extensions such as Code Spell Checker cannot tell prose from formulas here: VS Code does not expose TextMate scopes to extensions, so they see the whole theory as plain text (and Code Spell Checker skips the `isabelle` file type unless enabled). Turn this off only if you check spelling some other way."
         },
         "isabelle.textColorOverrides": {
           "type": "object",

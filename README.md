@@ -13,7 +13,7 @@ in your `.thy` files.
 ## Features
 
 - *Writing*: renders math glyphs from ascii sources, symbol shorthands, Isar and inner syntax (e.g. HOL) completion,
-  Isar and inner syntax highlighting, linting information on hover, normalise any accidental, actual unicode characters to ASCII, compatible with spell-checking extensions
+  Isar and inner syntax highlighting, linting information on hover, normalise any accidental, actual unicode characters to ASCII, spell checking of prose in comments and text blocks (with Isabelle's dictionary, shared with Isabelle/jEdit)
 - *Checking*: continous live PIDE verification, current proof state, command outputs
 - *Proving*: sledgehammer, find theorems and simplifier trace panels, overview over running theorems and timing
 - *Navigating*: outline, breadcrumbs, indexed code symbols, code folding, go to definition, Graph View for class/proof hierachies
