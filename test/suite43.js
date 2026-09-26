@@ -54,6 +54,22 @@ async function run() {
   pass('the baseline holds the image\'s workspace files and nothing is stale yet')
 
   // --- on disk -----------------------------------------------------------------------
+  /* The workspace watcher is not live the moment the editor is: on macOS it subscribes
+     to FSEvents "since now" a second or two in, and a change made before that is never
+     reported -- nothing in heaplib/ was, in CI, while a file written later was. So touch
+     a file beside Lib.thy until a watcher of our own sees it -- a plain glob, like
+     HeapWatch's, so both are served by the same workspace watcher. Not a theory, so
+     HeapWatch ignores it. */
+  const probe = path.join(path.dirname(lib), 'watcher-probe.txt')
+  const seen = vscode.workspace.createFileSystemWatcher('**/watcher-probe.txt')
+  let live = false
+  seen.onDidCreate(() => { live = true })
+  seen.onDidChange(() => { live = true })
+  await until('the file-system watcher coming up', 30,
+    async () => { fs.writeFileSync(probe, String(Date.now())); await wait(300); return live })
+  seen.dispose()
+  fs.rmSync(probe, { force: true })
+
   fs.writeFileSync(lib, libText.replace('True', 'True \\<and> True'))
   s = await until('the watcher reporting the change', 15,
     async () => { const h = await heapState(); return h.stale.length > 0 ? h : undefined })
@@ -83,9 +99,14 @@ async function run() {
   assert.strictEqual(s.stale[0].change, 'unsaved')
   pass('an unsaved edit to a heap theory counts')
 
-  await vscode.commands.executeCommand('undo')
-  await until('undo clearing it', 15, async () => (await heapState()).stale.length === 0)
-  pass('undoing the edit clears it')
+  /* Revert, not `undo`: undo follows DOM focus, and a test window that is not in the
+     foreground -- a second suite beside it in CI, or someone working locally -- has no
+     editor text focus. Undo then lands on the editor's native <textarea> and does nothing.
+     Revert acts on the active editor wherever focus is. Either puts the buffer back. */
+  await vscode.commands.executeCommand('workbench.action.files.revert')
+  await until('reverting clearing it', 15, async () => (await heapState()).stale.length === 0)
+  assert.ok(!doc.isDirty, 'the buffer is back to the disk text')
+  pass('taking the edit back clears it')
 
   // --- the list -------------------------------------------------------------------------
   await editor.edit(e => e.insert(new vscode.Position(3, 0), '(* again *)\n'))
