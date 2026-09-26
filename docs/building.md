@@ -54,6 +54,7 @@ carries the backport as ordinary commits, so there is one place for it and git d
 bookkeeping:
 
 ```
+316480cc37 Show the goals of the levels around a command in the infoview
 9185443892 Show the goals and messages of the caret's command and of pinned ones in one view
 437a3bd673 Send the categories of a term that the text colours leave plain
 e9d097fc51 Indent Isar text on ENTER, after a keyword, and on Format Selection
