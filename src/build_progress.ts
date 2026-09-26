@@ -34,6 +34,8 @@ export function buildLine(text: string): string | undefined {
 
 export class BuildProgress {
   private report: ((message: string) => void) | undefined
+  /** Every relayed line, notification open or not; the status bar listens here. */
+  onMessage: ((message: string) => void) | undefined
 
   /**
    * Wrap an output channel so server log lines also reach the open notification.
@@ -44,7 +46,9 @@ export class BuildProgress {
   channel(inner: vscode.OutputChannel): vscode.OutputChannel {
     const relay = (text: string): void => {
       const message = buildLine(text)
-      if (message !== undefined) this.report?.(message)
+      if (message === undefined) return
+      this.report?.(message)
+      this.onMessage?.(message)
     }
     return {
       get name() { return inner.name },

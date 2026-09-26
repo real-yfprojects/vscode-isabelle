@@ -4,8 +4,9 @@ import * as vscode from 'vscode'
 import { CloseAction, ErrorAction, ErrorHandler, LanguageClient, LanguageClientOptions,
   ServerOptions, State } from 'vscode-languageclient/node'
 import { isRunning, killTree } from './process_tree'
-import { buildServerOptions, extendedServer, findIsabelleHome, IsabelleNotFound,
-  stageExtendedJar } from './isabelle'
+import { buildServerOptions, checkWholeTheory, extendedServer, findIsabelleHome,
+  IsabelleNotFound, serverArguments, stageExtendedJar } from './isabelle'
+import { caretPerspective, checkingExtent } from './status_items'
 import { SymbolTable } from './symbols'
 import { SymbolRenderer } from './decorations'
 import { AbbrevStore, dropDuplicateSymbols, registerAbbreviations } from './abbrev'
@@ -26,6 +27,8 @@ import { GraphviewPanel } from './graphview_panel'
 import { registerOutline } from './outline'
 import { registerSemanticTokens } from './semantic_tokens'
 import { SessionPicker } from './session_picker'
+import { IsabelleStatus } from './status_bar'
+import { HeapWatch } from './heap_watch'
 import { stalenessWarning } from './sessions'
 import { BuildProgress } from './build_progress'
 import { registerTerminal } from './terminal'
@@ -58,6 +61,8 @@ let theoriesPanel: TheoriesPanel | undefined
 let simplifierTrace: SimplifierTracePanel | undefined
 let graphview: GraphviewPanel | undefined
 let sessionPicker: SessionPicker | undefined
+let status: IsabelleStatus | undefined
+let heapWatch: HeapWatch | undefined
 let extensionPath = ''
 let globalStoragePath = ''
 let extendedJar: string | undefined
@@ -135,6 +140,7 @@ async function startClient(): Promise<void> {
   }
   const executable = buildServerOptions(home, process.platform, stagedJar)
   log(`Launching: ${executable.command} ${(executable.args ?? []).join(' ')}`)
+  status?.setLaunchArgs(executable.args ?? [])
 
   /* Spawn the server ourselves rather than handing the client an Executable, for the one
      reason that we need its pid: the process to kill is a tree, and neither the client's
@@ -186,6 +192,7 @@ async function startClient(): Promise<void> {
       closes += 1
       if (verdict.restart) return { action: CloseAction.Restart }
       log(verdict.message)
+      status?.setServer('failed', verdict.message)
       return { action: CloseAction.DoNotRestart, message: verdict.message }
     },
   }
@@ -213,6 +220,26 @@ async function startClient(): Promise<void> {
   }
 
   client = new LanguageClient('isabelle', 'Isabelle/PIDE', serverOptions, clientOptions)
+  /* Registered before start() so the client's own restarts (CloseAction.Restart) show
+     too; those never pass through stopClient/startClient. A close that gives up has
+     already said 'failed' in errorHandler.closed, and the Stopped after it must not
+     overwrite that with a plain 'off'. */
+  clientScope.push(client.onDidChangeState(e => {
+    if (e.newState === State.Starting) {
+      status?.setServer('starting')
+      /* Every start, including the client's own restarts: each one runs the server's
+         build check, so each is a fresh image to compare against. */
+      const cfg = vscode.workspace.getConfiguration('isabelle')
+      void heapWatch?.capture(cfg.get<string>('logic')?.trim() || 'HOL',
+        cfg.get<boolean>('logicRequirements') === true)
+    } else if (e.newState === State.Running) status?.setServer('running')
+    else {
+      status?.setProgress(undefined)
+      heapWatch?.clear()
+      if (status?.phase !== 'failed') status?.setServer('off')
+    }
+  }))
+  status?.setServer('starting')
   /* The server builds its heap image inside `initialize`, so client.start() does not
      resolve until any build has finished -- which is why a first start with a missing
      image looks like a hang. Wrapping the start is therefore all it takes to cover the
@@ -228,6 +255,7 @@ async function startClient(): Promise<void> {
   // Only now is a later close worth restarting: the server got past `initialize`, so its
   // heap image exists and coming back does not mean rebuilding it.
   everRunning = true
+  status?.setServer('running')
   log('Language server started.')
 
   pide = new PideDecorations(log)
@@ -303,6 +331,9 @@ async function stopClient(): Promise<void> {
   queryPanel = undefined
   simplifierTrace = undefined
   graphview = undefined
+  status?.setProgress(undefined)
+  status?.setServer('off')
+  heapWatch?.clear()
   const c = client
   client = undefined
   const proc = serverProcess
@@ -324,6 +355,18 @@ async function stopClient(): Promise<void> {
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   output = vscode.window.createOutputChannel('Isabelle')
   context.subscriptions.push(output)
+  /* First, so that a missing Isabelle installation shows on it too. */
+  status = new IsabelleStatus()
+  context.subscriptions.push(status,
+    vscode.commands.registerCommand('isabelle.showOutput', () => output.show(true)),
+    // Test hook: what the status bar item currently says.
+    vscode.commands.registerCommand('isabelle.statusBarState', () => status?.snapshot()))
+  /* Build lines only mean a build while the server is still coming up; the same line
+     shapes ("Session ...") can turn up in the log of a running server. */
+  buildProgress.onMessage = message => {
+    const phase = status?.phase
+    if (phase === 'starting' || phase === 'building') status?.setServer('building', message)
+  }
   extensionPath = context.extensionPath
   globalStoragePath = context.globalStorageUri.fsPath
 
@@ -343,7 +386,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     isabelleHome = findIsabelleHome()
     log(`Isabelle home: ${isabelleHome}`)
   } catch (err) {
-    reportStartupFailure(err)
+    serverFailed(err)
     return
   }
 
@@ -372,15 +415,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   if (panelEnabled('theoriesPanel')) {
     theoriesPanel = new TheoriesPanel(log)
     theoriesPanel.registerViews(context.subscriptions)
+    context.subscriptions.push(theoriesPanel.onDidChange(r => status?.setProgress(r)))
   }
 
   sessionPicker = new SessionPicker(msg => output.appendLine(msg))
-  context.subscriptions.push(sessionPicker)
+  heapWatch = new HeapWatch(() => sessionPicker?.scan() ?? [], log)
+  heapWatch.register(context.subscriptions)
+  context.subscriptions.push(heapWatch.onDidChange(files => status?.setStale(files)))
 
   context.subscriptions.push(
     vscode.commands.registerCommand('isabelle.restartServer', async () => {
       await stopClient()
-      try { await startClient() } catch (err) { reportStartupFailure(err) }
+      try { await startClient() } catch (err) { serverFailed(err) }
     }),
     vscode.commands.registerCommand('isabelle.toggleSymbolRendering', () => {
       const on = renderer?.toggle()
@@ -439,6 +485,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       graphviewSupported: graphview?.serverSupported ?? false,
     })),
     vscode.commands.registerCommand('isabelle.selectSession', () => sessionPicker?.pick()),
+    vscode.commands.registerCommand('isabelle.showStaleFiles', showStaleFiles),
+    // Test hooks: the heap image's workspace files and which of them changed, and taking
+    // the baseline a server start would take, without a prover.
+    vscode.commands.registerCommand('isabelle.heapWatchState', () => ({
+      watched: heapWatch?.watchedCount ?? 0,
+      stale: heapWatch?.files ?? [],
+    })),
+    vscode.commands.registerCommand('isabelle.heapWatchCapture',
+      (logic: string, requirements: boolean) => heapWatch?.capture(logic, requirements)),
     vscode.commands.registerCommand('isabelle.staleEditCheck', (file: string) => {
       const cfg = vscode.workspace.getConfiguration('isabelle')
       return stalenessWarning(sessionPicker?.scan() ?? [], file,
@@ -455,15 +510,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         requirements: cfg.get<boolean>('logicRequirements') === true,
       }
     }),
-    vscode.commands.registerCommand('isabelle.toggleContinuousChecking', async () => {
-      const cfg = vscode.workspace.getConfiguration('isabelle')
-      const on = !cfg.get<boolean>('continuousChecking')
-      // Global rather than workspace: the option is a property of how you like to work.
-      await cfg.update('continuousChecking', on, vscode.ConfigurationTarget.Global)
-      await vscode.commands.executeCommand('isabelle.restartServer')
-      void vscode.window.showInformationMessage(
-        `Isabelle continuous checking ${on ? 'on' : 'off'}; server restarted.`)
-    }),
+    vscode.commands.registerCommand('isabelle.toggleWholeTheoryChecking', toggleWholeTheory),
+    // The old name, for keybindings made before the rename; no longer in the palette.
+    vscode.commands.registerCommand('isabelle.toggleContinuousChecking', toggleWholeTheory),
     vscode.commands.registerCommand('isabelle.queryState', () => queryPanel && ({
       supported: queryPanel.serverSupported,
       output: queryPanel.lastOutput,
@@ -485,6 +534,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.onDidChangeTextEditorSelection(e => sendCaretUpdate(e.textEditor)),
     vscode.window.onDidChangeActiveTextEditor(editor => sendCaretUpdate(editor)),
   )
+  status.enableControls()
 
   /* Starting the server loads a heap image, which is the slowest thing this extension
      does. Plenty of what it offers -- symbol rendering, input, the outline, folding,
@@ -499,8 +549,56 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   try {
     await startClient()
   } catch (err) {
-    reportStartupFailure(err)
+    serverFailed(err)
   }
+}
+
+async function toggleWholeTheory(): Promise<void> {
+  const cfg = vscode.workspace.getConfiguration('isabelle')
+  const on = !checkWholeTheory(cfg)
+  /* Global by default: the option is a property of how you like to work. But a value
+     already set for the workspace would shadow a global one and the toggle would do
+     nothing, so write where the setting already lives. */
+  const target = cfg.inspect<boolean>('checkWholeTheory')?.workspaceValue !== undefined
+    ? vscode.ConfigurationTarget.Workspace
+    : vscode.ConfigurationTarget.Global
+  await cfg.update('checkWholeTheory', on, target)
+  await vscode.commands.executeCommand('isabelle.restartServer')
+  // From the arguments, which also see a vscode_caret_perspective set in serverOptions.
+  void vscode.window.showInformationMessage(
+    `Isabelle now checks ${checkingExtent(caretPerspective(serverArguments()))}; ` +
+    'server restarted.')
+}
+
+/**
+ * Open one changed heap file, or pick from all of them. The status bar tooltip links
+ * here with the file as argument, which keeps its trusted-command list to our own.
+ */
+async function showStaleFiles(file?: string): Promise<void> {
+  if (file !== undefined) {
+    await vscode.window.showTextDocument(vscode.Uri.file(file), { preview: false })
+    return
+  }
+  const files = heapWatch?.files ?? []
+  if (files.length === 0) {
+    void vscode.window.showInformationMessage(
+      'No file built into the Isabelle heap image has changed since the server started.')
+    return
+  }
+  const chosen = await vscode.window.showQuickPick(
+    files.map(f => ({ label: f.label, description: f.change, file: f.file })),
+    { title: 'Changed since the heap image was built', matchOnDescription: true })
+  if (chosen) await vscode.window.showTextDocument(vscode.Uri.file(chosen.file), { preview: false })
+}
+
+/**
+ * The server could not start. Separate from reportStartupFailure, which the terminal also
+ * uses: a terminal that cannot find Isabelle says nothing about a server already running.
+ */
+function serverFailed(err: unknown): void {
+  status?.setServer('failed', err instanceof Error ? err.message : String(err))
+  heapWatch?.clear()
+  reportStartupFailure(err)
 }
 
 function reportStartupFailure(err: unknown): void {

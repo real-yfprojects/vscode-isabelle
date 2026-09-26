@@ -1,4 +1,5 @@
-// Checks for server-path conversion and build-progress relaying.
+// Checks for server-path conversion, build-progress relaying and the status bar item
+// with no server running.
 //
 // Runs in the extension host because both modules import vscode: serverPath sits beside
 // the launcher it fixes, and BuildProgress needs window.withProgress.
@@ -12,9 +13,9 @@ const assert = require('assert')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { serverPath, toCygwinPath, buildServerOptions, stageExtendedJar } =
-  require('../out/isabelle.js')
-const { buildLine } = require('../out/build_progress.js')
+const { serverPath, toCygwinPath, buildServerOptions, stageExtendedJar, serverArguments,
+        checkWholeTheory } = require('../out/isabelle.js')
+const { buildLine, BuildProgress } = require('../out/build_progress.js')
 
 let passed = 0
 const pass = m => { passed++; console.log('PASS: ' + m) }
@@ -122,6 +123,77 @@ async function run() {
     assert.strictEqual(buildLine(line), undefined, `should be ignored: ${line}`)
   }
   pass('ordinary output and timing chatter stay out of the notification')
+
+  // The status bar hears the same lines, with or without a notification open.
+  const relayed = []
+  const progress = new BuildProgress()
+  progress.onMessage = m => relayed.push(m)
+  const written = []
+  const sink = { name: 'x', appendLine: v => written.push(v), append: v => written.push(v) }
+  const channel = progress.channel(sink)
+  channel.appendLine('Build started for Isabelle/HOL-Foo ...')
+  channel.appendLine('theory Pure.Thy_Output')
+  assert.deepStrictEqual(relayed, ['building HOL-Foo'])
+  assert.strictEqual(written.length, 2, 'the output channel still gets every line')
+  pass('build lines reach the status bar listener, noise does not')
+
+  // --- the status bar item ----------------------------------------------------------
+  const vscode = require('vscode')
+  await vscode.extensions.getExtension('spike.isabelle-pide-stock').activate()
+  // Registered only once Isabelle is found, so its absence is itself the answer.
+  const server = await vscode.commands.executeCommand('isabelle.serverState')
+    .then(s => s, () => undefined)
+  const status = await vscode.commands.executeCommand('isabelle.statusBarState')
+  const logic = vscode.workspace.getConfiguration('isabelle').get('logic')?.trim() || 'HOL'
+  assert.ok(status.text.includes(logic), status.text)
+  // --- isabelle.checkWholeTheory, and its old name ---------------------------------------
+  /* Renamed from continuousChecking, which read as "checking stops when off". Existing
+     configurations must keep working, and the new name must win once it is set. */
+  const cfg = () => vscode.workspace.getConfiguration('isabelle')
+  const W = vscode.ConfigurationTarget.Workspace
+  const whole = () => serverArguments().includes('vscode_caret_perspective=0')
+  const tooltip = async () =>
+    (await vscode.commands.executeCommand('isabelle.statusBarState')).tooltip
+  assert.strictEqual(whole(), false, 'off by default')
+  await cfg().update('continuousChecking', true, W)
+  assert.strictEqual(checkWholeTheory(cfg()), true)
+  assert.strictEqual(whole(), true, 'the deprecated name is still read')
+  assert.ok((await tooltip()).includes('Checking: the whole theory'),
+    'the status bar follows the old name too')
+  await cfg().update('checkWholeTheory', false, W)
+  assert.strictEqual(whole(), false, 'the new name, once set, wins')
+  assert.ok((await tooltip()).includes('Checking: down to 50 lines below the cursor'))
+  await cfg().update('continuousChecking', undefined, W)
+  await cfg().update('checkWholeTheory', true, W)
+  assert.strictEqual(whole(), true)
+  await cfg().update('checkWholeTheory', undefined, W)
+  pass('checkWholeTheory decides, and falls back to the deprecated continuousChecking')
+
+  // The extent shown is the one the server gets, wherever it was set.
+  await cfg().update('serverOptions', ['vscode_caret_perspective=20'], W)
+  assert.ok((await tooltip()).includes('Checking: down to 20 lines below the cursor'))
+  await cfg().update('checkWholeTheory', true, W)
+  assert.ok((await tooltip()).includes('Checking: the whole theory'),
+    'checkWholeTheory comes later on the command line and wins')
+  await cfg().update('checkWholeTheory', undefined, W)
+  await cfg().update('serverOptions', undefined, W)
+  pass('the checked extent follows vscode_caret_perspective in serverOptions')
+
+  if (server?.isabelleHome !== undefined) {
+    // autoStart is off in this suite, so activation finished without a server.
+    assert.strictEqual(status.server, 'off')
+    assert.ok(status.text.startsWith('$(debug-disconnect) '), status.text)
+    assert.ok(status.tooltip.includes('[Start server](command:isabelle.restartServer)'))
+    assert.ok(status.tooltip.includes('(command:isabelle.selectSession)'))
+    pass('with no server started the item says so and offers to start one')
+  } else {
+    // No Isabelle (CI): activation stopped before the session and server commands exist.
+    assert.strictEqual(status.server, 'failed')
+    assert.strictEqual(status.background, 'error')
+    assert.ok(!status.tooltip.includes('isabelle.selectSession'),
+      'a link to an unregistered command would only produce an error')
+    pass('with no Isabelle the item shows the failure and links only the output')
+  }
 
   console.log(passed + ' checks passed')
   console.log('SUITE26_OK')

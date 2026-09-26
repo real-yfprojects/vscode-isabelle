@@ -84,14 +84,20 @@ export function pickItems(
   return items
 }
 
-export function statusText(logic: string, requirements: boolean): string {
-  return `$(library) ${logic}${requirements ? '' : ' (uncached)'}`
+/** `icon` is a codicon name; the status bar swaps it for the server's state. */
+export function statusText(logic: string, requirements: boolean, icon = 'library'): string {
+  return `$(${icon}) ${logic}${requirements ? '' : ' (uncached)'}`
+}
+
+/** What the chosen image caches, in one paragraph. */
+export function sessionSummary(logic: string, requirements: boolean): string {
+  return requirements
+    ? `Imports of ${logic} load from a heap image and are not re-checked. ` +
+      `${logic}'s own theories stay editable.`
+    : `No project theories are cached -- every theory you open is checked from source ` +
+      `on each start.`
 }
 
 export function statusTooltip(logic: string, requirements: boolean): string {
-  return requirements
-    ? `Isabelle session: ${logic}\n\nImports of ${logic} load from a heap image and are ` +
-      `not re-checked. ${logic}'s own theories stay editable.\n\nClick to change.`
-    : `Isabelle session: ${logic}\n\nNo project theories are cached -- every theory you ` +
-      `open is checked from source on each start.\n\nClick to change.`
+  return `Isabelle session: ${logic}\n\n${sessionSummary(logic, requirements)}\n\nClick to change.`
 }

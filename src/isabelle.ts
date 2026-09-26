@@ -187,6 +187,21 @@ export function serverPath(p: string, platform: NodeJS.Platform = process.platfo
   return toCygwinPath(p)
 }
 
+/**
+ * isabelle.checkWholeTheory, or the deprecated isabelle.continuousChecking when the new
+ * name is set nowhere.
+ *
+ * The old name was jEdit's, and wrong here: jEdit's option switches checking on and off,
+ * while this one only decides how far down a theory it goes -- the prover checks
+ * continuously either way. An explicit value of the new name wins at any scope, so the
+ * toggle, which writes it, always takes effect.
+ */
+export function checkWholeTheory(cfg: vscode.WorkspaceConfiguration): boolean {
+  const set = cfg.inspect<boolean>('checkWholeTheory')
+  const explicit = set?.workspaceValue ?? set?.globalValue
+  return explicit ?? cfg.get<boolean>('continuousChecking') === true
+}
+
 export function serverArguments(platform: NodeJS.Platform = process.platform): string[] {
   const cfg = vscode.workspace.getConfiguration('isabelle')
   const args: string[] = []
@@ -207,11 +222,10 @@ export function serverArguments(platform: NodeJS.Platform = process.platform): s
   }
   // A dedicated setting rather than making users hand-write an -o override.
   if (cfg.get<boolean>('spellChecker') === false) args.push('-o', 'spell_checker=false')
-  /* jEdit's "Continuous checking" toggle has no direct counterpart here: the server
-     narrows the document perspective to vscode_caret_perspective lines around the caret,
-     and 0 means the whole visible theory instead. The option is read once when the
-     session starts, so the command that flips this setting restarts the server. */
-  if (cfg.get<boolean>('continuousChecking')) args.push('-o', 'vscode_caret_perspective=0')
+  /* The server narrows the document perspective to vscode_caret_perspective lines around
+     the caret, and 0 means the whole visible theory instead. The option is read once when
+     the session starts, so the command that flips this setting restarts the server. */
+  if (checkWholeTheory(cfg)) args.push('-o', 'vscode_caret_perspective=0')
   if (cfg.get<boolean>('verbose')) args.push('-v')
   args.push(...(cfg.get<string[]>('serverArgs') ?? []))
   return args

@@ -142,11 +142,13 @@ command ids resolve only against the caret's snapshot, which is the restriction
 
 Two jEdit controls have no counterpart and are deliberately absent. **Purge** acts on
 jEdit's own buffer set, whereas VS Code models follow `didOpen`/`didClose`. **Continuous
-checking** is jEdit's `editor_continuous_checking`; the nearest option here is
-`vscode_caret_perspective`, which `VSCode_Resources` reads once at startup, so a live
-toggle would mean making those options mutable. The client instead exposes
-`isabelle.continuousChecking`, which passes `-o vscode_caret_perspective=0` and restarts
-the server.
+checking** is jEdit's `editor_continuous_checking`, which switches checking on and off.
+The server has no such switch: it always checks, from the top of a theory down to
+`vscode_caret_perspective` lines (default 50) below the caret, an option `VSCode_Resources`
+reads once at startup. The client exposes `isabelle.checkWholeTheory`, which passes
+`-o vscode_caret_perspective=0` (check to the end) and restarts the server. It used to be
+called `isabelle.continuousChecking`, after jEdit, which suggested that checking stops
+when it is off; that name is deprecated but still read when the new one is not set.
 
 These two are **TreeViews, not webviews** -- the only native panels here. That is not a
 style preference: both dockables are lists of named things with a status, which is the

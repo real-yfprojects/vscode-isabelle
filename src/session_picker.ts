@@ -20,8 +20,7 @@
 
 import * as vscode from 'vscode'
 import { Session, readSessions, sessionDirsFor, stalenessWarning } from './sessions'
-import { IconKind, PickItem, pickItems, openSessions, statusText, statusTooltip }
-  from './session_items'
+import { IconKind, PickItem, pickItems, openSessions } from './session_items'
 
 export { PickItem, IconKind, pickItems, openSessions, statusText, statusTooltip }
   from './session_items'
@@ -59,17 +58,14 @@ export function workspaceRoots(): string[] {
   return (vscode.workspace.workspaceFolders ?? []).map(f => f.uri.fsPath)
 }
 
+/* The status bar item that shows the session lives in status_bar.ts, which follows the
+   settings this writes. */
 export class SessionPicker {
-  private readonly status: vscode.StatusBarItem
   private sessions: Session[] = []
   /* Files already warned about, so the prompt appears once per server run. */
   private warned = new Set<string>()
 
-  constructor(private readonly log: (msg: string) => void) {
-    this.status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90)
-    this.status.command = 'isabelle.selectSession'
-    this.refresh()
-  }
+  constructor(private readonly log: (msg: string) => void) {}
 
   /** Re-scan ROOT files. Cheap enough to redo whenever it is asked for. */
   scan(): Session[] {
@@ -77,15 +73,6 @@ export class SessionPicker {
     this.sessions = readSessions(roots)
     this.log(`session scan: ${this.sessions.length} session(s) in ${roots.length} folder(s)`)
     return this.sessions
-  }
-
-  refresh(): void {
-    const cfg = vscode.workspace.getConfiguration('isabelle')
-    const logic = cfg.get<string>('logic')?.trim() || 'HOL'
-    const requirements = cfg.get<boolean>('logicRequirements') === true
-    this.status.text = statusText(logic, requirements)
-    this.status.tooltip = statusTooltip(logic, requirements)
-    this.status.show()
   }
 
   /**
@@ -159,12 +146,11 @@ export class SessionPicker {
       await cfg.update('sessionDirs', dirs, vscode.ConfigurationTarget.Workspace)
     }
     /* Workspace rather than Global: which session to boot is a property of the project in
-       front of you, unlike continuousChecking which is a property of how you work. */
+       front of you, unlike checkWholeTheory which is a property of how you work. */
     await cfg.update('logic', logic, vscode.ConfigurationTarget.Workspace)
     await cfg.update('logicRequirements', requirements, vscode.ConfigurationTarget.Workspace)
     // A new frontier makes every previous verdict obsolete, so ask again where it applies.
     this.warned.clear()
-    this.refresh()
     await vscode.commands.executeCommand('isabelle.restartServer')
     /* Deliberately not predicting whether a heap build follows. `-R S` needs the image
        Sessions.background computes, a synthetic S_requirements(PARENT) whenever S imports
@@ -176,6 +162,4 @@ export class SessionPicker {
       `Isabelle session: ${logic}. Restarting the server; if its heap image is missing ` +
       `it will be built first, which can take a while.`)
   }
-
-  dispose(): void { this.status.dispose() }
 }

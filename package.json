@@ -101,8 +101,8 @@
         "title": "Isabelle: Select Session Image"
       },
       {
-        "command": "isabelle.toggleContinuousChecking",
-        "title": "Isabelle: Toggle Continuous Checking"
+        "command": "isabelle.toggleWholeTheoryChecking",
+        "title": "Isabelle: Toggle Checking the Whole Theory"
       },
       {
         "command": "isabelle.gotoCommand",
@@ -120,6 +120,14 @@
         "command": "isabelle.graphviewOpenInEditor",
         "title": "Isabelle: Open Graph View in Editor",
         "icon": "$(link-external)"
+      },
+      {
+        "command": "isabelle.showOutput",
+        "title": "Isabelle: Show Output Log"
+      },
+      {
+        "command": "isabelle.showStaleFiles",
+        "title": "Isabelle: Show Files Changed Since the Heap Image Was Built"
       },
       {
         "command": "isabelle.openTerminal",
@@ -223,10 +231,16 @@
           "default": true,
           "description": "Start the language server when the extension activates. Turn this off to open .thy files without a prover -- symbol rendering, the outline and symbol input all work without one, and starting a session loads a heap image, which takes a while. Use \"Isabelle: Start / Restart Language Server\" when you want it."
         },
+        "isabelle.checkWholeTheory": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Check every visible theory to its end. Off, the prover checks each theory from the top down to `vscode_caret_perspective` lines below the cursor (50 unless set in `#isabelle.serverOptions#`) and stops there. Checking is continuous either way; this only sets how far it goes. Takes effect on server restart."
+        },
         "isabelle.continuousChecking": {
           "type": "boolean",
           "default": false,
-          "description": "Check the whole visible theory rather than a window around the caret (vscode_caret_perspective=0). Takes effect on server restart."
+          "description": "Deprecated name of isabelle.checkWholeTheory, still read when that one is not set.",
+          "markdownDeprecationMessage": "Renamed to `#isabelle.checkWholeTheory#`: the prover checks continuously either way, and the setting only decides how far down a theory it goes. This name is still read when the new one is not set."
         },
         "isabelle.expandAbbreviations": {
           "type": "boolean",
@@ -583,7 +597,7 @@
     "build": "tsc -p ./ && node ./scripts/server-jar.js",
     "watch": "tsc -watch -p ./",
     "dev": "node ./test/dev.js",
-    "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29 suite32 suite38",
+    "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29 suite32 suite38 suite41 suite42",
     "test": "node ./test/runTest.js",
     "package": "vsce package --out isabelle-pide-stock.vsix"
   },

@@ -110,6 +110,20 @@ async function run() {
   assert.strictEqual(finished.n.failed, 0, 'the theory has no failing proof')
   pass('status converges to 100% with no failures')
 
+  // The status bar is fed from the same notification, through the panel.
+  const bar = await until('waiting for the status bar to settle', 60, async () => {
+    const b = await vscode.commands.executeCommand('isabelle.statusBarState')
+    return b && b.progress && b.progress.running === 0 ? b : undefined
+  })
+  assert.ok(bar, 'the status bar should receive theory progress')
+  assert.strictEqual(bar.server, 'running')
+  assert.strictEqual(bar.progress.theories, (await theoriesState()).nodes.length)
+  assert.strictEqual(bar.progress.failed, 0)
+  assert.ok(!bar.text.includes('sync~spin') && !bar.text.includes('error'), bar.text)
+  assert.ok(bar.tooltip.includes('(command:isabelle-theories.focus)'))
+  assert.ok(/Server: running · prover \w+/.test(bar.tooltip), bar.tooltip)
+  pass('the status bar shows the server running and the theories checked')
+
   // Timing: command entries arrive for the theory the caret is in.
   const timed = await until('waiting for command timings', 120, async () => {
     const s = await theoriesState()

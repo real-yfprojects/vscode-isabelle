@@ -15,6 +15,10 @@
 
 import * as vscode from 'vscode'
 import { LanguageClient } from 'vscode-languageclient/node'
+import { settling } from './status_items'
+
+// Lives with the status bar's roll-up, which applies the same rule; see there.
+export { settling }
 
 export type NodeStatus = {
   uri: string
@@ -66,23 +70,6 @@ export function splitTheory(qualified: string): { session: string; base: string 
   return dot < 0
     ? { session: '', base: qualified }
     : { session: qualified.slice(0, dot), base: qualified.slice(dot + 1) }
-}
-
-/**
- * Whether a node's failures are only the symptom of imports that are not loaded yet.
- *
- * Dependency resolution is asynchronous, so a theory opened before its imports have been
- * loaded has a *failing header* -- `imports Mid` cannot be resolved -- and PIDE reports
- * that as a failed command like any other. On a large project that window is long enough
- * to look like a real failure, which is what it was mistaken for.
- *
- * The two conditions together are what make this safe. `loading` is temporal, so a
- * genuinely broken import surfaces as soon as resolution settles rather than being hidden
- * forever; `initialized` is per node, so a proof that actually failed in a theory whose
- * header did go through is never suppressed.
- */
-export function settling(node: NodeStatus, loading: boolean): boolean {
-  return loading && !node.initialized && node.failed > 0
 }
 
 export function statusIcon(node: NodeStatus, loading = false): vscode.ThemeIcon {
@@ -308,6 +295,12 @@ export class TheoriesPanel {
   private client: LanguageClient | undefined
   private last: TheoriesResponse | undefined
   private supported = false
+  /* The status bar reads the same notification. It cannot subscribe to it itself: the
+     language client keeps one handler per method, so a second onNotification for
+     PIDE/theories_response would silently replace this panel's. */
+  private readonly changed = new vscode.EventEmitter<TheoriesResponse | undefined>()
+  /** Every response, and `undefined` once the prover is gone. */
+  readonly onDidChange = this.changed.event
 
   constructor(private readonly log: (m: string) => void) {}
 
@@ -328,6 +321,7 @@ export class TheoriesPanel {
 
     this.timingView = timingView
     disposables.push(
+      this.changed,
       this.theoriesView,
       timingView,
       vscode.commands.registerCommand('isabelle.theoriesRefresh', () => this.request()),
@@ -365,6 +359,7 @@ export class TheoriesPanel {
         this.setDescription(
           p.loading ? `Prover: ${p.phase} · resolving imports` : `Prover: ${p.phase}`)
         if (this.timingView) this.timingView.description = `Threshold: ${p.threshold}s`
+        this.changed.fire(p)
       }),
       { dispose: () => this.unbind() },
     )
@@ -379,6 +374,7 @@ export class TheoriesPanel {
     this.theories.refresh([], false)
     this.timing.refresh([], [], undefined)
     this.setDescription('not running')
+    this.changed.fire(undefined)
   }
 
   private setDescription(text: string): void {
