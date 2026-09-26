@@ -192,8 +192,8 @@ header it was written to fix.
 
 ## Testing these against a live prover
 
-`test/suite30.js` drives both panels end to end and skips unless `ISABELLE_PATCHED_HOME`
-points at a build carrying the components. What it establishes is recorded in
+`test/suite30.js` drives both panels end to end, against the extended server (or a
+patched build in `ISABELLE_PATCHED_HOME`), and skips when there is neither. What it establishes is recorded in
 `GAPS.md` §4; two mechanics of the suite itself belong here.
 
 **It has to wait for a *question*, not merely for a response.** The server answers a

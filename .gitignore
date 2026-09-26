@@ -24,3 +24,8 @@ test/results.json
 # a committed one pins every machine to the author's absolute path. CI read
 # "C:/Users/.../Isabelle2025-2-query" on a Linux runner and failed every prover suite.
 test/workspace/.vscode/
+
+# scripts/build-server-jar.sh: the jar is built from the commit in server/*.ref, in CI or
+# locally, and its scratch directory only exists while it runs.
+server/*.jar
+.server-build/

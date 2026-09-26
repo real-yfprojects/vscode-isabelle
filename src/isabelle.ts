@@ -79,6 +79,53 @@ export function findIsabelleHome(): string {
     'No Isabelle distribution found. Set "isabelle.home" to the directory containing bin/isabelle.')
 }
 
+/**
+ * Whether to start the server from the extension's own build of Isabelle/Scala.
+ *
+ * server/<IDENTIFIER>.jar is the distribution's lib/classes/isabelle.jar compiled with the
+ * language-server additions the panels marked experimental need (scripts/build-server-jar.sh).
+ * getsettings seeds ISABELLE_CLASSPATH from the caller's CLASSPATH before any component
+ * appends to it, so a jar named there comes first and every isabelle.* class loads from
+ * it rather than from the distribution -- which is never modified, and still serves
+ * jEdit and everything else unchanged.
+ *
+ * The jar is compiled against one release, and Scala classes from one release do not
+ * link against another, so it is used only when the distribution names that release.
+ */
+export type ExtendedServer =
+  | { kind: 'off' }
+  | { kind: 'on', jar: string, identifier: string }
+  | { kind: 'unavailable', reason: string }
+
+export function extendedServer(isabelleHome: string, extensionPath: string): ExtendedServer {
+  if (!vscode.workspace.getConfiguration('isabelle').get<boolean>('extendedServer')) {
+    return { kind: 'off' }
+  }
+  let identifier: string
+  try {
+    identifier = fs.readFileSync(path.join(isabelleHome, 'etc', 'ISABELLE_IDENTIFIER'), 'utf8').trim()
+  } catch {
+    return {
+      kind: 'unavailable',
+      reason: `${isabelleHome} is not a released Isabelle (it has no etc/ISABELLE_IDENTIFIER).`,
+    }
+  }
+  const serverDir = path.join(extensionPath, 'server')
+  const jar = path.join(serverDir, `${identifier}.jar`)
+  if (fs.existsSync(jar)) return { kind: 'on', jar, identifier }
+
+  let available: string[] = []
+  try {
+    available = fs.readdirSync(serverDir).filter(n => n.endsWith('.jar')).map(n => n.slice(0, -4))
+  } catch { /* none bundled */ }
+  return {
+    kind: 'unavailable',
+    reason: available.length > 0
+      ? `The extended server is built for ${available.join(', ')}, not ${identifier}.`
+      : 'This build of the extension does not include the extended server.',
+  }
+}
+
 /** Isabelle ships its own Cygwin on Windows; its bash is how the tool script must be run. */
 function cygwinBash(isabelleHome: string): string {
   return path.join(isabelleHome, 'contrib', 'cygwin', 'bin', 'bash.exe')
@@ -158,9 +205,16 @@ function childEnv(platform: NodeJS.Platform = process.platform): NodeJS.ProcessE
  * to change that, so the argument construction is the part that can be held still.
  */
 export function buildServerOptions(
-  isabelleHome: string, platform: NodeJS.Platform = process.platform,
+  isabelleHome: string, platform: NodeJS.Platform = process.platform, extendedJar?: string,
 ): Executable {
   const args = serverArguments(platform)
+  const env = childEnv(platform)
+  /* A native path list: on Windows getsettings converts CLASSPATH with `cygpath -p`,
+     which expects the Windows form, separator included. */
+  if (extendedJar) {
+    const sep = platform === 'win32' ? ';' : ':'
+    env.CLASSPATH = env.CLASSPATH ? `${extendedJar}${sep}${env.CLASSPATH}` : extendedJar
+  }
   // Pin cwd: the extension host's own cwd may be somewhere Cygwin cannot chdir into,
   // and CHERE_INVOKING makes the login shell try to stay there.
   const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? isabelleHome
@@ -169,7 +223,7 @@ export function buildServerOptions(
      has the full story). Windows is deliberately excluded -- there `detached` means a new
      console rather than a new group, and taskkill /T walks the tree instead. */
   const options =
-    { env: childEnv(platform), shell: false, cwd, detached: platform !== 'win32' }
+    { env, shell: false, cwd, detached: platform !== 'win32' }
 
   if (platform === 'win32') {
     const bash = cygwinBash(isabelleHome)

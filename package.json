@@ -217,6 +217,11 @@
           "default": true,
           "markdownDescription": "Expand `\\forall` into `\\<forall>` as you type, and the short forms such as `\\all`, `\\ne`, `\\iff`, `\\_1` or `\\[[` (caret inside `\\<lbrakk>…\\<rbrakk>`). Hover a symbol to see every way to type it."
         },
+        "isabelle.extendedServer": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Start Isabelle's language server with the additions this extension ships: the Query, Theories, Timing, Simplifier Trace and Graph View panels, Go to Command, and session images for `-R` that build. Your Isabelle installation is not modified. Available for Isabelle2025-2. Takes effect after reloading the window."
+        },
         "isabelle.input.customShorthands": {
           "type": "object",
           "additionalProperties": {
@@ -384,12 +389,12 @@
         {
           "id": "isabelle-theories",
           "name": "Theories",
-          "when": "config.isabelle.theoriesPanel"
+          "when": "config.isabelle.theoriesPanel || config.isabelle.extendedServer"
         },
         {
           "id": "isabelle-timing",
           "name": "Timing",
-          "when": "config.isabelle.theoriesPanel",
+          "when": "config.isabelle.theoriesPanel || config.isabelle.extendedServer",
           "visibility": "collapsed"
         },
         {
@@ -411,19 +416,19 @@
           "id": "isabelle-query",
           "name": "Query",
           "type": "webview",
-          "when": "config.isabelle.queryPanel"
+          "when": "config.isabelle.queryPanel || config.isabelle.extendedServer"
         },
         {
           "id": "isabelle-simplifier-trace",
           "name": "Simplifier Trace",
           "type": "webview",
-          "when": "config.isabelle.simplifierTrace"
+          "when": "config.isabelle.simplifierTrace || config.isabelle.extendedServer"
         },
         {
           "id": "isabelle-graphview",
           "name": "Graph View",
           "type": "webview",
-          "when": "config.isabelle.graphview"
+          "when": "config.isabelle.graphview || config.isabelle.extendedServer"
         }
       ],
       "isabelle-panel": [
@@ -461,23 +466,23 @@
         },
         {
           "command": "isabelle.theoriesRefresh",
-          "when": "config.isabelle.theoriesPanel"
+          "when": "config.isabelle.theoriesPanel || config.isabelle.extendedServer"
         },
         {
           "command": "isabelle.findTheorems",
-          "when": "config.isabelle.queryPanel"
+          "when": "config.isabelle.queryPanel || config.isabelle.extendedServer"
         },
         {
           "command": "isabelle.simplifierTrace",
-          "when": "config.isabelle.simplifierTrace"
+          "when": "config.isabelle.simplifierTrace || config.isabelle.extendedServer"
         },
         {
           "command": "isabelle.graphview",
-          "when": "config.isabelle.graphview"
+          "when": "config.isabelle.graphview || config.isabelle.extendedServer"
         },
         {
           "command": "isabelle.graphviewOpenInEditor",
-          "when": "config.isabelle.graphview"
+          "when": "config.isabelle.graphview || config.isabelle.extendedServer"
         }
       ]
     },

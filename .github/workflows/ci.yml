@@ -1,10 +1,12 @@
 # CI for the stock-VS-Code Isabelle client.
 #
-# Three jobs, covering three different things:
+# Four jobs, covering four different things:
 #
 #   build        the tree compiles and the pure suites pass, on all three platforms
-#   integration  a real prover starts and the regression passes, on all three platforms
-#   package      the .vsix builds
+#   integration  a real prover starts and the regression passes, on all three platforms,
+#                the extended server's suites included
+#   server-jar   the extended server builds from its pinned commit
+#   package      the .vsix builds, with the extended server compiled into it
 #
 # The integration job is the one that matters for platform confidence. Before it existed,
 # no prover had ever been launched anywhere but the author's Windows machine, so `build`
@@ -57,6 +59,7 @@ jobs:
       - run: npm run test:unit
 
   integration:
+    needs: server-jar
     strategy:
       fail-fast: false
       matrix:
@@ -83,6 +86,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run compile
+      # Without the jar, the suites for the experimental panels would skip themselves.
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-jar
+          path: server
 
       # ~2 GB unpacked. Worth caching both to keep the job quick and to avoid pulling a
       # gigabyte off a university server on every push.
@@ -207,8 +215,64 @@ jobs:
             node test/runAll.js
           fi
 
-  package:
+  # The extended server, built once. The jar is JVM bytecode and the same on every
+  # platform, so the integration jobs test the very jar the package ships. It is compiled
+  # from the mirror-isabelle commit in server/<IDENTIFIER>.ref with the toolchain of the
+  # release it targets, so this job needs that release too -- under the same cache key as
+  # the Linux integration job, so usually a cache hit.
+  server-jar:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache the Isabelle distribution
+        id: isabelle-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/isabelle-dist
+          key: isabelle-ubuntu-latest-Isabelle2025-2_linux.tar.gz
+
+      - name: Download and unpack Isabelle
+        if: steps.isabelle-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p ~/isabelle-dist
+          ok=
+          for base in $ISABELLE_MIRRORS; do
+            if curl -fL --retry 2 --retry-delay 10 --connect-timeout 30 \
+                 "$base/Isabelle2025-2_linux.tar.gz?token=Isabelle" -o /tmp/isabelle-bundle; then
+              ok=1; break
+            fi
+            echo "::warning::$base did not serve the bundle, trying the next mirror"
+          done
+          test -n "$ok"
+          tar -xzf /tmp/isabelle-bundle -C ~/isabelle-dist
+          rm /tmp/isabelle-bundle
+
+      # The script only reads the distribution, so the cached copy stays pristine. It
+      # fetches the pinned commit itself; that commit must have been pushed.
+      - name: Build the extended server
+        run: |
+          set -eu
+          home=$(dirname "$(dirname "$(find ~/isabelle-dist -path '*/bin/isabelle' | head -1)")")
+          scripts/build-server-jar.sh "$home"
+          ls -la server/*.jar
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-jar
+          path: server/*.jar
+          if-no-files-found: error
+
+  package:
+    needs: server-jar
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -217,7 +281,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run compile
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-jar
+          path: server
       - run: npm run package
+      # A .vsix without the jar would install fine and then fall back to the standard
+      # server for everyone who turns the setting on, so check it went in.
+      - name: Check the extended server is packaged
+        run: unzip -l isabelle-pide-stock.vsix | grep -E 'extension/server/Isabelle2025-2\.jar'
       # Packaging is itself a test: vsce fails on a missing contribution path, so a
       # grammar or language-configuration dropped from .vscodeignore is caught here
       # rather than by someone installing the result.

@@ -18,7 +18,10 @@ master                                     (clean mirror of upstream Isabelle)
       +- vscode-simplifier-trace          (+ build progress, + Simplifier trace)
           +- vscode-graphview             (+ Graph view)
 
-main                                       (all of the above, merged; install from here)
+main                                       (all of the above, merged)
+
+8d9ad3f298  (the Isabelle2025-2 release, on master's history)
+ +- vscode-2025-2                         (the backport users run; see below)
 ```
 
 The feature branches exist to be proposed upstream one at a time, so they stay separate
@@ -41,28 +44,40 @@ Verified by building: Isabelle/Scala compiles from the merged tree and
 
 There are two routes, and which one applies depends on whether the change backports.
 
-### Backporting a branch onto a released distribution
+### The release branch: what users run
 
-No Mercurial and no component downloads are needed. The APIs the query branch uses
-(`Query_Operation`, `JSON.strings`, `Notification0`) all exist in Isabelle2025-2, so it
-backports onto a release, which already has every component:
+The Isabelle2025-2 release is commit `8d9ad3f298` of the mirror ("refer to
+Isabelle2025-2", tagged as changeset `89701cf1768e`, the release's `ISABELLE_ID`), and its
+sources are byte-identical to the distribution's. Branch `vscode-2025-2` starts there and
+carries the backport as ordinary commits, so there is one place for it and git does the
+bookkeeping:
 
-1. Copy the distribution (about 2.3 GB) and clear the read-only attributes robocopy
-   preserves, or the sources cannot be edited.
-2. Apply the branch's source changes plus the `etc/build.props` entry. That entry is easy
-   to miss and is what the source list is taken from; without it the module is not
-   compiled at all and `language_server.scala` fails with `Not found: type VSCode_Query`.
-3. `isabelle scala_build -f` in the copy.
-4. Point `isabelle.home` at the copy, set `isabelle.queryPanel`, and run `test/suite15.js`
-   with `ISABELLE_QUERY_HOME` set to it. The suite skips itself when that is unset.
+```
+1fb089268c Fall back to the default completion options when they are undeclared
+07729686c2 Make VS Code completion follow VS Code's model, ...   (cherry-picked from main)
+83ee62f24f more robust Event_Timer.request: ...                   (cherry-picked from upstream)
+611ffd078e Backport PIDE/goto_command from the development tree   (part of upstream c6e10a50c9)
+fd119bbc53 Send parent, kind and outcome with each simplifier trace entry   (cherry-picked)
+4039a52662 Render simplifier trace content as the State panel does         (cherry-picked)
+e398362add Backport the VSCode server changes on main to Isabelle2025-2   (main at 2861562116)
+8d9ad3f298 refer to Isabelle2025-2;
+```
 
-The same recipe applies to `vscode-theories-panel`, driven by `test/suite17.js` with
-`ISABELLE_PATCHED_HOME` set. Both branches can be applied to one copy. Mind the four
-divergences listed below when backporting: they are compile errors, except
-`PIDE/goto_command`, which fails silently at run time.
+Work on the language server happens in a worktree of this branch (`git worktree add
+../mirror-2025-2 vscode-2025-2`), against the release it will ship on. A change goes to the
+development-tree branches by cherry-pick when it is proposed upstream; the conflicts to
+expect are the divergences in the table below. For the next release, start a new branch
+from its release commit and cherry-pick again.
 
-Pin `ISABELLE_IDENTIFIER` for the copy so `ISABELLE_HOME_USER` does not overlap with the
-working installation's settings, preferences and heaps.
+To try a change, build the jar from the worktree as it stands and run the suites against
+a stock distribution with `isabelle.extendedServer` on (suite36 does exactly that):
+
+```
+scripts/build-server-jar.sh <path to Isabelle2025-2> ../mirror-2025-2
+```
+
+To ship it, commit on `vscode-2025-2`, push, and move `server/Isabelle2025-2.ref` in this
+repository to the new commit. CI builds the packaged jar from that commit.
 
 ### Compiling the mirror tree itself
 
@@ -122,3 +137,71 @@ The first is the load-bearing one, and it was found the hard way: `suite17` asse
 the caret moved after `PIDE/goto_command` and it never did, because the released server
 does not handle that message at all.
 
+
+
+## The extended server users get
+
+Users do not build anything. The extension ships `server/<IDENTIFIER>.jar` -- the
+release's `lib/classes/isabelle.jar`, recompiled with the backport -- and the
+`isabelle.extendedServer` setting starts `vscode_server` with that jar at the head of
+`CLASSPATH`. `getsettings` seeds `ISABELLE_CLASSPATH` from `CLASSPATH` before any
+component appends to it, so every `isabelle.*` class loads from the jar and none from
+the distribution, which is never written to. Verified with `-verbose:class` against a
+stock Isabelle2025-2: `isabelle.Isabelle_Tool` loads from the prepended jar.
+
+The extension uses the jar only when `etc/ISABELLE_IDENTIFIER` names the release it was
+built for, since Scala classes compiled against one release do not link against another.
+Anything else falls back to the standard server with a warning.
+
+### What is in it
+
+The commit named in `server/Isabelle2025-2.ref`, currently the tip of `vscode-2025-2`
+above: `main` of mirror-isabelle, including the completion work, plus the two
+`vscode-simplifier-trace` commits not yet merged there -- adapted to the release as in the
+table above. And two things from the development tree that 2025-2 lacks:
+`PIDE/goto_command`, and upstream's `f425404488`, without which one failing delayed event
+kills the JVM's only timer thread and with it every later delayed event of the server
+(output, caret updates, panel updates), while the server otherwise stays up.
+
+### A limit: no new Scala services
+
+Isabelle collects Scala services from a record inside *every* jar on the classpath
+(`Classpath.services`), and the distribution's `isabelle.jar` stays on it, behind this
+one. A jar built with the usual `services` entry therefore registers every service twice,
+and the prover dies at startup with `Exception- DUP "echo" raised` -- which is what the
+first build of this jar did, reported by the server only as `Return code: 127`. So the
+jar is built without a services record: the distribution's record names the same classes,
+and they load from this jar, which comes first. The build script refuses a backport that
+changes the services list, since this arrangement cannot carry that.
+
+### A limit: no new system options
+
+Only compiled code travels in the jar. Isabelle reads the declarations of system options
+from each component's `etc/options` at run time (`Options.init`), and the environment
+cannot add a component: `getsettings` resets `ISABELLE_COMPONENTS`. So a backported change
+that declares a new option -- the completion work does, `vscode_completion_delay` and
+`vscode_completion_limit` -- fails against a stock distribution as soon as the option is
+read, with `Unknown option`. Such a change has to fall back to a default when
+`options.defined(name)` is false before it can go onto `vscode-2025-2`; `1fb089268c` does
+that for completion, as a release-branch commit, since the development tree has the
+declarations. Keep the defaults there in step with `etc/options`.
+
+The one component a user always has besides the distribution is `$ISABELLE_HOME_USER`
+(`~/.isabelle/Isabelle2025-2`), and its `etc/options` is read too. Declaring options by
+writing there would work, but it edits the user's Isabelle settings for every tool, jEdit
+included, and has to merge with whatever the user keeps there; the fallback is simpler.
+
+### Building the jar
+
+```
+scripts/build-server-jar.sh <path to Isabelle2025-2> [<checkout of vscode-2025-2>]
+```
+
+With a checkout it builds that tree as it stands; without one it fetches the commit in
+`server/Isabelle2025-2.ref` -- one commit, no history, and of its tree only the Scala and
+Java sources and `etc/build.props` (`MIRROR_URL` overrides where from). Either way it
+writes `server/Isabelle2025-2.jar` in a few minutes and only reads the distribution: the
+sources go into a scratch component, and Isabelle's own `Setup build` compiles that
+component alone with the distribution's toolchain. On Windows it re-runs itself under the
+distribution's Cygwin bash, after fetching, since that Cygwin has no git. CI builds the
+jar the same way in the `package` job and checks that it lands in the `.vsix`.

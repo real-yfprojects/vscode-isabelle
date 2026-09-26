@@ -22,9 +22,15 @@ tsconfig.json
 test/**
 scripts/**
 
-# Working notes, not user documentation.
-GAPS.md
+# Working notes and design docs, not user documentation. The README links to docs/ on
+# GitHub, which is where the Marketplace sends those links anyway.
 TODO.md
+docs/**
+
+# The extended server: ship the jar and Isabelle's copyright notice that must travel
+# with it, not the pointer to the commit it is built from.
+server/*.ref
+.server-build/**
 
 node_modules/**
 package-lock.json

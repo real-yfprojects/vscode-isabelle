@@ -258,8 +258,8 @@ Verified by running it:
   bypasses the launcher that would normally initialize it; and `toCygwinPath` used the
   host's path resolver, so it silently could not convert a Windows path from a POSIX host
   -- which is the one thing its platform argument exists for
-- **the Simplifier trace and Graph view panels, end to end** (`test/suite30.js`, skipped
-  unless `ISABELLE_PATCHED_HOME` points at a build carrying the components): a question
+- **the Simplifier trace and Graph view panels, end to end** (`test/suite30.js`, run
+  against the extended server, skipped when its jar is not built): a question
   arrives with the prover's own answers and answering it advances to the next queued one;
   `simplifier_trace_show` returns the assembled trace, which reaches it by a different
   server path than questions take; auto-update round-trips in *both* directions, which is

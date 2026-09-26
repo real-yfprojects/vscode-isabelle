@@ -3,7 +3,7 @@ import * as vscode from 'vscode'
 import { CloseAction, ErrorAction, ErrorHandler, LanguageClient, LanguageClientOptions,
   ServerOptions, State } from 'vscode-languageclient/node'
 import { isRunning, killTree } from './process_tree'
-import { buildServerOptions, findIsabelleHome, IsabelleNotFound } from './isabelle'
+import { buildServerOptions, extendedServer, findIsabelleHome, IsabelleNotFound } from './isabelle'
 import { SymbolTable } from './symbols'
 import { SymbolRenderer } from './decorations'
 import { AbbrevStore, dropDuplicateSymbols, registerAbbreviations } from './abbrev'
@@ -55,6 +55,8 @@ let theoriesPanel: TheoriesPanel | undefined
 let simplifierTrace: SimplifierTracePanel | undefined
 let graphview: GraphviewPanel | undefined
 let sessionPicker: SessionPicker | undefined
+let extensionPath = ''
+let extendedJar: string | undefined
 const abbrevs = new AbbrevStore()
 
 export const ISABELLE_SELECTOR: vscode.DocumentSelector =
@@ -113,7 +115,16 @@ async function startClient(): Promise<void> {
     isabelleHome = home
     table = SymbolTable.load(home)
   }
-  const executable = buildServerOptions(home)
+  const extended = extendedServer(home, extensionPath)
+  extendedJar = extended.kind === 'on' ? extended.jar : undefined
+  if (extended.kind === 'on') log(`Extended server: ${extended.jar}`)
+  if (extended.kind === 'unavailable') {
+    log(`Extended server unavailable: ${extended.reason}`)
+    void vscode.window.showWarningMessage(
+      `Isabelle: ${extended.reason} Starting the standard language server instead.`)
+  }
+  const executable =
+    buildServerOptions(home, process.platform, extended.kind === 'on' ? extended.jar : undefined)
   log(`Launching: ${executable.command} ${(executable.args ?? []).join(' ')}`)
 
   /* Spawn the server ourselves rather than handing the client an Executable, for the one
@@ -225,7 +236,7 @@ async function startClient(): Promise<void> {
   previews.register(clientScope)
   // Off by default: the PIDE/query_* messages exist only on the vscode-query-panel
   // branch of mirror-isabelle, so a stock distribution would show a dead view.
-  if (vscode.workspace.getConfiguration('isabelle').get<boolean>('queryPanel', false)) {
+  if (panelEnabled('queryPanel')) {
     queryPanel = new QueryPanel(client, log)
     queryPanel.register(clientScope)
   }
@@ -238,11 +249,11 @@ async function startClient(): Promise<void> {
   /* Same reasoning as the Query panel: PIDE/simplifier_trace_* exists only on the
      vscode-simplifier-trace branch, so the view stays hidden against a stock
      distribution rather than sitting there permanently empty. */
-  if (vscode.workspace.getConfiguration('isabelle').get<boolean>('simplifierTrace', false)) {
+  if (panelEnabled('simplifierTrace')) {
     simplifierTrace = new SimplifierTracePanel(client, log)
     simplifierTrace.register(clientScope)
   }
-  if (vscode.workspace.getConfiguration('isabelle').get<boolean>('graphview', false)) {
+  if (panelEnabled('graphview')) {
     graphview = new GraphviewPanel(client, log)
     graphview.register(clientScope)
   }
@@ -258,6 +269,16 @@ async function startClient(): Promise<void> {
   void client.sendNotification('PIDE/abbrevs_request', {})
 
   sendCaretUpdate(vscode.window.activeTextEditor)
+}
+
+/**
+ * The panels marked experimental need messages only the extended server answers, so
+ * turning that on shows them all; each keeps its own setting for a server patched by
+ * other means.
+ */
+function panelEnabled(setting: string): boolean {
+  const cfg = vscode.workspace.getConfiguration('isabelle')
+  return cfg.get<boolean>(setting, false) || cfg.get<boolean>('extendedServer', false)
 }
 
 async function stopClient(): Promise<void> {
@@ -294,6 +315,16 @@ async function stopClient(): Promise<void> {
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   output = vscode.window.createOutputChannel('Isabelle')
   context.subscriptions.push(output)
+  extensionPath = context.extensionPath
+
+  /* The server is chosen at launch and the Theories views are registered at activation,
+     so a reload is the one step that applies this setting everywhere. */
+  context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(async e => {
+    if (!e.affectsConfiguration('isabelle.extendedServer')) return
+    const choice = await vscode.window.showInformationMessage(
+      'Reload the window to switch the Isabelle language server.', 'Reload Window')
+    if (choice) await vscode.commands.executeCommand('workbench.action.reloadWindow')
+  }))
 
   try {
     isabelleHome = findIsabelleHome()
@@ -325,7 +356,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   /* Same reasoning as the Query panel: the PIDE/theories_* messages exist only on the
      vscode-theories-panel branch, so the views stay hidden against a stock distribution
      rather than showing two permanently empty trees. */
-  if (vscode.workspace.getConfiguration('isabelle').get<boolean>('theoriesPanel', false)) {
+  if (panelEnabled('theoriesPanel')) {
     theoriesPanel = new TheoriesPanel(log)
     theoriesPanel.registerViews(context.subscriptions)
   }
@@ -346,6 +377,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       state: client ? State[client.state] : 'none',
       lastError,
       isabelleHome,
+      extendedJar,
       symbols: table?.entries.length ?? 0,
     })),
     // Test hook: what the renderer would decorate in the active editor right now.
