@@ -6,12 +6,11 @@
 // dockables and the Isabelle sources, which is exactly the kind of reading that is
 // convincing and wrong.
 //
-// Needs a patched Isabelle carrying both components; skips itself otherwise, so it is
-// safe in the default regression set. Point ISABELLE_PATCHED_HOME at one:
-//
-//   ISABELLE_PATCHED_HOME=C:/Users/yanni/Isabelle/Isabelle2025-2-query \
-//     node test/runTest.js suite30.js
+// Needs a server carrying both components.
+// Runs against a patched Isabelle or against the stock one with the extended server; see
+// test/server_target.js. Skips itself when there is neither, so it is safe in any run.
 const vscode = require('vscode')
+const target_ = require('./server_target')
 const assert = require('assert')
 const path = require('path')
 
@@ -49,7 +48,7 @@ async function pollFor(what, predicate, timeoutMs, describe = undefined, interva
    test/workspace -- and a committed one pins every other machine to this machine's
    absolute isabelle.home. That is not hypothetical: CI read
    "C:/Users/.../Isabelle2025-2-query" on a Linux runner and every prover suite failed. */
-const WRITTEN_SETTINGS = ['home', 'simplifierTrace', 'graphview', 'autoStart']
+const WRITTEN_SETTINGS = ['home', 'extendedServer', 'simplifierTrace', 'graphview', 'autoStart']
 
 async function run() {
   try { await drive() }
@@ -63,12 +62,13 @@ async function run() {
 }
 
 async function drive() {
-  const home = process.env.ISABELLE_PATCHED_HOME
-  if (!home) {
-    console.log('SKIP: ISABELLE_PATCHED_HOME is not set; no patched Isabelle to drive')
+  const target = target_.resolve()
+  if (!target) {
+    console.log('SKIP: ' + target_.skipReason())
     console.log('SUITE30_OK')
     return
   }
+  console.log(target.label)
 
   const ext = vscode.extensions.getExtension(EXT_ID)
   assert.ok(ext, `extension ${EXT_ID} not found`)
@@ -76,7 +76,7 @@ async function drive() {
   // Both panels are off by default, because their messages exist only on the patched
   // branches. Turn them on, point at the patched build, and restart into it.
   const cfg = vscode.workspace.getConfiguration('isabelle')
-  await cfg.update('home', home, vscode.ConfigurationTarget.Workspace)
+  await target_.apply(target, vscode.ConfigurationTarget.Workspace)
   await cfg.update('simplifierTrace', true, vscode.ConfigurationTarget.Workspace)
   await cfg.update('graphview', true, vscode.ConfigurationTarget.Workspace)
   await cfg.update('autoStart', true, vscode.ConfigurationTarget.Workspace)

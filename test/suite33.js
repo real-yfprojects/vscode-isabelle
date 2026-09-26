@@ -2,8 +2,10 @@
 // of mirror-isabelle: item kinds, templates as snippets, commit characters, no duplicate
 // symbol items, and semantic names (facts) that show up right after an edit -- first by
 // waiting for the prover, then by filtering the list it already reported.
-// Point ISABELLE_PATCHED_HOME at such a build; the suite skips itself otherwise.
+// Runs against a patched Isabelle or against the stock one with the extended server; see
+// test/server_target.js. Skips itself when there is neither, so it is safe in any run.
 const vscode = require('vscode')
+const target_ = require('./server_target')
 const assert = require('assert')
 const fs = require('fs')
 const path = require('path')
@@ -43,13 +45,13 @@ async function complete(doc, pos) {
 const PROBE = 8   // the blank line the probes are written into
 
 async function run() {
-  const home = process.env.ISABELLE_PATCHED_HOME
-  if (!home) {
-    console.log('SKIP: no patched Isabelle (set ISABELLE_PATCHED_HOME)')
+  const target = target_.resolve()
+  if (!target) {
+    console.log('SKIP: ' + target_.skipReason())
     console.log('SUITE33_SKIPPED')
     return
   }
-  console.log('patched Isabelle: ' + home)
+  console.log(target.label)
 
   const ext = vscode.extensions.getExtension('spike.isabelle-pide-stock')
   await ext.activate()
@@ -72,7 +74,7 @@ async function run() {
   ].join('\n'), 'utf8')
 
   const cfg = vscode.workspace.getConfiguration('isabelle')
-  await cfg.update('home', home, vscode.ConfigurationTarget.Global)
+  await target_.apply(target)
   await vscode.commands.executeCommand('isabelle.restartServer')
 
   const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file))
@@ -83,7 +85,7 @@ async function run() {
     return s && s.state === 'Running' ? s : undefined
   })
   assert.ok(server, 'the patched Isabelle should start')
-  assert.strictEqual(server.isabelleHome, home, 'must be talking to the patched build')
+  assert.ok(target_.matches(server, target), 'must be talking to the patched build')
   pass('language server runs against the patched build')
 
   const setProbe = async text => {

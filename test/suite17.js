@@ -1,9 +1,10 @@
 // End-to-end test of the Theories and Timing views against a PATCHED Isabelle.
 //
-// Needs a server that answers PIDE/theories_request -- the vscode-theories-panel branch
-// of mirror-isabelle. Point ISABELLE_PATCHED_HOME (or ISABELLE_QUERY_HOME) at such a
-// build; the suite skips itself otherwise, so a normal run is unaffected.
+// Needs a server that answers PIDE/theories_request.
+// Runs against a patched Isabelle or against the stock one with the extended server; see
+// test/server_target.js. Skips itself when there is neither, so it is safe in any run.
 const vscode = require('vscode')
+const target_ = require('./server_target')
 const assert = require('assert')
 const fs = require('fs')
 const path = require('path')
@@ -26,14 +27,23 @@ async function until(what, seconds, probe) {
 }
 
 async function run() {
-  const home = process.env.ISABELLE_PATCHED_HOME || process.env.ISABELLE_QUERY_HOME
-  if (!home) {
-    console.log('SKIP: no patched Isabelle (set ISABELLE_PATCHED_HOME)')
+  const VARS = ['ISABELLE_PATCHED_HOME', 'ISABELLE_QUERY_HOME']
+  const serverTarget = target_.resolve(VARS)
+  if (!serverTarget) {
+    console.log('SKIP: ' + target_.skipReason(VARS))
     console.log('SUITE17_SKIPPED')
     return
   }
-  console.log('patched Isabelle: ' + home)
+  console.log(serverTarget.label)
 
+  // Before activation: the Theories views, and with them isabelle.theoriesState, are
+  // registered when the extension activates, and only if the panel is on by then.
+  const cfg = vscode.workspace.getConfiguration('isabelle')
+  await target_.apply(serverTarget)
+  await cfg.update('theoriesPanel', true, vscode.ConfigurationTarget.Global)
+  // 0 keeps every command that took at least a millisecond, so the Timing view has
+  // something to show for a small theory.
+  await cfg.update('timingThreshold', 0, vscode.ConfigurationTarget.Global)
   const ext = vscode.extensions.getExtension('spike.isabelle-pide-stock')
   await ext.activate()
 
@@ -57,12 +67,6 @@ async function run() {
     '',
   ].join('\n'), 'utf8')
 
-  const cfg = vscode.workspace.getConfiguration('isabelle')
-  await cfg.update('home', home, vscode.ConfigurationTarget.Global)
-  await cfg.update('theoriesPanel', true, vscode.ConfigurationTarget.Global)
-  // 0 keeps every command that took at least a millisecond, so the Timing view has
-  // something to show for a small theory.
-  await cfg.update('timingThreshold', 0, vscode.ConfigurationTarget.Global)
   await vscode.commands.executeCommand('isabelle.restartServer')
 
   const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file))
@@ -74,7 +78,7 @@ async function run() {
   })
   assert.ok(server, 'the patched Isabelle should start')
   console.log('isabelle home in use: ' + server.isabelleHome)
-  assert.strictEqual(server.isabelleHome, home, 'must be talking to the patched build')
+  assert.ok(target_.matches(server, serverTarget), 'must be talking to the patched build')
   pass('language server runs against the patched build')
 
   // Nudge PIDE into processing this file.

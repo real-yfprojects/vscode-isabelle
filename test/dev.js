@@ -1,7 +1,7 @@
-// One command for a dev run of the extension against a PATCHED Isabelle.
+// One command for a dev run of the extension with the experimental panels working.
 //
-//   npm run dev                         # uses C:\Users\yanni\Isabelle\Isabelle2025-2-query
-//   ISABELLE_PATCHED_HOME=... npm run dev
+//   npm run dev                              # stock Isabelle + server/<IDENTIFIER>.jar
+//   ISABELLE_PATCHED_HOME=... npm run dev    # a patched build instead
 //
 // Compiles, seeds an isolated profile (test/dev-profile.js), then launches the
 // installed VS Code as an Extension Development Host on test/workspace. Nothing here

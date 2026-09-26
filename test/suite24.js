@@ -2,8 +2,9 @@
 //
 // The instrument is the Theories view: PIDE filters out theories that are already in the
 // loaded image (Resources.loaded_theory), so a cached import is one that does NOT appear
-// while its importer does. Needs a patched Isabelle for the Theories protocol, and a
-// two-session project in ISABELLE_TEST_PROJECT.
+// while its importer does. Needs a patched Isabelle for the Theories protocol (see
+// test/server_target.js), and a two-session project in ISABELLE_TEST_PROJECT.
+const target_ = require('./server_target')
 const vscode = require('vscode')
 const assert = require('assert')
 const path = require('path')
@@ -24,10 +25,10 @@ async function until(what, seconds, probe) {
 }
 
 async function run() {
-  const home = process.env.ISABELLE_PATCHED_HOME || process.env.ISABELLE_QUERY_HOME
+  const target = target_.resolve(['ISABELLE_PATCHED_HOME', 'ISABELLE_QUERY_HOME'])
   const proj = process.env.ISABELLE_TEST_PROJECT
-  if (!home || !proj) {
-    console.log('SKIP: needs ISABELLE_PATCHED_HOME and ISABELLE_TEST_PROJECT')
+  if (!target || !proj) {
+    console.log('SKIP: needs ISABELLE_TEST_PROJECT and a patched Isabelle or the extended server')
     console.log('SUITE24_SKIPPED')
     return
   }
@@ -35,7 +36,7 @@ async function run() {
   await ext.activate()
 
   const cfg = vscode.workspace.getConfiguration('isabelle')
-  await cfg.update('home', home, vscode.ConfigurationTarget.Global)
+  await target_.apply(target)
   await cfg.update('theoriesPanel', true, vscode.ConfigurationTarget.Global)
   await cfg.update('sessionDirs', [proj], vscode.ConfigurationTarget.Global)
   await cfg.update('logic', 'Work', vscode.ConfigurationTarget.Global)

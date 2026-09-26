@@ -19,12 +19,14 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
-// The set that is expected to be green at all times. Suites needing a patched Isabelle
-// (15, 17, 30) or a project workspace (24) skip themselves, so they are not listed here.
-const REGRESSION = ['suite', 'suite2', 'suite4', 'suite6', 'suite12', 'suite16',
-                    'suite18', 'suite19', 'suite21', 'suite23', 'suite25', 'suite26',
-                    'suite27', 'suite28', 'suite29', 'suite31', 'suite32',
-                    'suite34', 'suite35']
+// The set that is expected to be green at all times. The suites for the experimental
+// panels (15, 17, 30, 33, 36) run against the extended server when its jar is built, as
+// in CI, and skip themselves otherwise (test/server_target.js). suite24 also needs a
+// project workspace, so it is not listed.
+const REGRESSION = ['suite', 'suite2', 'suite4', 'suite6', 'suite12', 'suite15', 'suite16',
+                    'suite17', 'suite18', 'suite19', 'suite21', 'suite23', 'suite25',
+                    'suite26', 'suite27', 'suite28', 'suite29', 'suite30', 'suite31',
+                    'suite32', 'suite33', 'suite34', 'suite35', 'suite36']
 
 /** Suites that need no editor at all, and so cost nothing to run. */
 const PURE = new Set(['suite25', 'suite27', 'suite28', 'suite29', 'suite31', 'suite32',

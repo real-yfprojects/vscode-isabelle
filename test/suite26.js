@@ -63,6 +63,18 @@ async function run() {
     'no Cygwin path may appear in a POSIX launch')
   pass('the POSIX launch runs bin/isabelle directly, with no Cygwin residue')
 
+  // The extended server is nothing but a jar ahead of the distribution's own: getsettings
+  // seeds ISABELLE_CLASSPATH from CLASSPATH, so it has to come first there.
+  const jar = '/ext/server/Isabelle2025-2.jar'
+  const extended = buildServerOptions(home, 'linux', jar)
+  assert.strictEqual(extended.options.env.CLASSPATH.split(':')[0], jar,
+    'the extended server jar must head CLASSPATH')
+  assert.deepStrictEqual(extended.args, posix.args,
+    'the extended server changes the classpath, not the command line')
+  assert.strictEqual(posix.options.env.CLASSPATH, process.env.CLASSPATH,
+    'without the extended server CLASSPATH must pass through untouched')
+  pass('the extended server is launched by prepending its jar to CLASSPATH')
+
   // --- what reaches the notification ----------------------------------------------
   // The line the server actually emitted when this was reported.
   assert.strictEqual(

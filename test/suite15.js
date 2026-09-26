@@ -1,9 +1,10 @@
 // End-to-end test of the Query panel against a PATCHED Isabelle.
 //
-// Needs an Isabelle whose language server exposes PIDE/query_* -- the vscode-query-panel
-// branch of mirror-isabelle. Point ISABELLE_QUERY_HOME at such a build; the suite skips
-// itself if that is not set, so it stays harmless in a normal run.
+// Needs an Isabelle whose language server exposes PIDE/query_*.
+// Runs against a patched Isabelle or against the stock one with the extended server; see
+// test/server_target.js. Skips itself when there is neither, so it is safe in any run.
 const vscode = require('vscode')
+const target_ = require('./server_target')
 const assert = require('assert')
 const fs = require('fs')
 const path = require('path')
@@ -15,13 +16,14 @@ const parity = () => vscode.commands.executeCommand('isabelle.jEditParityState')
 const queryState = () => vscode.commands.executeCommand('isabelle.queryState')
 
 async function run() {
-  const home = process.env.ISABELLE_QUERY_HOME
-  if (!home) {
-    console.log('SKIP: ISABELLE_QUERY_HOME is not set, so there is no patched Isabelle to test')
+  const VARS = ['ISABELLE_QUERY_HOME', 'ISABELLE_PATCHED_HOME']
+  const target = target_.resolve(VARS)
+  if (!target) {
+    console.log('SKIP: ' + target_.skipReason(VARS))
     console.log('SUITE15_SKIPPED')
     return
   }
-  console.log('patched Isabelle: ' + home)
+  console.log(target.label)
 
   const ext = vscode.extensions.getExtension('spike.isabelle-pide-stock')
   await ext.activate()
@@ -34,7 +36,7 @@ async function run() {
   const editor = await vscode.window.showTextDocument(doc, { preview: false })
 
   const cfg = vscode.workspace.getConfiguration('isabelle')
-  await cfg.update('home', home, vscode.ConfigurationTarget.Global)
+  await target_.apply(target)
   await cfg.update('queryPanel', true, vscode.ConfigurationTarget.Global)
   await vscode.commands.executeCommand('isabelle.restartServer')
 
@@ -48,6 +50,7 @@ async function run() {
   const server = await vscode.commands.executeCommand('isabelle.serverState')
   assert.strictEqual(server.state, 'Running', 'the patched Isabelle should start normally')
   console.log('isabelle home in use: ' + server.isabelleHome)
+  assert.ok(target_.matches(server, target), 'must be talking to the patched build')
   pass('language server runs against the patched build')
 
   // The panel probes for support on resolve.
@@ -87,7 +90,7 @@ async function run() {
   assert.ok(text.length > 0, 'output should not be empty')
   pass('find_theorems returned results through PIDE/query_output')
 
-  await cfg.update('home', '', vscode.ConfigurationTarget.Global)
+  await target_.reset(target)
   await cfg.update('queryPanel', false, vscode.ConfigurationTarget.Global)
 
   console.log(`\n${passed} checks passed`)
