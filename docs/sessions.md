@@ -148,6 +148,21 @@ question -- it builds *ancestors*, reports "nothing to build" for a session whos
 requirements image is missing, and takes 23s. The server reports its own build through
 `build_started`, which is honest and free.
 
+### Building in a terminal
+
+**Isabelle: Open Terminal**, and the *Isabelle* profile in the terminal panel's `+` menu,
+open a shell in which `isabelle` is the distribution the extension runs. On Windows that
+is a shell of Isabelle's own Cygwin, the one `Cygwin-Terminal.bat` opens, which is the only
+place the command-line tools run. Elsewhere it is your usual shell with the distribution's
+`bin/` first on `PATH`. So a heap build, `isabelle sessions`, or anything else can run
+there, on the distribution the server uses, without the minutes of silence inside
+`initialize`.
+
+The Windows shell gets the server's `HOME` rather than the batch file's
+`%HOMEDRIVE%%HOMEPATH%`. Where the two differ, a heap built in the terminal would
+otherwise land under a `~/.isabelle` the server never reads. `src/terminal.ts` has the
+wiring and `suite40.js` runs `isabelle` in both kinds of terminal.
+
 ### `-i` does not do what its name suggests
 
 `include_sessions` (`-i`) only widens the *selection* so those sessions are known for name

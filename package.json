@@ -13,7 +13,8 @@
   },
   "main": "./out/extension.js",
   "activationEvents": [
-    "onLanguage:isabelle"
+    "onLanguage:isabelle",
+    "onTerminalProfile:isabelle.terminal"
   ],
   "contributes": {
     "languages": [
@@ -119,8 +120,21 @@
         "command": "isabelle.graphviewOpenInEditor",
         "title": "Isabelle: Open Graph View in Editor",
         "icon": "$(link-external)"
+      },
+      {
+        "command": "isabelle.openTerminal",
+        "title": "Isabelle: Open Terminal"
       }
     ],
+    "terminal": {
+      "profiles": [
+        {
+          "id": "isabelle.terminal",
+          "title": "Isabelle",
+          "icon": "terminal"
+        }
+      ]
+    },
     "keybindings": [
       {
         "command": "isabelle.cursorLeft",

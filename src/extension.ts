@@ -28,6 +28,7 @@ import { registerSemanticTokens } from './semantic_tokens'
 import { SessionPicker } from './session_picker'
 import { stalenessWarning } from './sessions'
 import { BuildProgress } from './build_progress'
+import { registerTerminal } from './terminal'
 import { closeVerdict } from './restart_policy'
 
 const buildProgress = new BuildProgress()
@@ -334,6 +335,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       'Reload the window to switch the Isabelle language server.', 'Reload Window')
     if (choice) await vscode.commands.executeCommand('workbench.action.reloadWindow')
   }))
+
+  // Before the lookup below, so that a missing distribution is reported, not a missing command.
+  registerTerminal(context, reportStartupFailure)
 
   try {
     isabelleHome = findIsabelleHome()

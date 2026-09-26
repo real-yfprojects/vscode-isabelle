@@ -237,6 +237,61 @@ function childEnv(platform: NodeJS.Platform = process.platform): NodeJS.ProcessE
 }
 
 /**
+ * A shell with `isabelle` on its PATH: on Windows, what the distribution's
+ * Cygwin-Terminal.bat opens.
+ *
+ * That script only works when started from the Isabelle directory (it prepends %CD%\bin),
+ * so it cannot simply be launched from here; this is its environment, rebuilt. HOME is
+ * the server's, not the script's %HOMEDRIVE%%HOMEPATH%: the two usually agree, and where
+ * they do not, `isabelle build` in the terminal must still write the heaps under the
+ * ~/.isabelle the server reads.
+ *
+ * Off Windows there is no second shell to reach, so it is the user's own shell with the
+ * distribution's bin/ put first -- still the distribution the extension runs, rather than
+ * whichever `isabelle` PATH happens to find. No cwd: VS Code then picks the workspace
+ * folder itself, and asks which one in a multi-root workspace.
+ */
+export function terminalOptions(
+  isabelleHome: string, platform: NodeJS.Platform = process.platform,
+  hostEnv: NodeJS.ProcessEnv = process.env,
+): vscode.TerminalOptions {
+  const name = 'Isabelle'
+  const iconPath = new vscode.ThemeIcon('terminal')
+  /* Windows variable names are case-insensitive and PATH is usually spelled "Path".
+     Setting "PATH" beside it would hand the shell two of them, and which one wins is up
+     to whoever builds the environment block. */
+  const pathKey = platform === 'win32'
+    ? Object.keys(hostEnv).find(k => k.toUpperCase() === 'PATH') ?? 'Path'
+    : 'PATH'
+  const oldPath = hostEnv[pathKey]
+  const sep = platform === 'win32' ? ';' : ':'
+  const bin = (platform === 'win32' ? path.win32 : path.posix).join(isabelleHome, 'bin')
+  const env: Record<string, string> = { [pathKey]: oldPath ? `${bin}${sep}${oldPath}` : bin }
+
+  if (platform !== 'win32') return { name, iconPath, env }
+
+  const bash = cygwinBash(isabelleHome)
+  if (!fs.existsSync(bash)) {
+    throw new IsabelleNotFound(
+      `Isabelle's bundled Cygwin is missing at ${bash}. ` +
+      `Run Cygwin-Setup.bat in the Isabelle directory once after installing.`)
+  }
+  const server = childEnv(platform)
+  // A native PATH, as in the batch file: Cygwin converts it when bash starts.
+  env.HOME = server.HOME ?? ''
+  env.LANG = server.LANG ?? 'en_US.UTF-8'
+  // Without it the login profile changes to HOME instead of staying in the workspace.
+  env.CHERE_INVOKING = 'true'
+  return {
+    name, iconPath, env,
+    shellPath: bash,
+    shellArgs: ['--login', '-i'],
+    message: 'This is the GNU Bash interpreter of Isabelle\'s Cygwin. ' +
+      'Use command "isabelle" to invoke Isabelle tools.',
+  }
+}
+
+/**
  * How to launch the server.
  *
  * `platform` is injectable so the launch path for an OS can be checked from any other --
