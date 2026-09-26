@@ -196,10 +196,15 @@ jobs:
       # first use; two concurrent first-time downloads into one cache directory deadlock.
       # That is what hung the macOS job for 28 minutes -- its cleanup reported an orphan
       # `unzip` still running.
+      #
+      # A single download can hang too: on macOS one ran past ten minutes against its usual
+      # 20 s. fetch-editor.js gives each attempt three minutes and tries twice; the step
+      # limit is a backstop should the script itself ever stick.
       - name: Pre-download the test editor
+        timeout-minutes: 8
         run: |
           set -eu
-          exe=$(node -e "require('@vscode/test-electron').downloadAndUnzipVSCode().then(p => console.log(p))" | tail -1)
+          exe=$(node test/fetch-editor.js)
           # Handed to runTest.js, which repairs it if the library's guess is wrong.
           echo "VSCODE_TEST_EXECUTABLE=$exe" >> "$GITHUB_ENV"
           echo "editor: $exe"
