@@ -13,7 +13,7 @@ const assert = require('assert')
 const fs = require('fs')
 const path = require('path')
 
-const EXT_ID = 'spike.isabelle-pide-stock'
+const EXT_ID = 'yfprojects.vscode-isabelle'
 const wait = ms => new Promise(r => setTimeout(r, ms))
 
 let passed = 0

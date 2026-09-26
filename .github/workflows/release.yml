@@ -1,0 +1,65 @@
+# Publishes a release. `npm run release` makes the tag (scripts/release.js); pushing it
+# starts this.
+#
+#   version  the tag names the version in package.json -- checked first, since CI takes
+#            the better part of an hour and the Marketplace would only refuse at the end
+#   ci       the whole of ci.yml on the tagged commit: all three platforms against a real
+#            prover, and the .vsix with the extended server in it
+#   publish  that very .vsix to the Marketplace, and to a GitHub release
+#
+# A red integration job blocks the release. If it was a flake, "Re-run failed jobs" on
+# this run carries on to publish once it passes.
+#
+# Needs the repository secret VSCE_PAT: an Azure DevOps token with scope Marketplace
+# (Manage) for all accessible organizations. Azure DevOps retires such global tokens on
+# 1 December 2026; after that, vsce publish --azure-credential with a federated identity.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the tag matches package.json
+        run: |
+          v=$(node -p 'require("./package.json").version')
+          if [ "v$v" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME, but package.json has version $v -- tag with npm run release"
+            exit 1
+          fi
+
+  ci:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # the GitHub release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      # Built and checked by ci.yml's package job, in this same run.
+      - uses: actions/download-artifact@v4
+        with:
+          name: vsix
+      - name: Publish to the Marketplace
+        run: npx vsce publish --packagePath vscode-isabelle.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      - name: Create the GitHub release
+        run: |
+          gh release create "$GITHUB_REF_NAME" vscode-isabelle.vsix \
+            --title "${GITHUB_REF_NAME#v}" --generate-notes --verify-tag
+        env:
+          GH_TOKEN: ${{ github.token }}

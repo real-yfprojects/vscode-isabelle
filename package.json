@@ -1,13 +1,34 @@
 {
-  "name": "isabelle-pide-stock",
-  "displayName": "Isabelle/PIDE (stock VS Code)",
-  "description": "Isabelle proof assistant support for unmodified VS Code, driving `isabelle vscode_server` over LSP.",
+  "name": "vscode-isabelle",
+  "displayName": "Isabelle/PIDE",
+  "description": "Isabelle proof assistant support for unmodified VS Code, on top of Isabelle's own language server.",
   "version": "0.0.1",
-  "publisher": "spike",
+  "preview": true,
+  "publisher": "yfprojects",
   "license": "BSD-3-Clause",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#f7f3ea",
+    "theme": "light"
+  },
   "categories": [
     "Programming Languages"
   ],
+  "keywords": [
+    "isabelle",
+    "isabelle/hol",
+    "hol",
+    "isar",
+    "pide",
+    "proof assistant",
+    "theorem prover",
+    "interactive theorem proving",
+    "formal verification"
+  ],
+  "homepage": "https://github.com/real-yfprojects/vscode-isabelle#readme",
+  "bugs": {
+    "url": "https://github.com/real-yfprojects/vscode-isabelle/issues"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -615,7 +636,8 @@
     "dev": "node ./test/dev.js",
     "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29 suite32 suite38 suite41 suite42 suite44",
     "test": "node ./test/runTest.js",
-    "package": "vsce package --out isabelle-pide-stock.vsix"
+    "package": "vsce package --out vscode-isabelle.vsix",
+    "release": "node ./scripts/release.js"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"

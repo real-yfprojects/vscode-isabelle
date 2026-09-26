@@ -89,8 +89,26 @@ to the ones proposed upstream.
 ## Packaging
 
 ```sh
-npm run package      # writes isabelle-pide-stock.vsix
+npm run package      # writes vscode-isabelle.vsix
 ```
+
+## Releasing
+
+Versions are dates: `YYYY.M.N`, the year and month of the release and a counter that
+starts at 0 each month (`2026.9.0`, `2026.9.1`, `2026.10.0`). From an up-to-date `main`
+with nothing uncommitted:
+
+```sh
+npm run release -- --dry-run            # which version it would be
+npm run release                         # commit "Release 2026.9.0", tag v2026.9.0
+git push --atomic origin main v2026.9.0
+```
+
+Pushing the tag starts [release.yml](.github/workflows/release.yml). It runs all of CI on
+the tagged commit, then publishes the `.vsix` that CI built to the Marketplace and to a
+GitHub release. A release is never packaged on your machine, so it can't pick up a stale
+`out/` or ship without the extended server's jar. The workflow needs the repository secret
+`VSCE_PAT`, a Marketplace token for publisher `yfprojects`.
 
 ## Generated files
 

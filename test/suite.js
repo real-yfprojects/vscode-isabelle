@@ -3,7 +3,7 @@ const vscode = require('vscode')
 const assert = require('assert')
 const path = require('path')
 
-const EXT_ID = 'spike.isabelle-pide-stock'
+const EXT_ID = 'yfprojects.vscode-isabelle'
 const wait = ms => new Promise(r => setTimeout(r, ms))
 
 async function pollFor(what, predicate, timeoutMs, intervalMs = 1000) {

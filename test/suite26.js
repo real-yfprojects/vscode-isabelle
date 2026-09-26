@@ -139,7 +139,7 @@ async function run() {
 
   // --- the status bar item ----------------------------------------------------------
   const vscode = require('vscode')
-  await vscode.extensions.getExtension('spike.isabelle-pide-stock').activate()
+  await vscode.extensions.getExtension('yfprojects.vscode-isabelle').activate()
   // Registered only once Isabelle is found, so its absence is itself the answer.
   const server = await vscode.commands.executeCommand('isabelle.serverState')
     .then(s => s, () => undefined)

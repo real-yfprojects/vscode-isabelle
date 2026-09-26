@@ -13,7 +13,7 @@ const fs = require('fs')
 const path = require('path')
 const { findIsabelleHome } = require('../out/isabelle.js')
 
-const EXT_ID = 'spike.isabelle-pide-stock'
+const EXT_ID = 'yfprojects.vscode-isabelle'
 
 function resolve(vars = ['ISABELLE_PATCHED_HOME']) {
   const explicit = vars.map(v => process.env[v]).find(Boolean)

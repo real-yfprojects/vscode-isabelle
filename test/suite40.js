@@ -119,7 +119,7 @@ async function drive() {
   // config names the extension and the profile id from package.json.
   await vscode.commands.executeCommand('workbench.action.terminal.newWithProfile', {
     config: {
-      extensionIdentifier: 'spike.isabelle-pide-stock', id: 'isabelle.terminal', title: 'Isabelle',
+      extensionIdentifier: 'yfprojects.vscode-isabelle', id: 'isabelle.terminal', title: 'Isabelle',
     },
   })
   const byProfile = await opened('profile', before)

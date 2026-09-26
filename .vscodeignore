@@ -26,6 +26,10 @@ scripts/**
 # GitHub, which is where the Marketplace sends those links anyway.
 TODO.md
 docs/**
+*.code-workspace
+
+# The Marketplace icon ships as media/icon.png; this is only what it is drawn from.
+media/icon.svg
 
 # The extended server: ship the jar and Isabelle's copyright notice that must travel
 # with it, not the pointer to the commit it is built from.

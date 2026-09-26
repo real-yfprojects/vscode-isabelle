@@ -32,7 +32,7 @@ async function run() {
     console.log('SUITE24_SKIPPED')
     return
   }
-  const ext = vscode.extensions.getExtension('spike.isabelle-pide-stock')
+  const ext = vscode.extensions.getExtension('yfprojects.vscode-isabelle')
   await ext.activate()
 
   const cfg = vscode.workspace.getConfiguration('isabelle')

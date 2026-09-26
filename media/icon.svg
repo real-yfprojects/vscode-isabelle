@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Source of media/icon.png, the Marketplace icon, which must be a PNG:
+       inkscape media/icon.svg -o media/icon.png -w 256 -h 256
+     A flat redraw of the cubes of the Isabelle logo (by Franziska Wenzel, part of the
+     Isabelle distribution, see server/ISABELLE-COPYRIGHT), keeping their colour code:
+     purple for lambda terms, red for types, yellow for the logic. The background is
+     transparent, and the glyphs are outlines, so rendering needs no fonts. -->
+<svg
+   viewBox="0 0 256 256"
+   version="1.1"
+   id="svg12"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs12" />
+  <g
+     transform="matrix(1.2,0,0,1.2,-25.6,-25.6)"
+     stroke="#1a1a2a"
+     stroke-width="5"
+     stroke-linejoin="round"
+     id="g12">
+    <polygon
+       points="171.30,103.00 214.60,128.00 171.30,153.00 128.00,128.00"
+       fill="#f0826f"
+       id="polygon1" />
+    <polygon
+       points="128.00,128.00 171.30,153.00 171.30,203.00 128.00,178.00"
+       fill="#dc4a3b"
+       id="polygon2" />
+    <polygon
+       points="171.30,153.00 214.60,128.00 214.60,178.00 171.30,203.00"
+       fill="#a91f25"
+       id="polygon3" />
+    <path
+       d="m 10.125,8.6484375 q -1.8808594,1.6347655 -3.7617188,1.6347655 -2.6894531,0 -3.2343749,-4.9218749 H 2.9355469 q -2.40820315,4.9218749 -5.90625,4.9218749 -2.6191406,0 -4.078125,-2.1621092 -1.4589844,-2.1621094 -1.4589844,-6.1699219 0,-4.1308594 2.0917969,-6.5917969 2.0917969,-2.4609375 5.0625,-2.4609375 2.21484373,0 3.4628906,1.0546875 1.265625,1.0546875 2.1796875,3.5332031 h 0.2636719 l 1.2304687,-4.2890625 h 2.8828125 v 0.8613282 q -1.265625,1.9511718 -3.375,7.2246093 0.3691406,3.5507813 0.8613281,5.34375 0.4921875,1.7929688 1.5820313,1.7929688 0.7207031,0 1.7050781,-0.8085938 z M 2.8476563,1.5117187 Q 2.3730469,-2.4433594 1.4414062,-4.078125 0.52734375,-5.7128906 -1.2128906,-5.7128906 q -1.8632813,0 -2.9707031,2.0390625 -1.1074219,2.0214844 -1.1074219,5.3964843 0,6.4863282 3.2167968,6.4863282 3.4277344,0 4.9218751,-6.6972657 z"
+       id="text3"
+       style="font-size:36px;font-family:'Cambria Math', 'STIX Two Math', 'DejaVu Serif', serif;dominant-baseline:central;text-anchor:middle;fill:#1a1a2a;stroke-width:1.6"
+       transform="matrix(0.866,-0.5,0,1,192.95,165.5)"
+       aria-label="α" />
+    <polygon
+       points="84.70,103.00 128.00,128.00 84.70,153.00 41.40,128.00"
+       fill="#d6cdf3"
+       id="polygon4" />
+    <polygon
+       points="41.40,128.00 84.70,153.00 84.70,203.00 41.40,178.00"
+       fill="#a596d8"
+       id="polygon5" />
+    <polygon
+       points="84.70,153.00 128.00,128.00 128.00,178.00 84.70,203.00"
+       fill="#7263b4"
+       id="polygon6" />
+    <path
+       d="m -8.3935547,9.140625 q 1.5292969,-1.9335938 2.953125,-4.7460938 L 0.20214844,-6.6621094 q -0.89648438,-3.5156246 -1.68750004,-4.9394536 -0.7734375,-1.423828 -2.390625,-1.423828 -1.4941406,0 -2.8476562,1.476563 l -0.8613281,-0.949219 q 2.4257812,-2.654297 4.7988281,-2.654297 1.6523437,0 2.56640624,0.949219 0.9140625,0.931641 1.52929686,2.988281 0.6152344,2.0566409 1.7402344,7.9453127 1.4589844,7.6816407 2.2675781,9.703125 Q 6.1435547,8.4375 7.2685547,8.4375 q 0.8085937,0 1.4941406,-0.5625 l 0.6679688,1.0546875 q -1.7402344,1.3535155 -3.1289063,1.3535155 -1.96875,0 -2.8125,-2.0214842 Q 2.6455078,6.2402344 1.1337891,-2.6191406 H 1.0283203 Q -1.9599609,3.4453125 -4.8251953,10.001953 h -3.5683594 z"
+       id="text6"
+       style="font-size:36px;font-family:'Cambria Math', 'STIX Two Math', 'DejaVu Serif', serif;dominant-baseline:central;text-anchor:middle;fill:#1a1a2a;stroke-width:1.6"
+       transform="matrix(0.866,0.5,0,1,63.05,165.5)"
+       aria-label="λ" />
+    <polygon
+       points="128.00,28.00 171.30,53.00 128.00,78.00 84.70,53.00"
+       fill="#ffe94a"
+       id="polygon7" />
+    <polygon
+       points="84.70,53.00 128.00,78.00 128.00,128.00 84.70,103.00"
+       fill="#ffc21a"
+       id="polygon8" />
+    <polygon
+       points="128.00,78.00 171.30,53.00 171.30,103.00 128.00,128.00"
+       fill="#f0960e"
+       id="polygon9" />
+    <path
+       d="M 9.5097656,-1.4589844 V 0.87890625 H -5.7304687 V 10.001953 h -2.4960938 v -20.583984 h 2.4960938 v 9.1230466 z"
+       id="text9"
+       style="font-size:36px;font-family:'Cambria Math', 'STIX Two Math', 'DejaVu Serif', serif;dominant-baseline:central;text-anchor:middle;fill:#1a1a2a;stroke-width:1.6"
+       transform="matrix(0.866,0.5,0,1,106.35,90.5)"
+       aria-label="⊢" />
+    <path
+       d="m -7.2861328,-12.498047 2.2148437,6.3808595 h 9.984375 L 7.6025391,-12.498047 H 10.50293 L 0.64160156,10.019531 H -2.0478516 l -8.4023434,-22.517578 z m 11.1796875,8.7890626 h -8.1386719 l 3.69140626,10.4414063 z"
+       id="text10"
+       style="font-size:36px;font-family:'Cambria Math', 'STIX Two Math', 'DejaVu Serif', serif;dominant-baseline:central;text-anchor:middle;fill:#1a1a2a;stroke-width:1.6"
+       transform="matrix(0.866,-0.5,0,1,149.65,90.5)"
+       aria-label="∀" />
+    <polygon
+       points="128.00,128.00 171.30,153.00 128.00,178.00 84.70,153.00"
+       fill="#f0826f"
+       id="polygon10" />
+    <polygon
+       points="84.70,153.00 128.00,178.00 128.00,228.00 84.70,203.00"
+       fill="#dc4a3b"
+       id="polygon11" />
+    <polygon
+       points="128.00,178.00 171.30,153.00 171.30,203.00 128.00,228.00"
+       fill="#a91f25"
+       id="polygon12" />
+    <path
+       d="M -13.060547,-1.4589844 H 9.140625 L 5.1152344,-6.5742187 6.1523437,-7.5410156 13.060547,-0.84375 v 1.125 L 6.1523437,6.9785156 5.1152344,6.0117187 9.140625,0.87890625 h -22.201172 z"
+       id="text12"
+       style="font-size:36px;font-family:'Cambria Math', 'STIX Two Math', 'DejaVu Serif', serif;dominant-baseline:central;text-anchor:middle;fill:#1a1a2a;stroke-width:1.6"
+       transform="matrix(0.866,0.5,0,1,106.35,190.5)"
+       aria-label="→" />
+  </g>
+</svg>

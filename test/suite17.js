@@ -44,7 +44,7 @@ async function run() {
   // 0 keeps every command that took at least a millisecond, so the Timing view has
   // something to show for a small theory.
   await cfg.update('timingThreshold', 0, vscode.ConfigurationTarget.Global)
-  const ext = vscode.extensions.getExtension('spike.isabelle-pide-stock')
+  const ext = vscode.extensions.getExtension('yfprojects.vscode-isabelle')
   await ext.activate()
 
   const ws = vscode.workspace.workspaceFolders[0].uri.fsPath

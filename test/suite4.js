@@ -33,7 +33,7 @@ const glyphCount = async () =>
 const probe = dir => vscode.commands.executeCommand('isabelle.atomicProbe', dir)
 
 async function run() {
-  const ext = vscode.extensions.getExtension('spike.isabelle-pide-stock')
+  const ext = vscode.extensions.getExtension('yfprojects.vscode-isabelle')
   await ext.activate()
 
   // ==================== reveal boundaries ====================

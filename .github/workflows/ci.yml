@@ -21,6 +21,9 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # release.yml runs all of this on a release tag and publishes the `vsix` artifact, so
+  # what ships is exactly what passed.
+  workflow_call:
 
 env:
   # The version itself lives in the matrix bundle names below -- the env context is not
@@ -294,11 +297,11 @@ jobs:
       # A .vsix without the jar would install fine and then fall back to the standard
       # server for everyone who turns the setting on, so check it went in.
       - name: Check the extended server is packaged
-        run: unzip -l isabelle-pide-stock.vsix | grep -E 'extension/server/Isabelle2025-2\.jar'
+        run: unzip -l vscode-isabelle.vsix | grep -E 'extension/server/Isabelle2025-2\.jar'
       # Packaging is itself a test: vsce fails on a missing contribution path, so a
       # grammar or language-configuration dropped from .vscodeignore is caught here
       # rather than by someone installing the result.
       - uses: actions/upload-artifact@v4
         with:
           name: vsix
-          path: isabelle-pide-stock.vsix
+          path: vscode-isabelle.vsix

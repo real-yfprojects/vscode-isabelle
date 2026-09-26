@@ -19,7 +19,7 @@ async function pollFor(label, fn, timeoutMs, interval = 3000) {
 }
 
 async function run() {
-  const ext = vscode.extensions.getExtension('spike.isabelle-pide-stock')
+  const ext = vscode.extensions.getExtension('yfprojects.vscode-isabelle')
   await ext.activate()
 
   const ws = vscode.workspace.workspaceFolders[0].uri.fsPath

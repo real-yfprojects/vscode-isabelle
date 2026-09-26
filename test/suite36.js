@@ -30,7 +30,7 @@ async function waitRunning(what) {
 }
 
 async function run() {
-  const ext = vscode.extensions.getExtension('spike.isabelle-pide-stock')
+  const ext = vscode.extensions.getExtension('yfprojects.vscode-isabelle')
   await ext.activate()
 
   const first = await waitRunning('waiting for the standard server')

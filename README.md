@@ -31,8 +31,11 @@ in your `.thy` files.
 
 ### 1. Install the extension
 
-Search for "Isabelle" in the Extensions view, or install the `.vsix` from the latest
-[CI run](https://github.com/real-yfprojects/vscode-isabelle/actions) with
+Search for "Isabelle/PIDE" in the Extensions view and install the one by yfprojects. From
+a terminal: `code --install-extension yfprojects.vscode-isabelle`.
+
+Each release's `.vsix` is also on the
+[Releases page](https://github.com/real-yfprojects/vscode-isabelle/releases), for
 **Extensions: Install from VSIX…**.
 
 ### 2. Turn on the extended server (optional, recommended)
@@ -172,3 +175,7 @@ applied: the sources are branch `vscode-2025-2` of
 [mirror-isabelle](https://github.com/real-yfprojects/mirror-isabelle), and the packaged
 extension contains the compiled result. Both are covered by Isabelle's license, reproduced in
 [server/ISABELLE-COPYRIGHT](server/ISABELLE-COPYRIGHT).
+
+The extension's icon is a redraw of the cubes in the Isabelle logo, which was designed by
+Franziska Wenzel and comes with the Isabelle distribution under the same license. This
+extension is not made or endorsed by the Isabelle developers.
