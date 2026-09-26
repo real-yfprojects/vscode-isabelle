@@ -565,12 +565,10 @@
             "keyword.control.isabelle"
           ],
           "isabelleSkolem": [
-            "variable.other.isabelle",
-            "variable.other"
+            "variable.other.constant.skolem.isabelle"
           ],
           "isabelleSchematic": [
-            "variable.other.constant",
-            "variable.other"
+            "variable.language.schematic.isabelle"
           ],
           "isabelleConstant": [
             "entity.name.function.isabelle",

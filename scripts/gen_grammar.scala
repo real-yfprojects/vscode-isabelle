@@ -204,8 +204,11 @@ object Gen_Grammar {
       Obj(
         "name" -> "entity.name.type.parameter.inner.isabelle",
         "match" -> ("\\??'" + ident)),
+      // variable.language, not variable.other.*: most themes colour every variable.other
+      // like a free variable, while variable.language gets a colour of its own (Breeze,
+      // Dark+, Light+, Monokai). It fits, too: ?thesis and ?case are Isar's own.
       Obj(
-        "name" -> "variable.other.constant.inner.isabelle",
+        "name" -> "variable.language.schematic.isabelle",
         "match" -> ("\\?" + ident + "(?:\\.[0-9]+)?")),
       Obj(
         "name" -> "constant.numeric.inner.isabelle",

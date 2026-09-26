@@ -59,6 +59,17 @@ async function run() {
   }
   pass('keywords keep their grammar colour once checked, and use types no other extension remaps')
 
+  // The same for schematic variables, which the grammar can recognise by their `?`. And
+  // not variable.other.*: most themes colour all of that like a free variable (Breeze,
+  // Monokai, Solarized), while variable.language gets a colour of its own in most.
+  const innerScope = word => grammar.repository.inner.patterns.find(p =>
+    p.match && new RegExp('^(?:' + p.match + ')$').test(word)).name
+  const schematic = scoped[TOKEN_MAP.var.type][0]
+  assert.strictEqual(schematic, innerScope('?x'), 'a schematic variable changes colour when checked')
+  assert.ok(schematic.startsWith('variable.language.'),
+    `schematic variables must not look like free ones: ${schematic}`)
+  pass('schematic variables keep their grammar colour, and are not scoped like free variables')
+
   // `main` is Isabelle's plain-text colour. Emitting it would repaint every ordinary
   // character and defeat the point, so it must stay untokenised.
   assert.ok(!('main' in TOKEN_MAP), 'main must not be tokenised')
