@@ -93,6 +93,32 @@ async function run() {
     return text.length
   }
 
+  /* Right after an edit the server waits for the prover's report on the word, but only
+     vscode_completion_delay long -- 0.5 s, and with the extended server on a stock
+     Isabelle that option is not even declared, so it cannot be raised from here. The
+     prover re-checking the line took 340 ms on an idle desktop; on a CI runner shared
+     with another suite it can take longer, and the list then comes without the facts.
+     What is tested is that the server waits: one that did not would answer at once. So
+     facts missing after the whole wait means a slow prover, not a fault: wait for its
+     report here, so that the checks after this one start where they expect. */
+  const DELAY_MS = 500
+  async function factsAfterEdit(pos, what) {
+    const r = await complete(doc, pos)
+    const both = items => named(items, 'foo_bar') && named(items, 'foo_qux')
+    if (both(r.items)) return r
+    assert.ok(r.ms >= DELAY_MS - 50,
+      `${what}: answered in ${r.ms} ms without both facts, so the server did not wait ` +
+      `for the prover: ${show(r.items)}`)
+    console.log(`${what}: the prover took longer than the server's ${DELAY_MS} ms wait ` +
+      `(${r.ms} ms); waiting for its report`)
+    const later = await until('the prover to report on the word', 60, async () => {
+      const r1 = await complete(doc, pos)
+      return both(r1.items) ? r1 : undefined
+    })
+    assert.ok(later, `${what}: the facts never arrived`)
+    return { ...later, ms: r.ms, late: true }
+  }
+
   // ---------- semantic completion on a checked theory ----------
   editor.selection = new vscode.Selection(7, 0, 7, 0)
   const warmCol = 'lemma "True" using foo_'.length
@@ -112,12 +138,12 @@ async function run() {
   const text = 'lemma "True" using foo_'
   await setProbe(text + ' by simp')
   let col = text.length
-  let r = await complete(doc, new vscode.Position(PROBE, col))
+  let r = await factsAfterEdit(new vscode.Position(PROBE, col),
+    'the keystroke that made the snapshot outdated')
   console.log(`after the edit: ${r.ms} ms, ${r.items.length} items: ` +
     show(r.items))
-  assert.ok(named(r.items, 'foo_bar') && named(r.items, 'foo_qux'),
-    'both facts should be offered on the keystroke that made the snapshot outdated')
-  pass(`semantic names arrive right after an edit (${r.ms} ms)`)
+  pass(r.late ? `the server waited ${r.ms} ms for a slow prover after an edit`
+    : `semantic names arrive right after an edit (${r.ms} ms)`)
 
   // ---------- one more letter: filtered from the list already reported ----------
   await editor.edit(b => b.insert(new vscode.Position(PROBE, col), 'b'))
@@ -138,10 +164,9 @@ async function run() {
   // ---------- backspace: the earlier report no longer covers the word ----------
   await editor.edit(b => b.delete(new vscode.Range(PROBE, col - 2, PROBE, col)))
   col -= 2
-  r = await complete(doc, new vscode.Position(PROBE, col))
-  console.log(`after backspacing to foo: ${r.ms} ms, ${show(r.items)}`)
-  assert.ok(named(r.items, 'foo_bar') && named(r.items, 'foo_qux'),
+  r = await factsAfterEdit(new vscode.Position(PROBE, col),
     'a shorter word must be asked of the prover again, not filtered from foo_b')
+  console.log(`after backspacing to foo: ${r.ms} ms, ${show(r.items)}`)
   pass('a shortened word goes back to the prover')
 
   // ---------- fuzzy: the list for foo still serves fooMono ----------
