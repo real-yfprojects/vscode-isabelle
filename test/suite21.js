@@ -43,6 +43,22 @@ async function run() {
     'semantic highlighting should default to on for Isabelle files, whatever the theme')
   pass('semantic highlighting is on for Isabelle files, not left to the theme')
 
+  // A keyword must keep its colour when the prover reaches it: its token's scope is the one
+  // the TextMate grammar gives the same word. And it must not use a standard type, which
+  // another extension can remap for every language (Lean 4 maps `keyword` to keyword.other).
+  const grammar = JSON.parse(fs.readFileSync(
+    path.join(__dirname, '..', 'syntaxes', 'isabelle-grammar.json'), 'utf8'))
+  const grammarScope = word => grammar.patterns.find(p =>
+    p.name && p.match && new RegExp('^(?:' + p.match + ')$').test(word)).name
+  for (const [category, word] of [['keyword1', 'lemma'], ['keyword2', 'where'],
+                                  ['keyword3', 'thus'], ['improper', 'apply']]) {
+    const type = TOKEN_MAP[category].type
+    assert.ok(!STANDARD.has(type), `${category} must use an Isabelle token type, not ${type}`)
+    assert.strictEqual(scoped[type][0], grammarScope(word),
+      `${category} (${word}) is coloured differently before and after checking`)
+  }
+  pass('keywords keep their grammar colour once checked, and use types no other extension remaps')
+
   // `main` is Isabelle's plain-text colour. Emitting it would repaint every ordinary
   // character and defeat the point, so it must stay untokenised.
   assert.ok(!('main' in TOKEN_MAP), 'main must not be tokenised')
@@ -82,7 +98,7 @@ async function run() {
     ['text_keyword1', { items: [R(0, 0, 0, 4)] }],
   ]), () => 80)
   assert.strictEqual(tied.length, 1)
-  assert.strictEqual(tied[0].type, 'keyword')
+  assert.strictEqual(tied[0].type, 'isabelleCommand')
   // Whatever the policy, the output must never overlap.
   for (const set of [resolved, tied]) {
     let end = -1

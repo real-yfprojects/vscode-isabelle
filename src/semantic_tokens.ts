@@ -28,11 +28,17 @@ type TokenSpec = { type: string; modifiers?: string[] }
  *
  * `main` is deliberately absent: it is Isabelle's plain-text colour, and leaving those
  * ranges untokenised is what lets the theme's own editor foreground show through.
+ *
+ * Keywords get types of their own, not the standard `keyword`. Their scopes in
+ * package.json are the ones the TextMate grammar gives the same words, so a keyword
+ * keeps its colour when the prover reaches it; and another extension can remap a
+ * standard type for every language -- the Lean 4 extension maps `keyword` to
+ * `keyword.other` -- but not a type scoped to Isabelle.
  */
 export const TOKEN_MAP: Record<string, TokenSpec> = {
-  keyword1: { type: 'keyword' },
-  keyword2: { type: 'isabelleProofKeyword' },
-  keyword3: { type: 'isabelleInnerKeyword' },
+  keyword1: { type: 'isabelleCommand' },
+  keyword2: { type: 'isabelleMinorKeyword' },
+  keyword3: { type: 'isabelleAsmKeyword' },
   quasi_keyword: { type: 'isabelleQuasiKeyword' },
   improper: { type: 'isabelleImproper' },
   operator: { type: 'operator' },

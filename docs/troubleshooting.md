@@ -107,3 +107,12 @@ free/bound/schematic distinctions, no constants or types. So the extension defau
 set it for `[isabelle]` in your settings. `isabelle.markupColors: isabelle` restores the
 palette for anyone who prefers it.
 
+Keywords use token types of their own (`isabelleCommand`, `isabelleMinorKeyword`,
+`isabelleAsmKeyword`, `isabelleImproper`), each mapped to the scope the grammar gives the
+same words, so a keyword does not change colour when checked. They avoid the standard
+`keyword` type on purpose: an extension can remap a standard type for every language, and
+the Lean 4 extension does (`keyword` to `keyword.other`), which turned every checked
+Isabelle command orange in Breeze Dark. To colour one category yourself, name its type in
+`editor.semanticTokenColorCustomizations`, e.g. `"isabelleImproper": "#ED1515"` for
+jEdit's red `apply`.
+

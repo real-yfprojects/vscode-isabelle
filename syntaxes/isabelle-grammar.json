@@ -4,7 +4,7 @@
   "fileTypes": [
     "thy"
   ],
-  "uuid": "5e4c6e78-8876-48e4-b21c-259f90304787",
+  "uuid": "1f4f2b65-36df-46a0-8873-bb4aeb18cac5",
   "repository": {
     "comment": {
       "patterns": [
@@ -348,7 +348,7 @@
       "match": "\\b(\\\\\\<rightleftharpoons\\>|\\\\\\<leftharpoondown\\>|\\\\\\<rightharpoonup\\>|\\\\\\<subseteq\\>|\\\\\\<comment\\>|\\\\\\<equiv\\>|\\!\\!|::|\\<\\=|\\=\\=|\\=\\>|\\!|%|\\(|\\)|\\+|,|/|:|;|\\<|\\=|\\?|\\[|\\]|\\||―|↽|⇀|⇌|≡|⊆)\\b"
     },
     {
-      "name": "entity.name.type.isabelle",
+      "name": "keyword.proof.asm.isabelle",
       "match": "\\b(presume|assume|define|obtain|case|show|thus|fix)\\b"
     },
     {

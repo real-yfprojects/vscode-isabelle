@@ -11,7 +11,12 @@
 // parses on its own.
 //
 // The outer half follows upstream's `Component_VSCode.build_grammar` rule for rule (same
-// keyword partition, same scopes). What it adds is inner syntax: upstream scopes a whole
+// keyword partition, same scopes) but one: upstream scopes fix/assume/obtain/case/show/
+// thus as entity.name.type, which themes paint as a type name. Here they are a keyword,
+// keyword.proof.asm. Each keyword scope is also what package.json maps the matching
+// semantic token to, so a keyword keeps its colour once checked.
+//
+// What it adds is inner syntax: upstream scopes a whole
 // "..." as one string, so every term was the theme's string colour, and a cartouche was
 // a string too. Here both are terms unless the command says otherwise:
 //
@@ -292,7 +297,7 @@ object Gen_Grammar {
         Obj("name" -> "keyword.control.isabelle", "match" -> words(keywords1)),
         Obj("name" -> "keyword.other.unit.isabelle", "match" -> words(keywords2)),
         Obj("name" -> "keyword.operator.isabelle", "match" -> words(operators)),
-        Obj("name" -> "entity.name.type.isabelle", "match" -> words(keywords3)),
+        Obj("name" -> "keyword.proof.asm.isabelle", "match" -> words(keywords3)),
         Obj("name" -> "constant.numeric.isabelle", "match" -> "\\b\\d*\\.?\\d+\\b"),
         include("term-string"),
         Obj(

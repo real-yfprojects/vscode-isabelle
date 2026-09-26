@@ -504,14 +504,19 @@
     },
     "semanticTokenTypes": [
       {
-        "id": "isabelleProofKeyword",
+        "id": "isabelleCommand",
         "superType": "keyword",
-        "description": "Isabelle proof command (by, apply, done)"
+        "description": "Isabelle command (lemma, definition, have, by, qed)"
       },
       {
-        "id": "isabelleInnerKeyword",
-        "superType": "type",
-        "description": "Isabelle inner-syntax keyword"
+        "id": "isabelleMinorKeyword",
+        "superType": "keyword",
+        "description": "Isabelle minor keyword (where, and, fixes, shows) and `end`"
+      },
+      {
+        "id": "isabelleAsmKeyword",
+        "superType": "keyword",
+        "description": "Isabelle proof command that fixes, assumes or states a goal (fix, assume, obtain, case, show, thus)"
       },
       {
         "id": "isabelleQuasiKeyword",
@@ -521,7 +526,7 @@
       {
         "id": "isabelleImproper",
         "superType": "keyword",
-        "description": "Isabelle improper command"
+        "description": "Isabelle improper command (apply, done, prefer, defer)"
       },
       {
         "id": "isabelleSkolem",
@@ -543,22 +548,21 @@
       {
         "language": "isabelle",
         "scopes": {
-          "isabelleProofKeyword": [
-            "keyword.control.isabelle",
-            "keyword.control"
+          "isabelleCommand": [
+            "keyword.control.isabelle"
           ],
-          "isabelleInnerKeyword": [
-            "support.type.isabelle",
-            "support.type",
-            "entity.name.type"
+          "isabelleMinorKeyword": [
+            "keyword.other.unit.isabelle"
+          ],
+          "isabelleAsmKeyword": [
+            "keyword.proof.asm.isabelle"
           ],
           "isabelleQuasiKeyword": [
             "keyword.other.isabelle",
             "keyword.other"
           ],
           "isabelleImproper": [
-            "invalid.deprecated",
-            "keyword.other"
+            "keyword.control.isabelle"
           ],
           "isabelleSkolem": [
             "variable.other.isabelle",

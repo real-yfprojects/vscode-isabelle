@@ -46,7 +46,7 @@ async function run() {
 
   const legend = await vscode.commands.executeCommand(
     'vscode.provideDocumentSemanticTokensLegend', doc.uri)
-  assert.ok(legend && legend.tokenTypes.includes('isabelleProofKeyword'),
+  assert.ok(legend && legend.tokenTypes.includes('isabelleCommand'),
     'the semantic token legend should be registered')
   const tokens = await vscode.commands.executeCommand(
     'vscode.provideDocumentSemanticTokens', doc.uri)
