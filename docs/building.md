@@ -54,6 +54,7 @@ carries the backport as ordinary commits, so there is one place for it and git d
 bookkeeping:
 
 ```
+9185443892 Show the goals and messages of the caret's command and of pinned ones in one view
 437a3bd673 Send the categories of a term that the text colours leave plain
 e9d097fc51 Indent Isar text on ENTER, after a keyword, and on Format Selection
 1fb089268c Fall back to the default completion options when they are undeclared
@@ -166,7 +167,8 @@ The commit named in `server/Isabelle2025-2.ref`, currently the tip of `vscode-20
 above: `main` of mirror-isabelle, including the completion work, plus the two
 `vscode-simplifier-trace` commits not yet merged there -- adapted to the release as in the
 table above -- and indentation (onTypeFormatting and rangeFormatting, jEdit's indentation
-rule) and the `semantic_*` categories of inner syntax, both written on this branch first.
+rule), the `semantic_*` categories of inner syntax, and the infoview (`PIDE/infoview_*`),
+all written on this branch first.
 And two things from the development tree
 that 2025-2 lacks:
 `PIDE/goto_command`, and upstream's `f425404488`, without which one failing delayed event
