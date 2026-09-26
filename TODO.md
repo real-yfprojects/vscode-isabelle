@@ -1,100 +1,46 @@
 This documents tracks features and tasks that might already be tracked in other places. This file serves a place for quick note taking.
 
-- [x] compatibility with spell checking extensions
-  - ships a TextMate grammar (`syntaxes/isabelle-grammar.json`), generated from a
-    distribution's own keyword table by `scripts/gen_grammar.scala`. It gives general
-    spell checkers real scopes to target: `comment.block.isabelle`, `string.quoted.*`
-  - `isabelle.spellChecker: false` turns Isabelle's own checker off (`-o
-    spell_checker=false`) so the two do not double-underline
-  - the grammar also buys instant highlighting before the prover attaches; verified that
-    it composes with PIDE markup rather than fighting it (grammar is the base layer,
-    PIDE decorations override where they have markup)
-- [~] feature equality with isabelle/jedit
-  - done: PIDE markup, Output, State, Sledgehammer, Symbols, Documentation, Preview,
-    spell checker, sendback, session abbrevs, panel margins
-  - **all 32 of the 32 `PIDE/*` messages are now in use**, so the LSP surface is exhausted
-  - the premise that jEdit features run through the LSP turns out to be wrong:
-    `src/Tools/jEdit/` contains no reference to LSP anywhere. jEdit embeds PIDE directly
-    in its own JVM; the language server is a peer front end that re-exposes a subset. So
-    each remaining panel needs protocol messages written by hand
-  - [x] Query (find_theorems / find_consts): jEdit builds
-    `Query_Operation(..., "find_theorems", ...)` and the server already builds
-    `Query_Operation(..., "sledgehammer", ...)`. Server side on the `vscode-query-panel`
-    branch of mirror-isabelle, **built and verified** against a real prover
-    (find_theorems "_ + _" -> 1239 theorems). Client ships behind `isabelle.queryPanel`,
-    off by default since released Isabelle does not answer those messages.
-    Build recipe in GAPS.md; a patched copy currently sits at
-    `C:\Users\yanni\Isabelle\Isabelle2025-2-query` (2.3 GB, safe to delete)
-  - [x] Theories + Timing: both are views of one `Document_Status.Nodes_Status`, so one
-    server component feeds both. `vscode-theories-panel` branch of mirror-isabelle,
-    **built and verified** (16 commands to 100%, per-command timings, goto_command).
-    Client ships as **native TreeViews** behind `isabelle.theoriesPanel`
-  - [x] Syslog: needs nothing. The server's `syslog_messages` consumer calls
-    `channel.log_writeln` = `window/logMessage`, which lands in the Isabelle output
-    channel. jEdit needs a dockable because it has no such thing
-  - [x] Info: needs nothing. VS Code hovers already show what that dockable shows
-  - [x] fixed on the way: the client never handled *incoming* `PIDE/caret_update`, so
-    every "Locate" button was a silent no-op. Counting 32/32 message names in use was the
-    wrong metric -- the unit of "implemented" is a direction, not a message
-  - [x] fixed on the way: Preview was rendered by embedding a whole Browser_Info document,
-    whose inlined `isabelle.css` hardcodes a white page and won the cascade over ours
-  - [x] found by asking how the Query panel compares to VS Code's own symbol search:
-    the server advertises **no symbol provider of either kind**, so Ctrl+Shift+O, the
-    Outline view, breadcrumbs and Ctrl+T were all empty. Supplied client-side in
-    `src/outline.ts`; needed no upstream change. Careful: this changed which lines
-    sticky scroll pins, so `viewport.ts` now follows the outline too
-  - [x] reported: installing a theme recoloured only *unchecked* code. PIDE decorations
-    carry Isabelle's palette and a decoration colour overrides the theme. Now served as
-    semantic tokens (`src/semantic_tokens.ts`) with custom types mapped to TextMate
-    scopes, so themes apply; `isabelle.markupColors: isabelle` restores the palette
-  - [x] reported: a failure shown right after opening a workspace, clearing once the
-    dependencies had loaded. Not a wrong status -- PIDE really does report a failed
-    command, because dependency resolution is asynchronous and a theory opened before
-    its imports are loaded has a *failing header* (`imports Mid` cannot be resolved).
-    Reproduced with a same-session import chain: `Work.Top=10% FAILED:1` at 32.6s,
-    `Work.Top=100%` at 33.7s; on a large project that window is long
-  - the response now carries `loading` (server still resolving) and per-node
-    `initialized`. Both are needed: `loading` is temporal so a genuinely bad import
-    still surfaces once resolution settles, and `initialized` is per node so a real
-    proof failure elsewhere is never suppressed
-- [x] reported: Theories rows truncated. Grouped by session, so the label loses its
-    redundant prefix, and the bar moved to the tooltip where there is room
-  - still needing new protocol design: Monitor, Debugger, Simplifier trace, Raw output,
-    Protocol, Graphview
-  - note: the client targets the **development** tree, not Isabelle2025-2, which has no
-    `PIDE/goto_command` at all (see GAPS.md for the four divergences found by building)
-- [x] reported: viper-roots re-verifies every theory on startup. Measured: of its 123
-    theory files, exactly **1** was in the heap image. Two causes, one per side.
-  - the client never asked for a project session: `isabelle.logic` defaults to `HOL` and
-    nothing overrode it, so the server booted `-l HOL`. All heaps were built and current
-    and the seven component directories were already registered -- only the name was wrong
-  - the obvious workaround was itself broken: `-R` selected the *named* session for the
-    pre-build check, whose heap exists, so the check passed and `session_heaps` then
-    demanded the synthetic `S_requirements(PARENT)` nobody built. Merged from
-    `vscode-requirements-build` into `vscode-theories-panel`
-  - measured frontiers for viper-roots: `-R ViperAbstract` caches 17 theories,
-    `-R SimpleViperFrontEnd` 25, `-R ViperAbstractRefinesTotal` 47, `-R MainResults` 52.
-    Three of those resolve to a *real* prebuilt heap rather than a synthetic image, so
-    they need no build and work even without the `-R` fix
-- [x] session picker: status bar item + **Isabelle: Select Session Image**, ROOT files
-    parsed in-process (`isabelle sessions` prints only names, and every route to the
-    directories and parents costs ~20s of JVM start -- too slow for a picker)
-  - the recommendation is the **lowest** open session, not the one owning the focused
-    file. `-R S` bakes S's closure into an immutable heap, so editing below the frontier
-    is checked in isolation while everything above keeps the stale copy
-  - editing a theory inside the image is warned about, since it is the one failure with
-    no other signal: `find_theory` resolves a path without consulting `loaded_theory`, so
-    the file opens as a normal live node and checks as you type -- only the results above
-    it are quietly stale
-  - the chosen session's ROOT directory is registered in `sessionDirs`: two of
-    viper-roots' own sessions sit in subdirectories of a component and are invisible to
-    Isabelle without `-d`. Redundant entries are safe (`load_root_files` dedupes by
-    canonical file)
-  - not done: flagging which choices need a heap build. It depends on the image
-    `Sessions.background` computes, and nothing short of a full session-structure load
-    says whether that heap exists -- `isabelle build -n -R S` answers a different question
-    (it builds ancestors) and takes 23s. The server reports its own build via
-    `build_started`, which is honest and costs nothing
+### Release
+- [ ] very limited completion for inner syntax (e.g. HOL)
+- [ ] Show casing gif at top of README
+- [ ] Mark features with † in README that need extended LSP
+- [ ] VSCode Getting Started Guide for the extension, including how to install and configure Isabelle, how to use the extension, and how to troubleshoot common issues.
+- [ ] Make ready for marketplace (metadata, icon)
+- [ ] publish to marketplace
+
+
+### High
+- [ ] find references
+- [x] status bar widget -- the session picker's item grown into a status: session, server
+    phase (off / starting / building / running / failed) and a theory count rolled up from
+    `PIDE/theories_response`; tooltip links to session, restart, output, Theories.
+    `status_items.ts` + `status_bar.ts`, tests: suite41 (pure), suite26, suite17
+  - [x] stale heap image: the server rebuilds an outdated image at start
+    (`build_session`'s no_build check), so it can only go stale *afterwards*. Content
+    digests of the image's workspace `.thy`/`.ML` taken at every start, compared on
+    disk changes and in unsaved buffers (`heap_files.ts`, `heap_watch.ts`): `· N stale`
+    with warning background, the files listed and linked in the tooltip,
+    `isabelle.showStaleFiles`. Tests: suite41, suite42 (pure), suite43
+  - [ ] not done: jEdit's ML heap widget. Needs a mirror branch forwarding
+    `Session.runtime_statistics` as a throttled `PIDE/runtime_statistics`
+- [ ] expose isabelle cygwin terminal in vscode
+- [ ] completion preview types/statements for lemmas
+- [ ] code skeletons
+  - [ ] instantiations: proof and attributes to define
+  - [ ] cases
+  - [ ] ...
+- [ ] search in isabelle output panel (e.g. for print_classes)
+- [ ] information on hover
+  - [ ] type hints
+    - [ ] click to jump to type definition
+  - [ ] theorem statement
+  - [ ] descriptions/explanations for proof methods
+
+### Medium
+- [ ] LLM integration into vscode copilot or claude.
+- [ ] code formatting / prettier extension
+- [ ] extension user docs s.t. copilot/claude can help you with usage questions
+- [ ] Look at these features: https://github.com/Arthur742Ramos/Isabelle-VSCode#-features and decide which we are missing.
 - [ ] compare to lean extension and see if we can use any of their UX
   - not started. Candidates seen while reading vscode-lean4 during the spike:
     gutter progress bars (`taskgutter.ts`) for per-command elaboration status, and its
@@ -106,8 +52,22 @@ This documents tracks features and tasks that might already be tracked in other 
     (`\[[` -> `\<lbrakk>|\<rbrakk>`) because VS Code auto-closes brackets; `\_x`/`\^d`
     sub/superscripts; hover shows every way to type a symbol;
     `isabelle.input.customShorthands`. Tests: suite34 (pure), suite35 (editor)
+
+### Low
+
+- [~] feature equality with isabelle/jedit
+  - done: PIDE markup, Output, State, Sledgehammer, Symbols, Documentation, Preview,
+    spell checker, sendback, session abbrevs, panel margins
+  - **all 32 of the 32 `PIDE/*` messages are now in use**, so the LSP surface is exhausted
+  - the premise that jEdit features run through the LSP turns out to be wrong:
+    `src/Tools/jEdit/` contains no reference to LSP anywhere. jEdit embeds PIDE directly
+    in its own JVM; the language server is a peer front end that re-exposes a subset. So
+    each remaining panel needs protocol messages written by hand
+  - still needing new protocol design: Monitor, Debugger, Simplifier trace, Raw output,
+    Protocol, Graphview
+  - note: the client targets the **development** tree, not Isabelle2025-2, which has no
+    `PIDE/goto_command` at all (see GAPS.md for the four divergences found by building)
 - [ ] compare to features of the python vscode extension and see whether any feature is useful for isabelle as well.
-  - [ ] find references
 - [~] compare to `Arthur742Ramos/Isabelle-VSCode` (MIT, `0.1.0-alpha.6`), an independent
     stock-VS-Code client. Opposite bet on the same problem: it ships its own Scala backend
     (`dev.isabelle.vscode.server`, 26 files) driving Isabelle's **Headless** API and treats
@@ -140,38 +100,52 @@ This documents tracks features and tasks that might already be tracked in other 
     their offline tier", which conflated two different things. *Zero-install* (no Isabelle
     on the machine) can never be served by the server, since `isabelle vscode_server` is a
     tool of the distribution; that residue is small and probably not worth building at all.
-    *Prover not up yet* is the one that bites, and it belongs in the server, not in
-    TypeScript
-  - today there is nothing at all in that window. `language_server.scala:219` is
-    `def session = session_.value getOrElse error("Server inactive")` and every document
-    handler goes through `resources`, so all of them error until the session exists -- and
-    the heap build runs *inside* `init`, which does not reply until it finishes (our own
-    comment at `language_server.scala:371`). A cold session is tens of minutes with no LSP
-    surface whatsoever. Same bug as the startup item at the bottom of this file, seen from
-    the server side
+    *Prover not up yet* is the other one, and it belongs in the server, not in TypeScript
+  - **low priority: the gap is much smaller than first written here.** This entry used to
+    say a cold session is "tens of minutes with no LSP surface whatsoever". True of the
+    *server*, false for the *user*: `activate` registers outline, folding, Ctrl+T, symbol
+    rendering, abbrevs and the TextMate grammar before `startClient()`, and
+    `build_progress.ts` shows the build as a notification. Both landed on 09-08, a day
+    before this entry. So the branch buys correctness and a clean lifecycle, not usability,
+    and does nothing for the real pain (no prover until the heap exists -- see the startup
+    item at the bottom of this file)
+  - what the server side still gets wrong: `language_server.scala:219` is
+    `def session = session_.value getOrElse error("Server inactive")`, and the heap build
+    runs *inside* `init`, on the **single-threaded message loop** (`start` → `loop` →
+    `handle`). Nothing else is read until the build ends -- including `shutdown`, so
+    restarting or switching session mid-build cannot stop the build; the client has to
+    `killTree` the server. That is the concrete gain of moving the build off the loop:
+    `shutdown` can cancel it
   - `ServerCapabilities` (`lsp.scala:157`) advertises six things: sync, completion, hover,
     definition, documentHighlight, codeAction. No `documentSymbolProvider`,
     `foldingRangeProvider` or `selectionRangeProvider`. Its `completionProvider` trigger
     characters are already built from `Symbol.symbols` at initialize time, so serving from
     static distribution data is established precedent in that same object
-  - **`src/outline.ts` reimplements code Isabelle already ships.**
-    `Document_Structure.parse_sections(syntax, node_name, text)` takes raw text and returns
-    a block tree, building `Command(Document_ID.none, ...)` from `syntax.parse_spans` --
-    no snapshot, no session, no ML process -- and `Thy_Header.bootstrap_syntax` supplies an
-    `Outer_Syntax` with nothing loaded. Its only consumer in the tree is
-    `src/Tools/jEdit/jedit_main/isabelle_sidekick.scala`. Arthur742Ramos hit the same wall,
-    called `documentSymbol` "upstream-blocked in Isabelle 2025-2", and also rewrote it in
-    TypeScript -- two clients reimplementing one shipped Scala function is the tell
-  - so the shape is a **`vscode-syntactic` mirror branch**, like the other four: reply to
-    `initialize` at once with the three syntactic capabilities, move the heap build off the
-    initialize path into a background task still reporting via `build_started`, serve
-    outline/folding/selection from `Document_Structure` on `bootstrap_syntax` and upgrade to
-    the session's `overall_syntax` when the base loads, and leave PIDE-dependent handlers
-    erroring while inactive. That **deletes** `src/outline.ts` rather than extending it, and
-    the outline then comes from Isabelle's own lexer instead of from our scanner happening
-    to agree with `token.scala`
-  - what stays client-side is only the generated TextMate grammar and symbol input from
-    `etc/symbols`, both of which already work
+  - `src/outline.ts` reimplements code Isabelle already ships:
+    `Document_Structure.parse_sections(syntax, node_name, text)` (`src/Pure/Isar/`) takes
+    raw text and returns a block tree from `syntax.parse_spans` -- no snapshot, no session,
+    no ML process. Its only consumer in the tree is jEdit's `isabelle_sidekick.scala`.
+    Arthur742Ramos also rewrote it in TypeScript, calling `documentSymbol`
+    "upstream-blocked in Isabelle 2025-2"
+  - **`bootstrap_syntax` is not enough on its own**: it knows only the headings, `text`,
+    `theory`/`begin`/`end` and `ML` (`thy_header.scala:38`), so an outline from it is
+    headings only. The useful syntax is the session background's `overall_syntax`, which
+    `Sessions.background` computes *before* the build starts -- so it is available seconds
+    in, not after the build
+  - shape if done: a `vscode-syntactic` mirror branch. Reply to `initialize` at once, run
+    build + `Isabelle_Process.start` on a background thread still reporting via
+    `build_started`, and let `shutdown` cancel it. The pitfalls found on reading:
+    `didOpen`/`didChange`/`didClose` arriving while inactive must be **buffered and
+    replayed** (today they would throw and be lost -- the client sends them as soon as
+    `initialize` answers); requests must be **answered empty** rather than throwing (a
+    throw in `handle` writes no reply at all, leaving the request pending forever); PIDE
+    notifications like `abbrevs_request` sent right after start need queueing too; and a
+    build failure can no longer be an `initialize` error, so the client's failure path
+    (`reportStartupFailure`) needs a notification instead
+  - `src/outline.ts` stays as the fallback for released Isabelle, and is only *disabled*
+    when the server advertises `documentSymbolProvider` (both registered = duplicate
+    rows). It also feeds the workspace-symbol provider and sticky scroll
+    (`viewport.ts`), so a server outline has to cover those before the TS one can go
   - the `find references` sub-item above is *not* subsumed by this: theirs is a name-based
     workspace scan, honest about not being scope-aware, and the server has no
     `referencesProvider` either -- worth folding into the same branch as a fourth capability
@@ -199,66 +173,22 @@ This documents tracks features and tasks that might already be tracked in other 
   - the awkward part is ours alone: four panels answer only on a patched Isabelle, so a
     release has to state which features a released distribution serves and which need a
     mirror branch. GAPS.md has the recipe; a release needs the one-paragraph version
-- [x] symbols view: option to jump to category
-  - category dropdown above the filter box; not visually confirmed yet
-- [ ] status bar widget
-- [x] when opening an isabelle language file, the isabelle lsp should be started without opening the isabelle panel first.
-  - already the case: `activationEvents` is `onLanguage:isabelle` and `activate` calls
-    `startClient()` unless `isabelle.autoStart` is off
-- [x] bug when cursor jumps around glyphs: it also jumps over a preceeding whitespace
-  - the caret *offsets* were always right; the trajectory across `A \<and> B` is
-    19 -> 18 -> 12 -> 11, exactly one visual unit per press. The bug was where the caret
-    got **drawn**
-  - the glyph was a `before` attachment on the escape range. Attachment content is laid
-    out inside the span of the character it attaches to, and VS Code derives a column's x
-    by measuring the DOM up to that point -- so a `before` glyph on the range start counts
-    towards the *preceding* boundary. The caret for the escape start was therefore drawn
-    to the right of the glyph: one press of Left looked like it did nothing, and the next
-    looked like it skipped the glyph and the space in front of it together
-  - pinned down by selecting *only the space* before a glyph: the highlight visibly
-    covered the glyph too (`test/probe_caret.js`). Fixed by attaching as `after`
-- [x] strg+hover underlines clickable symbols, but this doesn't happen for glyphs although they are clickable
-  - `textDecoration` is the only decoration option taking raw CSS, so it is how one
-    smuggles in a property the API does not expose. Writing `'none; font-size: ...'` also
-    *sets* `text-decoration: none`, which was never intended and landed on the same
-    element as VS Code's own goto-definition class, suppressing every underline the
-    editor draws over a symbol
-  - fixed by starting the string with `;`, which makes the text-decoration declaration
-    empty so the CSS parser drops just that one and keeps the rest
-  - that was necessary but not sufficient: the glyph lives in an *attachment span*, which
-    another decoration cannot style, so the editor's underline was landing on the
-    zero-width text beneath it
-  - the trigger turned out to exist after all. VS Code asks the definition provider for a
-    location exactly when deciding whether to draw the Ctrl+hover link, so the
-    `provideDefinition` middleware is the signal. The glyph moves onto a second decoration
-    whose own attachment carries the underline, and only when the server actually answers
-    with a location -- otherwise a glyph would advertise a jump that is not there
-  - underlining in place rather than expanding the escape: expanding reflows the line
-    under the pointer, moving the character being hovered
-  - `test/workspace/Hover.thy` is there to check it by hand
-  - confirmed working for glyphs, but **not** for `=` or `+`, which Ctrl+click still
-    navigated. Those are plain ASCII, so none of the above touches them -- the underline
-    there is the editor's own. Isabelle answers a definition request with a bare
-    `Location` and no `originSelectionRange`, so VS Code derives the highlight from the
-    *word* at that position, and our `wordPattern` matched only escapes and alphanumeric
-    identifiers. Click needs a position and worked; underline needs a range and had none.
-    Fixed by adding a symbolic-operator alternative, which also makes double-click select
-    `-->` and `::` sensibly
-- [ ] expose isabelle cygwin terminal in vscode
-- [x] in theory view parent items should also have the update spinner animation if chilren are running
-  - `sessionIcon` spins exactly when a child row's own icon does, so a failed-but-running
-    child shows its error and does not set the parent spinning; a theory still resolving
-    its imports does count
 - [~] delimiters (e.g. \<open>...\<close>) shouldn't be part of the word (e.g. when double clicking or using ctrl+left/right to jump between words)
   - done for Ctrl+arrow and Ctrl+Backspace/Delete: rebound in `atomic.ts`, VS Code's own
     word rules run over units in `words.ts`, a rendered symbol being one unit
   - [ ] double-click: VS Code uses only `editor.wordSeparators` for it (never `wordPattern`),
     and offers no hook. Workaround would be a mouse-kind selection listener that narrows
     a selection equal to the built-in word around the preceding click
-- [ ] VSCode Getting Started Guide for the extension, including how to install and configure Isabelle, how to use the extension, and how to troubleshoot common issues.
 - [ ] when starting up with a session selected that hasn't been build yet, startup takes ages and the only progress update you get are in the isabelle extension output panel. You have to wait an eternity until you can use the extension. Can we detect a rebuild and run it in the background while using the lsp with a smaller theory that doesn't need rebuild. When the cache build has finished we can restart the lsp with the session. This is just one idea for a fix. Think whether there is a better/cleaner.more seemless way.
-- [ ] Look at these features: https://github.com/Arthur742Ramos/Isabelle-VSCode#-features and decide which we are missing.
-- [ ] LLM integration into vscode copilot or claude.
+  - partly outdated: build progress now shows as a notification (`build_progress.ts`), and
+    outline/folding/symbols work without the server. What remains is that nothing
+    prover-backed works until the heap exists, and that is not avoidable by the server
+  - the "smaller image first" idea looks worse than it sounds: the open theories import
+    from the session being built, so the prover would elaborate all of them from source,
+    competing with the build for CPU, and the switch at the end restarts it and throws
+    that work away
+  - the cheap real improvement is cancellation: see the `vscode-syntactic` entry above --
+    today a restart or session switch mid-build can only kill the server
 - [~] Code completion -- `vscode-completion` mirror branch + client dedupe, `test/suite33.js`
   - server: templates are snippets (caret inside `\<open>|\<close>`, `@{|}`), item kinds
     by source (fact, constant, method, keyword, symbol, file...), `sortText` keeps
@@ -274,14 +204,33 @@ This documents tracks features and tasks that might already be tracked in other 
     instead of `completion_limit` (40); quick suggestions are on inside strings/cartouches
   - client: server `\name` symbol items dropped (ours match substrings and show the
     glyph); session abbrevs left to the server while it runs
-  - [ ] not done: persistent `completion_history` shared with jEdit
-- [ ] For instantiations add skeleton for missing attributes
-- [ ] marketplace extension
-- [ ] code formatting / prettier extension
-- [ ] search in isabelle output panel (e.g. for print_classes)
-- [ ] extension user docs s.t. copilot can help you
-- [ ] some issue where files in the cache are reported as "Changed sources for loaded theory" and totally red.
+
 - [x] proper auto indent
+- [x] syntax highlighting in "" (e.g. in HOL)
+  - the grammar (`scripts/gen_grammar.scala`) scopes `"…"` and term cartouches as inner
+    syntax rather than one string; prose, ML, file names and the theory header keep theirs
+  - the extended server adds `semantic_*` markup (constants, types, classes, operators,
+    numerals), which Isabelle's palette leaves plain
+  - [ ] ML cartouches are opaque until checked; upstream's `isabelle-ml-grammar.json`
+    could be embedded for them
+
+- [~] on stale session allow rebuilding the session as an alternative to switching
+  - done in the status bar: a stale image offers "Rebuild: restart the server", since a
+    start rebuilds whatever changed. Not yet in the edit-time warning
+    (`checkStaleEdit`), which still offers only switching -- a rebuild there would need
+    the edit saved first
+- [ ] isabelle output panel doesn't always update when cursor is moved/files are edited
+- [ ] File rename / move support (updates theory name and references)
+- [ ] sledgehammer expose smart mode properly
+- [ ] better sledgehammer progress display
+
+### Manual (human) work
+- [ ] Test query
+- [ ] PR to upstream
+  - [ ] review and cleanup changes to the upstream
+  - [ ] contact upstream maintainers on mailing list
+  - [ ] submit the PR
+- [ ] notify the other vscode extension developers about our parallel work
 
 ### To be decided
 
