@@ -99,8 +99,11 @@ of Isabelle then styles them by rules it already has. `main` is deliberately not
 tokenised: it is Isabelle's plain-text colour, and leaving it alone is what lets the
 theme's editor foreground show through.
 
-One caveat is honest to state: `editor.semanticHighlighting.enabled` defaults to
-`configuredByTheme`, so a theme that opts out gets the TextMate grammar only, losing the
-free/bound/schematic distinctions. `isabelle.markupColors: isabelle` restores the palette
-for anyone who prefers it.
+None of this shows unless semantic highlighting is on. `editor.semanticHighlighting.enabled`
+defaults to `configuredByTheme`, and a theme that does not declare it -- Breeze Dark, for
+one -- turns it off, which left checked text with the TextMate grammar only: no
+free/bound/schematic distinctions, no constants or types. So the extension defaults it to
+`true` for Isabelle files alone (`configurationDefaults` in `package.json`). To opt out,
+set it for `[isabelle]` in your settings. `isabelle.markupColors: isabelle` restores the
+palette for anyone who prefers it.
 

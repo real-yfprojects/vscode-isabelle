@@ -197,7 +197,8 @@
           "comments": "off",
           "strings": "on"
         },
-        "editor.formatOnType": true
+        "editor.formatOnType": true,
+        "editor.semanticHighlighting.enabled": true
       }
     },
     "configuration": {

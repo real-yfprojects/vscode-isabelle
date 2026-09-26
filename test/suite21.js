@@ -36,6 +36,13 @@ async function run() {
   }
   pass('every custom token type is declared with a superType and TextMate scopes')
 
+  // None of the tokens show unless semantic highlighting is on, and VS Code leaves that to
+  // the theme -- Breeze Dark, for one, never turns it on. So Isabelle files turn it on.
+  const forIsabelle = vscode.workspace.getConfiguration('editor', { languageId: 'isabelle' })
+  assert.strictEqual(forIsabelle.get('semanticHighlighting.enabled'), true,
+    'semantic highlighting should default to on for Isabelle files, whatever the theme')
+  pass('semantic highlighting is on for Isabelle files, not left to the theme')
+
   // `main` is Isabelle's plain-text colour. Emitting it would repaint every ordinary
   // character and defeat the point, so it must stay untokenised.
   assert.ok(!('main' in TOKEN_MAP), 'main must not be tokenised')
