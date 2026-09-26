@@ -108,13 +108,13 @@ async function drive() {
      alone proves nothing about the trace. What must be waited for is a *question*,
      which exists only once the simplifier has actually suspended.
 
-     On timeout the Output panel is what separates the two possible faults: it carries
+     On timeout the infoview's messages are what separate the two possible faults: they carry
      the prover's own "See simplifier trace" active area when a step is genuinely
      asking, so text there with no question means the client is failing to pick the
      question up, and no text means the prover never asked. */
   const describeTrace = async () => ({
     trace: await vscode.commands.executeCommand('isabelle.simplifierTraceState'),
-    output: String(await vscode.commands.executeCommand('isabelle.outputPanelContent') ?? '')
+    output: String((await vscode.commands.executeCommand('isabelle.infoviewState'))?.live?.messages ?? '')
       .replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200),
   })
 
@@ -214,12 +214,12 @@ async function drive() {
   depsEditor.selection = new vscode.Selection(depsLine, 0, depsLine, 0)
   await vscode.commands.executeCommand('isabelle.graphview')
 
-  /* If this times out, the Output panel says which half is at fault: text from the
+  /* If this times out, the infoview's messages say which half is at fault: text from the
      command means the results reached the client and the server's search is wrong;
      nothing means the command never ran. */
   const describeGraph = async () => ({
     graph: await vscode.commands.executeCommand('isabelle.graphviewState'),
-    output: String(await vscode.commands.executeCommand('isabelle.outputPanelContent') ?? '')
+    output: String((await vscode.commands.executeCommand('isabelle.infoviewState'))?.live?.messages ?? '')
       .replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200),
   })
 

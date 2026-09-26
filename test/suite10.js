@@ -1,5 +1,5 @@
 // Visual check for panel theming: run Sledgehammer, then hold the window open briefly
-// so the Sledgehammer, State and Output panels can be screenshotted.
+// so the Sledgehammer panel and the infoview can be screenshotted.
 const vscode = require('vscode')
 const fs = require('fs')
 const path = require('path')

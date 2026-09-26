@@ -73,9 +73,9 @@ async function run() {
   pass(`preview panel opened (label ${JSON.stringify(withPreview.previewLabel)})`)
 
   // ---------- margins ----------
-  // The Output panel reports its width so the server can pretty-print to it. There is no
+  // The infoview reports its width so the server can pretty-print to it. There is no
   // observable reply, so this only checks the notification is accepted without error.
-  await vscode.commands.executeCommand('isabelle-output.focus')
+  await vscode.commands.executeCommand('isabelle-infoview.focus')
   await wait(3000)
   const state = await vscode.commands.executeCommand('isabelle.serverState')
   assert.strictEqual(state.state, 'Running', 'the client must survive the margin notifications')

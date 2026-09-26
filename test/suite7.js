@@ -1,4 +1,4 @@
-// Visual check for the ported UI: markup colouring, State panel, Symbols palette.
+// Visual check for the ported UI: markup colouring, the infoview, Symbols palette.
 const vscode = require('vscode')
 const fs = require('fs')
 const path = require('path')
@@ -36,12 +36,9 @@ async function run() {
   editor.selection = new vscode.Selection(7, 2, 7, 2)   // inside the proof
   await wait(2000)
 
-  await vscode.commands.executeCommand('isabelle-output.focus')
-  await wait(2000)
-  await vscode.commands.executeCommand('isabelle-state.focus')
+  await vscode.commands.executeCommand('isabelle-infoview.focus')
   await wait(3000)
   editor.selection = new vscode.Selection(7, 2, 7, 2)
-  await vscode.commands.executeCommand('isabelle.stateUpdate')
   await wait(6000)
 
   console.log('decorations: ' +

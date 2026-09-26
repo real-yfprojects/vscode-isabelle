@@ -1,4 +1,4 @@
-// Ported UI: PIDE markup decorations, Output panel, State panel.
+// Ported UI: PIDE markup decorations, and the infoview on a stock server.
 const vscode = require('vscode')
 const assert = require('assert')
 const fs = require('fs')
@@ -56,39 +56,45 @@ async function run() {
   pass(`PIDE markup decorations applied (${types.length} types, ` +
        `${Object.values(summary).reduce((a, b) => a + b, 0)} ranges)`)
 
-  // ---------- 2. Output panel ----------
-  await vscode.commands.executeCommand('isabelle-output.focus')
-  await wait(3000)
-  editor.selection = new vscode.Selection(6, 2, 6, 2)
-  await wait(4000)
-  const outHtml = await pollFor('output panel content',
-    () => vscode.commands.executeCommand('isabelle.outputPanelContent'), 60000)
-  console.log('output panel html: ' + String(outHtml).replace(/\s+/g, ' ').slice(0, 160))
-  assert.ok(String(outHtml).length > 0, 'output panel should have content')
-  pass('Output panel received PIDE/dynamic_output HTML')
-
-  // ---------- 3. State panel ----------
-  await vscode.commands.executeCommand('isabelle-state.focus')
-  await wait(3000)
-  const stateId = await pollFor('state panel id',
-    async () => {
-      const v = await vscode.commands.executeCommand('isabelle.statePanelId')
-      return v === undefined ? undefined : { v }
-    }, 60000)
-  console.log('state panel id: ' + stateId.v)
-  assert.strictEqual(typeof stateId.v, 'number',
-    'PIDE/state_init should have returned a numeric state id')
-  pass(`State panel initialised (id=${stateId.v}; Isabelle counters go negative)`)
-
+  // ---------- 2. Infoview, on the stock server's messages ----------
+  // No extended server here, so the infoview puts PIDE/dynamic_output and State_Panel
+  // instances together (the stock backend; suite45 covers the extended one).
+  const infoview = () => vscode.commands.executeCommand('isabelle.infoviewState')
+  const text = html => String(html ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+  await vscode.commands.executeCommand('isabelle-infoview.focus')
   editor.selection = new vscode.Selection(5, 2, 5, 2)
-  await vscode.commands.executeCommand('isabelle.stateUpdate')
+  const live = await pollFor('infoview goals at the cursor', async () => {
+    const s = await infoview()
+    return s && s.mode === 'stock' && /P/.test(text(s.live?.goals)) ? s : undefined
+  }, 120000)
+  console.log('infoview goals: ' + text(live.live.goals).slice(0, 160))
+  assert.ok(/goal|subgoal/i.test(text(live.live.goals)),
+    `the live section should show a proof state, got: ${text(live.live.goals).slice(0, 120)}`)
+  assert.strictEqual(typeof live.live.messages, 'string',
+    'PIDE/dynamic_output should have filled the messages')
+  assert.ok(!/subgoal/.test(text(live.live.messages)),
+    'the proof state must not come twice: the messages are sent without it')
+  pass('Infoview shows the goals and messages at the cursor')
+
+  // ---------- 3. A pin, on a State_Panel instance ----------
+  await vscode.commands.executeCommand('isabelle.infoviewPin')
+  const pinned = await pollFor('a pin with goals', async () => {
+    const s = await infoview()
+    return s && s.pins.length === 1 && text(s.pins[0].goals) ? s : undefined
+  }, 60000)
+  const pinGoals = text(pinned.pins[0].goals)
+  assert.strictEqual(typeof pinned.pins[0].id, 'number',
+    'a stock pin is a PIDE/state_init instance (Isabelle counters go negative)')
+  assert.strictEqual(pinned.pins[0].line, 5)
+  editor.selection = new vscode.Selection(7, 2, 7, 2)
   await wait(5000)
-  const stateHtml = await pollFor('state panel content',
-    () => vscode.commands.executeCommand('isabelle.statePanelContent'), 60000)
-  const text = String(stateHtml).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
-  console.log('state panel text: ' + text.slice(0, 160))
-  assert.ok(/goal|proof|P/i.test(text), `state panel should show a proof state, got: ${text.slice(0, 120)}`)
-  pass('State panel shows the proof state')
+  const moved = await infoview()
+  assert.strictEqual(text(moved.pins[0].goals), pinGoals, 'the pin keeps its proof state')
+  pass(`a pin keeps its proof state when the cursor moves (id=${pinned.pins[0].id})`)
+
+  await vscode.commands.executeCommand('isabelle.infoviewUnpinAll')
+  await pollFor('no pins', async () => ((await infoview())?.pins.length === 0) || undefined, 30000)
+  pass('unpinning removes the pin')
 
   console.log(`\n${passed} checks passed`)
   console.log('SUITE6_OK')

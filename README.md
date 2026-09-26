@@ -14,7 +14,7 @@ in your `.thy` files.
 
 - *Writing*: renders math glyphs from ASCII sources; symbol shorthands, Isar and inner syntax (e.g. HOL) completion;
   Isar and inner syntax highlighting (with semantic colours†); types and messages on hover; auto-indentation†; normalise any accidental actual Unicode characters to ASCII
-- *Checking*: continuous live PIDE verification, current proof state, command outputs; cache session management
+- *Checking*: continuous live PIDE verification; goals and messages at the cursor in one infoview, with pinned goals (that follow your edits†); cache session management
 - *Proving*: sledgehammer, find theorems† and simplifier trace† panels, overview over checked theories and timing†
 - *Navigating*: outline, breadcrumbs, indexed code symbols, code folding, go to definition, Graph View† for theory, class, locale and code dependencies
 - *Docs*: preview, documentation panel
@@ -85,14 +85,18 @@ Then restart VS Code and add this to your user `settings.json`
 }
 ```
 
-This changes the font for Isabelle files only. The Output and State panels use the font
-automatically once it is installed.
+This changes the font for Isabelle files only. The infoview uses the font automatically
+once it is installed.
 
 ### 4. Open a theory
 
 Open a folder with your theories and open a `.thy` file. The extension starts Isabelle in
 the background and begins checking the text around your cursor. Errors appear as squiggles
-and in the Problems view, and the proof state shows up in the State panel.
+and in the Problems view. The **Infoview**, in the bottom panel, shows the goals and
+messages of the command at the cursor. **Pin** keeps a command's goals in view while you
+work elsewhere, and **Pause** stops the view from following the cursor. You can drag the
+view into a side bar, or open it in an editor tab beside the theory with the
+**Open in Editor** button in its title bar.
 
 To find Isabelle, the extension first checks `$ISABELLE_HOME`. After that it looks for a
 folder named like `Isabelle2025-2` in `~/Isabelle`, your home folder and `C:\` on Windows,

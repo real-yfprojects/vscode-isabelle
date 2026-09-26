@@ -46,8 +46,7 @@ corrupt" banner. Building a fork is the only stable way to get the encoding in.
 | Unicode-safe saving | `onWillSaveTextDocument` normaliser |
 | Symbol-atomic caret motion | rebound character and word motion commands; double-click by `wordSeparators` only |
 | **PIDE markup colouring and status** | `PIDE/decoration` → editor decorations, palette ported from Isabelle's own `text_color` defaults |
-| **Output panel** | webview over `PIDE/dynamic_output` |
-| **State panel** | webview over `PIDE/state_*`, with Update / Auto / Locate |
+| **Infoview** (jEdit's Output and State together) | webview over `PIDE/infoview_*` on the extended server; over `PIDE/dynamic_output` and `PIDE/state_*` on a stock one. Pins, pause, view or editor tab |
 | **Symbols palette** | webview over the `etc/symbols` table; click inserts the escape |
 | **Sledgehammer panel** | webview over `PIDE/sledgehammer_*`: prover list, run, cancel, locate, status |
 | **Spell checker** | underlining arrives as a `spell_checker` decoration; the five dictionary commands are registered |
@@ -248,7 +247,7 @@ Verified by running it:
 - a formatter or `onWillSave` participant can force ASCII onto disk, but always rewrites
   the buffer too, so it cannot serve as a round-trip encoding layer
 - PIDE markup decorations arrive and are applied (8 types, 22 ranges on a small theory)
-- the Output and State panels receive content; the State panel reports `1. P ⟹ P`
+- the infoview receives goals and messages; its goals report `1. P ⟹ P`
 - the extension's own behaviour, in the integration and unit suites
 - **a real prover starts on Linux, macOS and Windows**, in CI: the `integration` job
   downloads a release and runs the whole regression, 15/15 on each. Affordable only

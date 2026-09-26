@@ -44,12 +44,28 @@
         "title": "Isabelle: Toggle Unicode Symbol Rendering"
       },
       {
-        "command": "isabelle.stateUpdate",
-        "title": "Isabelle: Update Proof State"
+        "command": "isabelle.infoview",
+        "title": "Isabelle: Show Infoview"
       },
       {
-        "command": "isabelle.stateToggleAutoUpdate",
-        "title": "Isabelle: Toggle Proof State Auto-Update"
+        "command": "isabelle.infoviewPin",
+        "title": "Isabelle: Pin the Command at the Cursor",
+        "icon": "$(pin)"
+      },
+      {
+        "command": "isabelle.infoviewTogglePause",
+        "title": "Isabelle: Pause / Resume the Infoview",
+        "icon": "$(debug-pause)"
+      },
+      {
+        "command": "isabelle.infoviewUnpinAll",
+        "title": "Isabelle: Unpin All",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "isabelle.infoviewOpenInEditor",
+        "title": "Isabelle: Open Infoview in Editor",
+        "icon": "$(link-external)"
       },
       {
         "command": "isabelle.sledgehammer",
@@ -347,7 +363,7 @@
             "vscode_html_output=true",
             "vscode_unicode_symbols_output=true"
           ],
-          "markdownDescription": "Isabelle system options passed as `-o NAME=VALUE`.\n\n`vscode_pide_extensions` enables PIDE markup decorations and the Output/State panels. `vscode_html_output` makes those panels deliver HTML, and also avoids an Isabelle2025-2 bug where the non-HTML branch fails to serialise decorations. `vscode_unicode_symbols_output` renders glyphs in panels and hovers.\n\nDo **not** enable `vscode_unicode_symbols_edits`: those edits are inserted into the buffer, which must stay ASCII."
+          "markdownDescription": "Isabelle system options passed as `-o NAME=VALUE`.\n\n`vscode_pide_extensions` enables PIDE markup decorations and the infoview. `vscode_html_output` makes the infoview receive HTML, and also avoids an Isabelle2025-2 bug where the non-HTML branch fails to serialise decorations. `vscode_unicode_symbols_output` renders glyphs in panels and hovers.\n\nDo **not** enable `vscode_unicode_symbols_edits`: those edits are inserted into the buffer, which must stay ASCII."
         },
         "isabelle.sessionDirs": {
           "type": "array",
@@ -412,11 +428,6 @@
     "views": {
       "isabelle": [
         {
-          "id": "isabelle-state",
-          "name": "State",
-          "type": "webview"
-        },
-        {
           "id": "isabelle-theories",
           "name": "Theories",
           "when": "config.isabelle.theoriesPanel || config.isabelle.extendedServer"
@@ -463,8 +474,8 @@
       ],
       "isabelle-panel": [
         {
-          "id": "isabelle-output",
-          "name": "Output",
+          "id": "isabelle-infoview",
+          "name": "Infoview",
           "type": "webview"
         }
       ]
@@ -486,6 +497,11 @@
         {
           "command": "isabelle.graphviewOpenInEditor",
           "when": "view == isabelle-graphview",
+          "group": "navigation"
+        },
+        {
+          "command": "isabelle.infoviewOpenInEditor",
+          "when": "view == isabelle-infoview",
           "group": "navigation"
         }
       ],
@@ -597,7 +613,7 @@
     "build": "tsc -p ./ && node ./scripts/server-jar.js",
     "watch": "tsc -watch -p ./",
     "dev": "node ./test/dev.js",
-    "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29 suite32 suite38 suite41 suite42",
+    "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29 suite32 suite38 suite41 suite42 suite44",
     "test": "node ./test/runTest.js",
     "package": "vsce package --out isabelle-pide-stock.vsix"
   },

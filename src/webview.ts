@@ -1,4 +1,4 @@
-/* Shared scaffolding for the Output and State panels.
+/* Shared scaffolding for the panels that show prover output: the infoview and the preview.
  *
  * With vscode_html_output=true the server hands us ready-made HTML using Isabelle's
  * own markup classes (keyword1, free, bound, writeln_message, ...). We supply the
@@ -134,6 +134,35 @@ export function scriptNonce(): string {
   return randomBytes(16).toString('base64')
 }
 
+/**
+ * Isabelle pretty-prints server-side to a fixed margin in characters, so a panel has to
+ * tell it how wide it actually is or output wraps at the wrong column. Expects `vscode`
+ * (acquireVsCodeApi) in scope and posts `{ command: 'resize', margin }`.
+ */
+export const MARGIN_SCRIPT = `
+  var lastMargin = 0;
+  function measureMargin() {
+    var probe = document.createElement('span');
+    probe.style.cssText =
+      'position:absolute;visibility:hidden;white-space:pre;font-family:inherit;font-size:inherit';
+    probe.textContent = new Array(81).join('0');
+    document.body.appendChild(probe);
+    var charWidth = probe.getBoundingClientRect().width / 80;
+    probe.remove();
+    if (!charWidth) return 0;
+    return Math.max(20, Math.floor(document.body.clientWidth / charWidth));
+  }
+  function reportMargin() {
+    var m = measureMargin();
+    if (m && m !== lastMargin) {
+      lastMargin = m;
+      vscode.postMessage({ command: 'resize', margin: m });
+    }
+  }
+  window.addEventListener('resize', reportMargin);
+  setTimeout(reportMargin, 250);
+`
+
 export function panelHtml(
   webview: vscode.Webview,
   body: string,
@@ -165,29 +194,7 @@ ${options.background ? `body { background-color: ${options.background}; }` : ''}
     }
   });
 
-  // Isabelle pretty-prints server-side to a fixed margin in characters, so the panel has
-  // to tell it how wide it actually is or output wraps at the wrong column.
-  var lastMargin = 0;
-  function measureMargin() {
-    var probe = document.createElement('span');
-    probe.style.cssText =
-      'position:absolute;visibility:hidden;white-space:pre;font-family:inherit;font-size:inherit';
-    probe.textContent = new Array(81).join('0');
-    document.body.appendChild(probe);
-    var charWidth = probe.getBoundingClientRect().width / 80;
-    probe.remove();
-    if (!charWidth) return 0;
-    return Math.max(20, Math.floor(document.body.clientWidth / charWidth));
-  }
-  function reportMargin() {
-    var m = measureMargin();
-    if (m && m !== lastMargin) {
-      lastMargin = m;
-      vscode.postMessage({ command: 'resize', margin: m });
-    }
-  }
-  window.addEventListener('resize', reportMargin);
-  setTimeout(reportMargin, 250);
+${MARGIN_SCRIPT}
 </script>
 </body></html>`
 }

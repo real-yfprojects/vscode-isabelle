@@ -13,7 +13,7 @@ import { AbbrevStore, dropDuplicateSymbols, registerAbbreviations } from './abbr
 import { registerNormalizer } from './normalize'
 import { registerAtomicMotion } from './atomic'
 import { PideDecorations } from './pide_decorations'
-import { OutputPanel, StatePanel } from './panels'
+import { Infoview } from './infoview'
 import { SymbolsPanel } from './symbols_panel'
 import { SledgehammerPanel } from './sledgehammer_panel'
 import { registerSpellChecker } from './spell_checker'
@@ -51,8 +51,7 @@ let clientScope: vscode.Disposable[] = []
 let serverProcess: cp.ChildProcess | undefined
 let serverOwnsGroup = false
 let pide: PideDecorations | undefined
-let statePanel: StatePanel | undefined
-let outputPanel: OutputPanel | undefined
+let infoview: Infoview | undefined
 let sledgehammer: SledgehammerPanel | undefined
 let docPanel: DocumentationPanel | undefined
 let previews: PreviewPanels | undefined
@@ -261,10 +260,11 @@ async function startClient(): Promise<void> {
   pide = new PideDecorations(log)
   pide.register(clientScope, client)
   registerSemanticTokens(clientScope, ISABELLE_SELECTOR, pide)
-  outputPanel = new OutputPanel()
-  outputPanel.register(clientScope, client)
-  statePanel = new StatePanel(client, log)
-  statePanel.register(clientScope)
+  /* Asks the server whether it speaks PIDE/infoview_* whenever the extended server is
+     configured; it may still be the stock one, if the jar does not fit the distribution. */
+  infoview = new Infoview(client, log,
+    vscode.workspace.getConfiguration('isabelle').get<boolean>('extendedServer', false))
+  infoview.register(clientScope)
   sledgehammer = new SledgehammerPanel(client, log)
   sledgehammer.register(clientScope)
   docPanel = new DocumentationPanel(client, log)
@@ -323,8 +323,7 @@ async function stopClient(): Promise<void> {
     try { d.dispose() } catch { /* a provider may already be gone */ }
   }
   pide = undefined
-  statePanel = undefined
-  outputPanel = undefined
+  infoview = undefined
   sledgehammer = undefined
   docPanel = undefined
   previews = undefined
@@ -470,9 +469,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       renderer.markLink(editor.document, new vscode.Position(line, character), true)
       return true
     }),
-    vscode.commands.registerCommand('isabelle.statePanelId', () => statePanel?.id),
-    vscode.commands.registerCommand('isabelle.outputPanelContent', () => outputPanel?.rawContent),
-    vscode.commands.registerCommand('isabelle.statePanelContent', () => statePanel?.rawContent),
     vscode.commands.registerCommand('isabelle.jEditParityState', () => ({
       abbrevs: abbrevs.size,
       documentationEntries: docPanel?.entryCount ?? 0,

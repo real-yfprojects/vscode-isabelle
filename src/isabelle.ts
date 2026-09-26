@@ -217,6 +217,11 @@ export function serverArguments(platform: NodeJS.Platform = process.platform): s
   for (const dir of cfg.get<string[]>('sessionDirs') ?? []) {
     if (dir.trim()) args.push('-d', serverPath(dir.trim(), platform))
   }
+  /* The infoview shows the proof state in a section of its own, so the command's messages
+     must come without it, whatever the user's Isabelle preferences say (jEdit users often
+     turn it on for jEdit's Output). The prover prints the state regardless: the server
+     sets this option for the prover itself. First, so that serverOptions can override it. */
+  args.push('-o', 'editor_output_state=false')
   for (const opt of cfg.get<string[]>('serverOptions') ?? []) {
     if (opt.trim()) args.push('-o', opt.trim())
   }

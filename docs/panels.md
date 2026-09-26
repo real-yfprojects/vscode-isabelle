@@ -1,10 +1,82 @@
 # Panel design notes
 
-How the four panels that needed new protocol messages were built, what each one's
+How the panels that needed new protocol messages were built, what each one's
 messages look like, and the bugs found on the way. The gap analysis itself keeps only
 the one-line verdict for each; this is the detail behind it.
 
 Extracted from `GAPS.md`.
+
+## Infoview
+
+jEdit's Output and State dockables in one view, after Lean's infoview. The Output dockable
+shows every message of the command at the caret, and the State dockable shows its proof
+state. The State dockable can stay on one command, can be repeated, and can jump back to
+its command. In the infoview those last three abilities become **pins**. It has a live
+section for the command at the cursor, which **Pause** can freeze, and any number of
+pinned commands below it.
+
+```
+PIDE/infoview_request                         -- publish now
+PIDE/infoview_pin         { id, uri, line, character }
+PIDE/infoview_unpin       { id }
+PIDE/infoview_set_margin  { margin }
+PIDE/infoview_response    { live?, pins: [ { id?, uri, line, command, source, status,
+                                             goals, messages, stale? } ] }
+```
+
+`goals` and `messages` are HTML, formatted to the one margin the view reports.
+
+**The goals are already there.** The server starts the prover with
+`editor_output_state=true`, so every command's results carry its proof state.
+`Editor.output` then drops the state unless the *editor's* copy of that option is set.
+`VSCode_Infoview` keeps both halves and splits them with `Protocol.is_state`, putting
+urgent messages first, as `Editor.output` does. No print function or overlay is involved.
+
+**A pin holds on to a place, not only a command.** `Query_Operation`, which the State panel
+pins with, holds a `Command`. Editing that command replaces it with a new one, and from
+then on the panel shows the old command's last output forever
+(`query_operation.scala`, the `removed` case). An infoview pin keeps both the command and
+the offset where it started. While the command is in the node, the offset follows it.
+Once an edit replaces it, the command now at that offset becomes the pin's. The pin is
+marked `stale` only when its theory is closed or nothing is found there.
+
+**Pause is the client's.** The server keeps publishing, and the client holds the live
+section back until Resume. It shows that something changed in the meantime.
+
+**A stock server gets a weaker infoview rather than none.** The client asks with
+`PIDE/infoview_request`, which a stock server logs as `### IGNORED`. Without an answer it
+builds the same view from what the stock server does send:
+
+- the messages from `PIDE/dynamic_output`;
+- the live goals from a `State_Panel` instance with auto-update on;
+- each pin from another instance with auto-update off.
+
+A pin made this way shows the proof state only, and does not follow edits. For the
+messages to come without the state, the client always passes
+`-o editor_output_state=false`. That sets the editor's copy of the option and leaves the
+prover's alone, which matters because jEdit users often have it on in their preferences.
+Without the flag the goals would appear in both blocks.
+
+A stock server's HTML cannot be split in the client, although it would be simpler.
+`Browser_Info.make_html` gives classes only to colours, not to message kinds, so no
+`state_message` element survives into the HTML.
+
+**One notification handler per method.** `vscode-jsonrpc` keeps one handler per method,
+and disposing any registration deletes whatever handler holds that method at the time.
+The handshake listener therefore has to be gone before the extended backend registers
+its own. Otherwise tearing down the handshake silently unsubscribes the view.
+
+**Two hosts**, as with the Graph view:
+
+- a view in the bottom panel, which VS Code lets the user drag into either side bar;
+- an editor tab, which **Open in Editor** puts beside the theory.
+
+Each page is loaded once, and later bodies are posted into it. An update therefore
+keeps the scroll position and which blocks are collapsed; the other panels here lose
+both on every update, because they replace `webview.html`.
+
+Tested by `suite44` (the page body, pure), `suite6` (the stock backend) and `suite45`
+(the extended one, including a pin that follows its command through an edit).
 
 ## Simplifier trace
 
