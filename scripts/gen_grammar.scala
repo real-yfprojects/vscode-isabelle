@@ -21,7 +21,7 @@
 // a string too. Here both are terms unless the command says otherwise:
 //
 //   - document commands (`text`, `section`, ...; by keyword kind) and `\<comment>` take
-//     prose, which stays `string.quoted.*` -- general spell checkers target that scope
+//     prose, which stays `string.quoted.*`
 //   - ML commands take ML, left opaque until PIDE colours it
 //   - file-loading commands (kind thy_load) and the theory header take names, which stay
 //     strings
@@ -134,7 +134,6 @@ object Gen_Grammar {
       "\\\\<(?:" + alt(operator_entries.flatMap(e => escaped_name(e.symbol))) + ")>|" +
         alt(operator_entries.flatMap(_.decode).filterNot(letters))
 
-    // Non-ASCII written as escapes, so the REPL's reading of stdin cannot mangle them.
     val open_glyph = "‹"
     val close_glyph = "›"
     val open = "(?:\\\\<open>|" + open_glyph + ")"
@@ -174,6 +173,14 @@ object Gen_Grammar {
       "end" -> close,
       "patterns" -> Arr(include("cartouche")))
 
+    // variable.language, not variable.other.*: most themes colour every variable.other
+    // like a free variable, while variable.language gets a colour of its own (Breeze,
+    // Dark+, Light+, Monokai). It fits, too: ?thesis and ?case are Isar's own. Used in
+    // terms and at the top level, where `show ?thesis` and `thus ?case` name them bare.
+    val schematic_rule = Obj(
+      "name" -> "variable.language.schematic.isabelle",
+      "match" -> ("\\?" + ident + "(?:\\.[0-9]+)?"))
+
     val inner = Arr(
       // `(*)` is HOL's multiplication as a function, not a comment
       Obj(
@@ -204,12 +211,7 @@ object Gen_Grammar {
       Obj(
         "name" -> "entity.name.type.parameter.inner.isabelle",
         "match" -> ("\\??'" + ident)),
-      // variable.language, not variable.other.*: most themes colour every variable.other
-      // like a free variable, while variable.language gets a colour of its own (Breeze,
-      // Dark+, Light+, Monokai). It fits, too: ?thesis and ?case are Isar's own.
-      Obj(
-        "name" -> "variable.language.schematic.isabelle",
-        "match" -> ("\\?" + ident + "(?:\\.[0-9]+)?")),
+      schematic_rule,
       Obj(
         "name" -> "constant.numeric.inner.isabelle",
         "match" -> "[0-9]+(?:\\.[0-9]+)?"),
@@ -302,6 +304,7 @@ object Gen_Grammar {
         Obj("name" -> "keyword.operator.isabelle", "match" -> words(operators)),
         Obj("name" -> "keyword.proof.asm.isabelle", "match" -> words(keywords3)),
         Obj("name" -> "constant.numeric.isabelle", "match" -> "\\b\\d*\\.?\\d+\\b"),
+        schematic_rule,
         include("term-string"),
         Obj(
           "name" -> "string.quoted.backtick.isabelle",

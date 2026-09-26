@@ -151,6 +151,14 @@ async function run() {
     t.has('(* note', 'comment.block')
     t.has('1.5', 'constant.numeric.inner')
   }
+  {
+    // Outside quotes too: Isar names its own schematic variables bare.
+    const t = check(grammar, '  thus ?case by auto\n  show ?thesis\nlemma "P" (is "?P")')
+    t.has('?case', 'variable.language.schematic')
+    t.lacks('?case', 'meta.term')
+    t.has('?thesis', 'variable.language.schematic')
+    t.has('?P', 'variable.language.schematic')
+  }
   pass("'a, ?x, ::, symbols, numerals, ''strings'' and comments; \\<alpha> and x\\<^sub>1 are names; (*) is not a comment")
 
   // --- cartouches ---------------------------------------------------------------------
