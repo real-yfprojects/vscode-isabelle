@@ -4,8 +4,14 @@ You need Node.js, VS Code and an Isabelle2025-2.
 
 ```sh
 npm install
-npm run compile      # or: npm run watch
+npm run build        # compiles the extension and brings the extended server's jar up to date
 ```
+
+`npm run build` is `npm run compile` (or `watch`, for the extension alone) plus a check of
+the jar: a second when the server's source hasn't changed since its last build, a few
+minutes of Isabelle/Scala compile when it has. An installation of the extension that runs
+from this folder, like a link in `~/.vscode/extensions`, picks up both: the extension on
+**Developer: Reload Window**, the server on **Isabelle: Restart Server**.
 
 ## Trying your changes
 
@@ -63,7 +69,8 @@ The extended server is branch `vscode-2025-2` of
 release plus our changes. Work in a checkout of that branch at `../mirror-2025-2`
 (`git worktree add ../mirror-2025-2 vscode-2025-2` in your mirror-isabelle clone): the dev
 launcher then builds the jar from it, uncommitted changes included. The tests use whatever
-jar is there, so after changing the server run the launcher once, or build by hand:
+jar is there, so after changing the server run `npm run build` or the launcher once, or
+build by hand:
 
 ```sh
 scripts/build-server-jar.sh ~/Isabelle/Isabelle2025-2 ../mirror-2025-2
