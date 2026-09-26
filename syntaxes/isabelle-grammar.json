@@ -4,7 +4,7 @@
   "fileTypes": [
     "thy"
   ],
-  "uuid": "9d14fba1-ae7c-4d3f-99bc-daa94cfd2ea0",
+  "uuid": "5e4c6e78-8876-48e4-b21c-259f90304787",
   "repository": {
     "comment": {
       "patterns": [
@@ -142,13 +142,13 @@
           "begin": "\"",
           "beginCaptures": {
             "0": {
-              "name": "string.quoted.other.isabelle punctuation.definition.term.begin.isabelle"
+              "name": "string.quoted.other.isabelle punctuation.definition.string.begin.isabelle"
             }
           },
           "end": "\"",
           "endCaptures": {
             "0": {
-              "name": "string.quoted.other.isabelle punctuation.definition.term.end.isabelle"
+              "name": "string.quoted.other.isabelle punctuation.definition.string.end.isabelle"
             }
           },
           "patterns": [
@@ -170,13 +170,13 @@
           "begin": "(?:\\\\<open>|‹)",
           "beginCaptures": {
             "0": {
-              "name": "string.quoted.other.isabelle punctuation.definition.term.begin.isabelle"
+              "name": "string.quoted.other.isabelle punctuation.definition.string.begin.isabelle"
             }
           },
           "end": "(?:\\\\<close>|›)",
           "endCaptures": {
             "0": {
-              "name": "string.quoted.other.isabelle punctuation.definition.term.end.isabelle"
+              "name": "string.quoted.other.isabelle punctuation.definition.string.end.isabelle"
             }
           },
           "patterns": [
@@ -194,13 +194,13 @@
           "begin": "(?:\\\\<open>|‹)",
           "beginCaptures": {
             "0": {
-              "name": "string.quoted.other.isabelle punctuation.section.embedded.begin.isabelle"
+              "name": "string.quoted.other.isabelle punctuation.definition.string.begin.isabelle"
             }
           },
           "end": "(?:\\\\<close>|›)",
           "endCaptures": {
             "0": {
-              "name": "string.quoted.other.isabelle punctuation.section.embedded.end.isabelle"
+              "name": "string.quoted.other.isabelle punctuation.definition.string.end.isabelle"
             }
           },
           "patterns": [

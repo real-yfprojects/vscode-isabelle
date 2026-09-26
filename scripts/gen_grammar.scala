@@ -136,6 +136,12 @@ object Gen_Grammar {
     val close = "(?:\\\\<close>|" + close_glyph + ")"
     val after_close = "(?<=" + close_glyph + "|\\\\<close>)"
     val after_close_or_quote = "(?<=" + close_glyph + "|\\\\<close>|\")"
+    // The quotes and cartouche brackets of a term keep the string colour. A theme styles
+    // a token by its innermost scope, and themes give string delimiters their colour
+    // through punctuation.definition.string; any other punctuation.* would fall to a
+    // theme's plain `punctuation` rule instead (Breeze Dark: the keyword blue).
+    val string_delimiter_begin = "string.quoted.other.isabelle punctuation.definition.string.begin.isabelle"
+    val string_delimiter_end = "string.quoted.other.isabelle punctuation.definition.string.end.isabelle"
     def delimiter(name: String): Obj =
       Obj("0" -> Obj("name" -> name))
 
@@ -215,9 +221,9 @@ object Gen_Grammar {
     def term_rule(begin: String, end: String, patterns: Obj*): Obj = Obj(
       "name" -> "meta.term.isabelle",
       "begin" -> begin,
-      "beginCaptures" -> delimiter("string.quoted.other.isabelle punctuation.definition.term.begin.isabelle"),
+      "beginCaptures" -> delimiter(string_delimiter_begin),
       "end" -> end,
-      "endCaptures" -> delimiter("string.quoted.other.isabelle punctuation.definition.term.end.isabelle"),
+      "endCaptures" -> delimiter(string_delimiter_end),
       "patterns" -> Arr(patterns :+ include("inner"): _*))
 
     def command_region(
@@ -250,9 +256,9 @@ object Gen_Grammar {
         "ml-cartouche" -> Obj("patterns" -> Arr(Obj(
           "name" -> "meta.embedded.block.ml.isabelle",
           "begin" -> open,
-          "beginCaptures" -> delimiter("string.quoted.other.isabelle punctuation.section.embedded.begin.isabelle"),
+          "beginCaptures" -> delimiter(string_delimiter_begin),
           "end" -> close,
-          "endCaptures" -> delimiter("string.quoted.other.isabelle punctuation.section.embedded.end.isabelle"),
+          "endCaptures" -> delimiter(string_delimiter_end),
           "patterns" -> Arr(include("cartouche"))))),
         "document-command" -> Obj("patterns" -> Arr(command_region(
           "meta.command.document.isabelle", document, "keyword.control.isabelle",

@@ -81,7 +81,19 @@ function check(grammar, text) {
     assert.strictEqual(s[s.length - 1], 'meta.term.isabelle',
       `${JSON.stringify(needle)} in ${JSON.stringify(text)} should be plain term text, has ${s.join(' / ')}`)
   }
-  return { has, lacks, plain }
+  /**
+   * A quote or cartouche bracket that keeps the string colour. A theme styles a token by
+   * its innermost scope, and gives string delimiters their colour through
+   * punctuation.definition.string -- any other punctuation.* innermost falls to a plain
+   * `punctuation` rule, which in Breeze Dark is the keyword blue.
+   */
+  const stringDelimiter = (needle, nth) => {
+    const s = at(needle, nth)
+    assert.ok(s[s.length - 1].startsWith('punctuation.definition.string.') &&
+      s.some(x => x.startsWith('string.')),
+      `${JSON.stringify(needle)} in ${JSON.stringify(text)} should be a string delimiter, has ${s.join(' / ')}`)
+  }
+  return { has, lacks, plain, stringDelimiter }
 }
 
 async function run() {
@@ -94,8 +106,8 @@ async function run() {
     t.lacks('map', 'string')
     t.has('#', 'keyword.operator.inner')
     t.has('=', 'keyword.operator.inner')
-    t.has('"', 'punctuation.definition.term.begin')
-    t.has('"', 'string.quoted')
+    t.stringDelimiter('"', 0)
+    t.stringDelimiter('"', 1)
     t.has('lemma', 'keyword.control.isabelle')
   }
   pass('a quoted term is inner syntax: names plain, operators apart, only the quotes string-coloured')
@@ -149,7 +161,8 @@ async function run() {
     t.has('s', 'string.quoted.other.inner')
     t.plain('y')
     t.has('∧', 'keyword.operator.inner')
-    t.has('\\<open>', 'punctuation.definition.term.begin')
+    t.stringDelimiter('\\<open>', 0)
+    t.stringDelimiter('\\<close>', 1)
   }
   pass('a cartouche in term position is inner syntax, in ASCII or glyphs; a nested one is a string')
 
@@ -165,6 +178,7 @@ async function run() {
     t.lacks('if', 'keyword.other.inner', 1)
     t.has('note', 'comment.block.marker')
     t.has('val', 'meta.embedded.block.ml')
+    t.stringDelimiter('\\<open>', 2)
     t.lacks('if', 'keyword.other.inner', 3)
     t.has('also', 'string.quoted.other.multiline')
     t.has('text', 'keyword.control.isabelle')
