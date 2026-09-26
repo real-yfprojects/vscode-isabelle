@@ -5,6 +5,7 @@
  * so a stock extension can spawn it directly - no patched editor involved.
  */
 
+import * as crypto from 'crypto'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
@@ -124,6 +125,44 @@ export function extendedServer(isabelleHome: string, extensionPath: string): Ext
       ? `The extended server is built for ${available.join(', ')}, not ${identifier}.`
       : 'This build of the extension does not include the extended server.',
   }
+}
+
+/**
+ * A copy of the extended server's jar for the server to run, never the extension's own file.
+ *
+ * A JVM keeps the jars on its classpath open, and on Windows an open jar can still be
+ * overwritten in place: tested, the copy succeeds and the running JVM's next class load
+ * fails with ClassNotFoundException (deleting or renaming over it is refused instead). So
+ * rebuilding server/<IDENTIFIER>.jar, or an extension update replacing it, would break a
+ * server that is running it the moment it first loaded, say, a panel's classes. The copy
+ * is named by content and never written again once in place, so a running server keeps
+ * its jar and the next start picks up a new one.
+ */
+export function stageExtendedJar(jar: string, storageDir: string): string {
+  const bytes = fs.readFileSync(jar)
+  const digest = crypto.createHash('sha256').update(bytes).digest('hex').slice(0, 16)
+  const base = path.basename(jar, '.jar')
+  const staged = path.join(storageDir, `${base}-${digest}.jar`)
+  if (!fs.existsSync(staged)) {
+    fs.mkdirSync(storageDir, { recursive: true })
+    // Written aside and renamed, so no server ever sees half a jar under that name.
+    const tmp = `${staged}.${process.pid}.tmp`
+    fs.writeFileSync(tmp, bytes)
+    try { fs.renameSync(tmp, staged) } catch (err) {
+      // Another window staged the same content first; that copy is as good.
+      fs.rmSync(tmp, { force: true })
+      if (!fs.existsSync(staged)) throw err
+    }
+  }
+  /* Earlier copies, where nothing runs them any more. One a server still runs cannot be
+     deleted on Windows and stays; on POSIX it goes, and the server keeps its open file. */
+  for (const name of fs.readdirSync(storageDir)) {
+    const file = path.join(storageDir, name)
+    if (file !== staged && name.startsWith(`${base}-`) && name.endsWith('.jar')) {
+      try { fs.rmSync(file) } catch { /* in use */ }
+    }
+  }
+  return staged
 }
 
 /** Isabelle ships its own Cygwin on Windows; its bash is how the tool script must be run. */

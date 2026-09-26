@@ -9,7 +9,11 @@
 // minutes building a heap image with nothing at all on screen.
 const assert = require('assert')
 
-const { serverPath, toCygwinPath, buildServerOptions } = require('../out/isabelle.js')
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
+const { serverPath, toCygwinPath, buildServerOptions, stageExtendedJar } =
+  require('../out/isabelle.js')
 const { buildLine } = require('../out/build_progress.js')
 
 let passed = 0
@@ -74,6 +78,26 @@ async function run() {
   assert.strictEqual(posix.options.env.CLASSPATH, process.env.CLASSPATH,
     'without the extended server CLASSPATH must pass through untouched')
   pass('the extended server is launched by prepending its jar to CLASSPATH')
+
+  // The server runs a copy of the jar, because a JVM's open jar can be overwritten in place
+  // on Windows and the server then fails its next class load. The copy is named by content.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'isa-stage-'))
+  const source = path.join(tmp, 'Isabelle2025-2.jar')
+  const store = path.join(tmp, 'storage', 'server')
+  fs.writeFileSync(source, 'first build')
+  const first = stageExtendedJar(source, store)
+  assert.notStrictEqual(first, source, 'the server must not run the jar in the extension')
+  assert.strictEqual(fs.readFileSync(first, 'utf8'), 'first build')
+  assert.strictEqual(stageExtendedJar(source, store), first, 'the same jar is staged once')
+  fs.writeFileSync(source, 'second build')
+  const second = stageExtendedJar(source, store)
+  assert.notStrictEqual(second, first, 'a rebuilt jar gets a copy of its own')
+  assert.strictEqual(fs.readFileSync(second, 'utf8'), 'second build')
+  assert.ok(!fs.existsSync(first), 'a copy nothing runs any more is removed')
+  assert.deepStrictEqual(fs.readdirSync(store), [path.basename(second)],
+    'no temporary files are left behind')
+  fs.rmSync(tmp, { recursive: true, force: true })
+  pass('the extended server runs a content-named copy of the jar')
 
   // --- what reaches the notification ----------------------------------------------
   // The line the server actually emitted when this was reported.

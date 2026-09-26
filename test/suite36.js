@@ -71,7 +71,9 @@ async function run() {
   const server = await waitRunning('restarting with the extended server')
   assert.strictEqual(server.state, 'Running', 'the extended server should start')
   assert.strictEqual(server.isabelleHome, home, 'the distribution must stay the stock one')
-  pass('the extended server starts from the stock distribution')
+  assert.ok(server.runningJar && server.runningJar !== jar && fs.existsSync(server.runningJar),
+    `the server must run a staged copy, not ${jar}: ${server.runningJar}`)
+  pass('the extended server starts from the stock distribution, on a copy of the jar')
 
   await vscode.commands.executeCommand('isabelle-query.focus')
   let deadline = Date.now() + 60000

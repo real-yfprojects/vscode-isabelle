@@ -1,9 +1,11 @@
 import * as cp from 'child_process'
+import * as path from 'path'
 import * as vscode from 'vscode'
 import { CloseAction, ErrorAction, ErrorHandler, LanguageClient, LanguageClientOptions,
   ServerOptions, State } from 'vscode-languageclient/node'
 import { isRunning, killTree } from './process_tree'
-import { buildServerOptions, extendedServer, findIsabelleHome, IsabelleNotFound } from './isabelle'
+import { buildServerOptions, extendedServer, findIsabelleHome, IsabelleNotFound,
+  stageExtendedJar } from './isabelle'
 import { SymbolTable } from './symbols'
 import { SymbolRenderer } from './decorations'
 import { AbbrevStore, dropDuplicateSymbols, registerAbbreviations } from './abbrev'
@@ -56,7 +58,9 @@ let simplifierTrace: SimplifierTracePanel | undefined
 let graphview: GraphviewPanel | undefined
 let sessionPicker: SessionPicker | undefined
 let extensionPath = ''
+let globalStoragePath = ''
 let extendedJar: string | undefined
+let runningJar: string | undefined
 const abbrevs = new AbbrevStore()
 
 export const ISABELLE_SELECTOR: vscode.DocumentSelector =
@@ -117,14 +121,18 @@ async function startClient(): Promise<void> {
   }
   const extended = extendedServer(home, extensionPath)
   extendedJar = extended.kind === 'on' ? extended.jar : undefined
-  if (extended.kind === 'on') log(`Extended server: ${extended.jar}`)
+  // The server runs a copy, so rebuilding or updating the jar cannot break it; see there.
+  const stagedJar = extended.kind === 'on'
+    ? stageExtendedJar(extended.jar, path.join(globalStoragePath, 'server'))
+    : undefined
+  runningJar = stagedJar
+  if (stagedJar) log(`Extended server: ${extended.kind === 'on' ? extended.jar : ''}, running ${stagedJar}`)
   if (extended.kind === 'unavailable') {
     log(`Extended server unavailable: ${extended.reason}`)
     void vscode.window.showWarningMessage(
       `Isabelle: ${extended.reason} Starting the standard language server instead.`)
   }
-  const executable =
-    buildServerOptions(home, process.platform, extended.kind === 'on' ? extended.jar : undefined)
+  const executable = buildServerOptions(home, process.platform, stagedJar)
   log(`Launching: ${executable.command} ${(executable.args ?? []).join(' ')}`)
 
   /* Spawn the server ourselves rather than handing the client an Executable, for the one
@@ -316,6 +324,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   output = vscode.window.createOutputChannel('Isabelle')
   context.subscriptions.push(output)
   extensionPath = context.extensionPath
+  globalStoragePath = context.globalStorageUri.fsPath
 
   /* The server is chosen at launch and the Theories views are registered at activation,
      so a reload is the one step that applies this setting everywhere. */
@@ -378,6 +387,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       lastError,
       isabelleHome,
       extendedJar,
+      runningJar,
       symbols: table?.entries.length ?? 0,
     })),
     // Test hook: what the renderer would decorate in the active editor right now.
