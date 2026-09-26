@@ -1,252 +1,163 @@
 # Isabelle/PIDE for stock VS Code
 
-A prototype Isabelle client that runs as an ordinary `.vsix` in unmodified VS Code —
-no patched VSCodium, no custom editor build. It spawns Isabelle's own headless language
-server (`isabelle vscode_server`) and speaks LSP to it.
+Isabelle/PIDE client for unmodified VS Code - no need to use a dedicated isabelle fork of VsCodium
 
-## The constraint everything follows from
+Currently the Isabelle project ships with a fork of VsCodium that implements very
+limited Isabelle language support. This extension brings more than JEdit parity
+in terms of Isabelle support as a standard VS Code extension that can be added
+to your existing installation.
+Since Isabelle source files do not support full unicode math glyphs, this
+extension renders these glyphs properly while leaving ascii the ascii representation
+in your `.thy` files.
 
-Two facts, both verified against Isabelle2025-2:
+## Features
 
-1. **`isabelle build` rejects literal Unicode.** A theory containing `∀` instead of
-   `\<forall>` fails with `Inner lexical error`. In `symbol.ML` a raw codepoint is a
-   `UTF8` symbol, which is a *different* thing from `Sym "\<forall>"` — only the latter
-   carries HOL syntax. This applies to control symbols too (`x⇩1` → `Malformed command syntax`).
-2. **The language server accepts Unicode anyway**, because `vscode_model.scala` does
-   `Bytes(Symbol.encode(text))` on everything the editor sends.
+- *Writing*: renders math glyphs from ascii sources, symbol shorthands, Isar and inner syntax (e.g. HOL) completion,
+  Isar and inner syntax highlighting, linting information on hover, normalise any accidental, actual unicode characters to ASCII, compatible with spell-checking extensions
+- *Checking*: continous live PIDE verification, current proof state, command outputs
+- *Proving*: sledgehammer, find theorems and simplifier trace panels, overview over running theorems and timing
+- *Navigating*: outline, breadcrumbs, indexed code symbols, code folding, go to definition, Graph View for class/proof hierachies
+- *Docs*: preview, documentation panel
 
-So the file on disk *must* be ASCII escapes, while the editor may show whatever it likes.
-The official client resolves this with a custom `UTF-8-Isabelle` file encoding baked into
-a patched VSCodium — the one capability VS Code offers no extension-level substitute for.
+† = these features need a patch to the Isabelle LSP. See installation instructions.
 
-This extension takes the other route: **the buffer stays ASCII, and Unicode is presentation
-only.** Nothing can desynchronise, because there is only one representation.
+## Getting Started
 
-## What it does
+### Requirements
 
-- **Language server** — locates an Isabelle distribution, launches `isabelle vscode_server`
-  (through Isabelle's bundled Cygwin on Windows), and sends `PIDE/caret_update`, without
-  which PIDE processes nothing and reports no diagnostics at all.
-- **Symbol rendering** — `\<forall>` is *displayed* as `∀` with editor decorations, scoped
-  to the viewport. `\<^sub>`/`\<^sup>`/`\<^bold>` render as real sub/superscript and bold.
-  The symbol under the caret reverts to raw text so it can be edited.
-- **Symbol input** — type `\forall`, get `\<forall>`. Ambiguous prefixes wait: `\subset`
-  does not expand while `\<subseteq>` is still reachable. Completion on `\` covers the rest.
-- **Save normalisation** — an `onWillSaveTextDocument` participant rewrites any literal
-  Unicode back to `\<name>` before the file is written, so pasted or code-action-inserted
-  Unicode cannot produce an unbuildable file.
-- **Atomic motion** — arrow keys, shift-arrows, backspace and delete treat `\<forall>` as
-  one unit. Ctrl+arrow and Ctrl+Backspace/Delete are rebound too, with each symbol one
-  character: `\<alpha>` and `\<^sub>` stay inside a name, while `\<open>`, `\<close>` and
-  operators like `\<forall>` are words of their own. Double-click still goes by the
-  per-language `editor.wordSeparators`, which cannot make that distinction.
-- **PIDE markup** — syntax colouring and processing status from `PIDE/decoration`.
-  Colouring is served as **semantic tokens**, so the active colour theme applies to
-  checked text just as it does to unchecked text; processing status, message underlines
-  and overview marks stay decorations, which no theme has an opinion about. Set
-  `isabelle.markupColors` to `isabelle` for Isabelle's own `text_color` palette instead
-  (then `isabelle.textColorOverrides` applies).
-- **Panels** — Output and State as webviews over `PIDE/dynamic_output` and `PIDE/state_*`,
-  plus a Symbols palette whose entries come from `etc/symbols`. The State panel has
-  Update / Auto-update / Locate.
-- **Theories and Timing** — the session's theories with per-command status, and the
-  slowest commands of the theory you are in. These two are TreeViews rather than
-  webviews: both are lists of named things with a status, so going native buys keyboard
-  navigation, type-to-filter and theme-coloured icons for free. Behind
-  `isabelle.theoriesPanel`, since the server side is the `vscode-theories-panel` branch.
-- **Sledgehammer** — a panel to drive the search (prover list, run, cancel, locate,
-  progress), with proof suggestions as clickable buttons that insert the method into the
-  proof. The same suggestions also appear as LSP code actions under the lightbulb.
-- **Spell checker** — Isabelle checks the prose in comments and `text ‹…›` blocks, by
-  PIDE markup category rather than by syntax, so antiquotations inside prose are excluded.
-  The underlining needs no client code; the five dictionary commands are registered.
-  Set `isabelle.spellChecker` to `false` to turn it off and use a general spell-checking
-  extension instead.
-- **Outline, breadcrumbs, folding and `Ctrl+T`** — the language server advertises no
-  symbol provider of either kind, so these are supplied client-side from a lexical scan
-  of the theory that tracks comment, string and cartouche nesting. Note this searches
-  *names in your files*; the Query panel's `find_theorems` searches the loaded session
-  image by unifying a term pattern, which is what you want when you don't know the name.
-- **Syntax highlighting** — a TextMate grammar generated from the distribution's own
-  keyword table, so colouring appears before the prover attaches. PIDE markup layers on
-  top where it has information. The scopes (`comment.block.isabelle`, `string.quoted.*`)
-  are also what general spell-checking extensions need to target prose.
+- VS Code 1.85 or newer
+- [Isabelle2025-2](https://isabelle.in.tum.de/). You only need the distribution itself,
+  not the VSCodium that comes with it.
 
-## Setup
+### 1. Install the extension
 
-Install Isabelle's fonts once, system-wide, from
-`$ISABELLE_HOME/contrib/isabelle_fonts-*/ttf/`, and set:
+Search for "Isabelle" in the Extensions view, or install the `.vsix` from the latest
+[CI run](https://github.com/real-yfprojects/vscode-isabelle/actions) with
+**Extensions: Install from VSIX…**.
+
+### 2. Turn on the extended server (optional, recommended)
+
+Some features need messages that Isabelle's language server doesn't send yet. The
+extension comes with an extended version of the server that adds them. It gives you:
+
+- the Query panel (find theorems and constants)
+- the Theories and Timing views
+- the Simplifier Trace and Graph View panels
+- Go to Command
+- session images for projects whose sessions import from outside their parent session
+  (see step 5)
+
+To turn it on, open the Settings (`Ctrl+,`, or `Cmd+,` on macOS), search for
+**Isabelle: Extended Server** and tick the box. When VS Code asks, click
+**Reload Window**.
+
+There's nothing to download, and your Isabelle installation isn't changed: the extension
+only starts Isabelle's language server with its additions in front. Your proofs are
+checked by the same Isabelle as before. To switch back, untick the box.
+
+This works with Isabelle2025-2. With any other version, the extension shows a warning and
+starts the standard server.
+
+### 3. Install the Isabelle fonts
+
+Many Isabelle symbols, such as script letters and bold digits, are missing from ordinary
+monospace fonts and show up as boxes. Isabelle ships fonts that cover all of them. You'll
+find them in your Isabelle installation under `contrib/isabelle_fonts-*/ttf/`.
+Install all the `.ttf` files in that folder:
+
+- **Windows:** select them, right-click, *Install*
+- **macOS:** open them in Font Book
+- **Linux:** copy them to `~/.local/share/fonts/` and run `fc-cache -f`
+
+Then restart VS Code and add this to your user `settings.json`
+(**Preferences: Open User Settings (JSON)**):
 
 ```json
-"editor.fontFamily": "'Isabelle DejaVu Sans Mono', monospace"
+"[isabelle]": {
+  "editor.fontFamily": "'Isabelle DejaVu Sans Mono', monospace"
+}
 ```
 
-This is not optional: 102 of the 439 codepoints in `etc/symbols` live above U+FFFF
-(script letters, bold digits) and ordinary monospace fonts do not cover them. Fonts are
-an OS-level resource, so unlike the encoding they *can* be installed globally.
+This changes the font for Isabelle files only. The Output and State panels use the font
+automatically once it is installed.
 
-Point `isabelle.home` at your distribution if it is not auto-detected.
+### 4. Open a theory
 
-### Not re-checking your imports on every start
+Open a folder with your theories and open a `.thy` file. The extension starts Isabelle in
+the background and begins checking the text around your cursor. Errors appear as squiggles
+and in the Problems view, and the proof state shows up in the State panel.
 
-Isabelle caches whole sessions as heap images, not individual proofs. There is no cache
-of checked theories at all: an import already in the image resolves to a nodeless name
-and is never re-checked, and everything else is elaborated from source on every start.
-The stock default `-l HOL` therefore re-checks every theory in a project workspace, each
-time. jEdit behaves the same way -- it just makes you choose a session at launch.
+To find Isabelle, the extension first checks `$ISABELLE_HOME`. After that it looks for a
+folder named like `Isabelle2025-2` in `~/Isabelle`, your home folder and `C:\` on Windows,
+or in your home folder, `/opt` and `/usr/local` on Linux. If yours is somewhere else, set
+`isabelle.home` to the folder containing `bin/isabelle`. On macOS that is
+`/Applications/Isabelle2025-2.app/Contents/Resources/Isabelle2025-2`.
 
-Run **Isabelle: Select Session Image** (or click the session in the status bar). It reads
-the ROOT files in the workspace and offers their sessions in dependency order, then
-restarts the server with `-R` and registers the ROOT's directory so the session resolves.
+### 5. Pick a session for your project
 
-Which one to pick is not "the session owning the file I have open". `-R S` bakes S's whole
-import closure into an immutable heap, so anything you edit down there is checked in
-isolation while every theory above it keeps the stale copy. **The frontier must sit below
-everything you intend to edit**, so the picker recommends the *lowest* session you have
-open, and warns if you edit a theory that is inside the current image.
+By default Isabelle starts with the HOL session. That's fine for a few standalone
+theories. In a project with its own `ROOT` file, though, everything that isn't part of HOL
+gets checked from scratch each time Isabelle starts. For a larger project, that takes
+minutes.
 
-The equivalent settings, if you would rather write them yourself:
+To avoid that, run **Isabelle: Select Session Image**, or click the session name in the
+status bar. It lists the sessions defined in your workspace's `ROOT` files. Pick the
+session you're working in. If you edit theories in several sessions, pick the lowest one,
+meaning the one the others build on. Everything that session depends on is then loaded
+from a prebuilt image, and only your own theories are checked live. If you later edit a
+theory that is part of the image, the extension warns you, because that change won't
+reach the verificatoin cache the other theories build upon.
 
-```jsonc
-"isabelle.logic": "ViperCommon",
-"isabelle.logicRequirements": true,
-"isabelle.sessionDirs": ["/path/to/project"]
-```
+The first start after choosing a session builds its image, which takes a while. Later
+starts reuse it.
 
-The first start builds the image and takes a while; later ones reuse it. Whether a build
-is needed depends on the image `Sessions.background` computes -- a synthetic
-`S_requirements(PARENT)` whenever S imports beyond its parent, otherwise the parent's own
-heap, which is often already built. The server reports the build when it starts. Note
-that the synthetic case needs the `-R` fix from mirror-isabelle: released Isabelle builds
-the wrong session under `-R` and fails with a missing heap image. See [GAPS.md](GAPS.md).
+With a stock Isabelle2025-2, building the image fails for sessions that import theories
+from outside their parent session: the server reports a missing heap image. The extended
+server from step 2 fixes this. [docs/sessions.md](docs/sessions.md) explains how the
+images work.
 
-## Performance
+## Other VS Code extensions
 
-Both decoration systems -- symbol rendering and PIDE markup -- are scoped to
-`editor.visibleRanges` ± `isabelle.renderMarginLines`. This matters most for PIDE: the
-server sends markup for the whole document, over 51000 ranges on a 9000-line theory.
+[Isabelle-VSCode](https://github.com/Arthur742Ramos/Isabelle-VSCode) is another
+extension for unmodified VS Code. It's still an alpha and, to the date of writing, not on the
+Marketplace yet. It also uses Isabelle's own language server for live checking. Beyond that
+they're built differently:
 
-Measured on a synthetic 9006-line theory with the language server attached, five
-configurations interleaved across three rounds (VS Code 1.136):
+- **Symbols.** This is the difference you're most likely to notice. To show `∀` instead
+  of `\<forall>`, Isabelle-VSCode has a command that writes the Unicode characters into
+  the file, and nothing converts them back when you save. Everything keeps working in the
+  editor, since the language server accepts both forms, but `isabelle build` rejects the
+  file. This extension never writes Unicode into the file: the glyphs are only drawn over
+  the ASCII text, and any Unicode you paste is converted back when you save.
+- **Interface to Isabelle.** Isabelle-VSCode ships its own backend, written in Scala,
+  that uses Isabelle's Headless API next to the language server. That gives it things the
+  language server doesn't offer, such as proof minimisation, without changing Isabelle.
+  In contrast, this extension talks only to the language server, which it extends with patches that can be contributed upstream. The patches are written to be proposed to Isabelle itself.
+  Once they're merged, the features are part of Isabelle's language server, so any
+  editor that speaks the protocol can use them, and this extension needs no backend of
+  its own to keep in step with Isabelle's internals.
+- **Without a running prover.** Both highlight syntax, show the outline and find
+  lemmas with `Ctrl+T` before Isabelle starts. Isabelle-VSCode does more at that stage:
+  it highlights other uses of a name, jumps to local definitions, and lists `sorry`s.
+- **Isabelle versions.** Isabelle-VSCode supports Isabelle 2019 and later. This extension
+  targets Isabelle2025-2.
+- **Installing.** Isabelle-VSCode needs Java 21 for its backend. Its per-platform `.vsix`
+  files include one. This extension uses the Java that comes with Isabelle.
 
-| configuration | typing median | scroll median |
-|---|---:|---:|
-| no decorations at all | ~4–17 ms | ~1–16 ms |
-| symbol rendering only | ~3–16 ms | ~1–13 ms |
-| viewport PIDE only | ~6–18 ms | ~3–18 ms |
-| **viewport PIDE + symbols (default)** | ~4–16 ms | ~2–20 ms |
-| whole-document PIDE + symbols | **29–55 ms** | **41–63 ms** |
+If you need an older Isabelle, or want more to work before the prover starts, give
+Isabelle-VSCode a try.
 
-Read those as ranges, not point estimates. Only one conclusion survives the noise, and
-it survives cleanly -- every sample of the last row is worse than every sample of every
-other row:
+## Contributing
 
-> **Viewport-scoping PIDE markup is a large, real win. Every other difference here is
-> below the measurement noise floor.**
-
-In particular symbol rendering has no measurable cost once PIDE is scoped. An earlier
-version of this file claimed it was the dominant remaining cost; that was a misreading of
-a single noisy run. The noise comes from the language server processing in the background
-throughout, which moves the baseline by more than the effects being compared -- the
-much-quoted 1.7 ms figure for symbol rendering was measured with no server attached at
-all, and is not comparable.
-
-`isabelle.pideMarkup`, `isabelle.pideViewportScope` and `isabelle.renderSymbols` each turn
-one piece off, which is how the table above was produced.
-
-## Development
-
-```
-npm install
-npm run compile
-npm run dev                      # interactive: Extension Development Host against a patched build
-node test/runTest.js suite.js    # Step 1: server, diagnostics, hover
-node test/runTest.js suite2.js   # Step 2: symbols, rendering, input, save, motion
-node test/runTest.js suite3.js   # visual: holds a window open for a screenshot
-node test/runTest.js suite4.js   # reveal boundaries, selection, motion decisions
-node test/runTest.js suite5.js   # sendback arrives as LSP code actions
-node test/runTest.js suite6.js   # PIDE markup, Output panel, State panel
-node test/runTest.js suite7.js   # visual: panels and palette, for a screenshot
-node test/runTest.js suite16.js  # theory status rendering, preview HTML stripping
-node test/runTest.js suite18.js  # outline, folding and Ctrl+T through VS Code's own APIs
-node test/runTest.js suite19.js  # the theory scanner, nesting, and sticky-scroll lines
-node test/runTest.js suite21.js  # PIDE markup to semantic tokens
-node test/runTest.js suite23.js  # markup colouring end to end, both modes
-```
-
-Two suites need a *patched* Isabelle and skip themselves otherwise: `suite15.js` (Query,
-`ISABELLE_QUERY_HOME`) and `suite17.js` (Theories/Timing, `ISABELLE_PATCHED_HOME`).
-[GAPS.md](GAPS.md) has the recipe for building one.
-
-`npm run dev` (or **F5** → *Run Extension*) is the interactive counterpart: it seeds a
-throwaway VS Code profile under `.dev-profile/` — pointed at a patched build and with the
-Theories/Query views enabled — then opens an Extension Development Host on `test/workspace`.
-It finds the patched build from `ISABELLE_PATCHED_HOME`, else `ISABELLE_QUERY_HOME`, else an
-`~/Isabelle/Isabelle<year>-<n>-{query,theories,patched}` directory.
-
-The suites drive a real VS Code against a real Isabelle; they are integration tests,
-not unit tests, and need an Isabelle distribution present.
-
-## Status
-
-Prototype. [GAPS.md](GAPS.md) analyses this against the official Isabelle/VSCode: the
-fork exists for exactly two capabilities (a custom file encoding and bundled fonts),
-both worked around here.
-
-PIDE markup colouring and the Output, State, Symbols, Sledgehammer, Documentation and
-Preview panels are implemented, along with the spell-checker commands, session
-abbreviations and panel margins. **Every `PIDE/*` message the released server defines is in
-use, in both directions**, so nothing further is reachable without changing Isabelle itself.
-
-What jEdit still has beyond this is out of reach for a different reason than the encoding
-was: jEdit is not an LSP client at all, but a peer front end embedding PIDE directly, so
-each panel needs protocol messages written by hand. Two branches of mirror-isabelle do
-that, both built and verified against a real prover:
-
-- `vscode-query-panel` — find_theorems / find_consts, client behind `isabelle.queryPanel`
-- `vscode-theories-panel` — theory status and timing, client behind `isabelle.theoriesPanel`
-
-Both default to off, since a released Isabelle answers none of those messages. Of what is
-left, **Syslog and Info turn out to need nothing at all**: the server already routes its
-syslog through `window/logMessage` into the Isabelle output channel, and VS Code hovers
-already do what jEdit's Info dockable does. Monitor, Debugger, Simplifier trace, Raw
-output, Protocol and Graphview remain; [GAPS.md](GAPS.md) works through what each costs.
-
-## Another stock-VS-Code client
-
-[Arthur742Ramos/Isabelle-VSCode](https://github.com/Arthur742Ramos/Isabelle-VSCode) (MIT,
-`0.1.0-alpha.6`) attacks the same problem and makes the opposite architectural bet. It
-ships its own Scala backend that drives Isabelle's **Headless** API directly and treats
-`isabelle vscode_server` as an optional relay; this client drives the released server and,
-where the protocol runs out, patches Isabelle itself. So it reaches PIDE operations the
-LSP does not expose -- proof minimization, for instance -- without touching Isabelle, at
-the cost of maintaining a bridge against Isabelle's internal Scala API. Nothing here can
-diverge from what PIDE says, but the LSP surface is the ceiling.
-
-It is the more finished *product*: eight per-platform `.vsix` builds with a bundled JRE, a
-release pipeline, and a large tier of syntactic features that work before -- or entirely
-without -- a prover.
-
-The one difference worth knowing before choosing is the encoding. It has no equivalent of
-the presentation-only rendering and the save-time normaliser described above: its
-`Convert Symbols to Unicode` command rewrites the buffer to literal glyphs, `Insert Symbol`
-inserts them one at a time, and no save participant converts them back -- the inverse
-command exists, but running it is left to the user. Completion is the exception: both its
-offline symbol completion and its PIDE abbrev completion insert the ASCII token. The
-deeper reason is that it has no rendering layer at all -- no `contentText` decorations, no
-inlay hints, its decorations being PIDE status and error squiggles -- so glyphs in the
-buffer are the only way to read a theory in symbols there. Which is silent while you work:
-they survive interactive checking, because the server re-encodes whatever the editor
-sends, while the file on disk stops building.
-Verified against Isabelle2025-2 by running their own `symbolsToUnicode` over a theory and
-building both forms with the same `isabelle build -d <root> <session>` their own build
-runner constructs: the ASCII original succeeds, the converted file fails with
-`Inner lexical error ... at "?x::nat. x = x"`.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for building the extension, running it from
+source and running the tests.
 
 ## License
 
 [BSD 3-Clause](LICENSE), the same license Isabelle itself uses.
 
-No Isabelle sources are vendored here: `etc/symbols` is read at runtime from whichever
-distribution `isabelle.home` points at, so nothing in this repository is a derivative
-work of Isabelle. Matching its license is a convenience for reuse, not an obligation.
+The extended server (step 2) is Isabelle's own Scala code with this extension's changes
+applied: the sources are branch `vscode-2025-2` of
+[mirror-isabelle](https://github.com/real-yfprojects/mirror-isabelle), and the packaged
+extension contains the compiled result. Both are covered by Isabelle's license, reproduced in
+[server/ISABELLE-COPYRIGHT](server/ISABELLE-COPYRIGHT).
