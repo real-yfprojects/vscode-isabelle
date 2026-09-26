@@ -42,6 +42,28 @@ async function run() {
     }
   }
 
+  /* Type one character and wait until this document has it. The `type` command goes to
+     whichever editor has focus, and this copy of the document hears of the change by a
+     message of its own, so neither the command returning nor a quiet moment says the
+     character is in. On Windows CI a line once read `x\` after typing `x\_1`. A keystroke
+     that never arrives means focus was elsewhere: say where, refocus, and type it again. */
+  async function keystroke(ch) {
+    for (let tries = 0; tries < 2; tries++) {
+      const before = doc.version
+      await vscode.commands.executeCommand('type', { text: ch })
+      for (const deadline = Date.now() + 5_000; doc.version === before && Date.now() < deadline;) {
+        await wait(25)
+      }
+      if (doc.version !== before) return
+      const active = vscode.window.activeTextEditor
+      console.log(`keystroke ${JSON.stringify(ch)} did not reach the document; the active editor ` +
+        `was ${active ? active.document.uri.toString() : 'none'}; refocusing`)
+      await vscode.window.showTextDocument(doc, { preview: false, preserveFocus: false })
+      await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup')
+    }
+    throw new Error(`keystroke ${JSON.stringify(ch)} never reached the document`)
+  }
+
   /** Clear the probe line, then type `text` one character at a time. */
   async function type(text) {
     await editor.edit(b => b.replace(doc.lineAt(LINE).range, ''))
@@ -51,7 +73,7 @@ async function run() {
     editor.selection = new vscode.Selection(start, start)
     const rejected = (await state()).rewritesRejected
     for (const ch of text) {
-      await vscode.commands.executeCommand('type', { text: ch })
+      await keystroke(ch)
       await settle()
     }
     // Cannot happen while each keystroke waits; if it does, say so instead of a bare diff.
@@ -91,7 +113,7 @@ async function run() {
   console.log(`after \\[[: ${JSON.stringify(r)}`)
   assert.strictEqual(r.line, '\\<lbrakk>\\<rbrakk>', 'the brackets VS Code closed go with the key')
   assert.strictEqual(r.caret, '\\<lbrakk>'.length, 'the caret sits between the halves')
-  await vscode.commands.executeCommand('type', { text: 'A' })
+  await keystroke('A')
   await settle()
   assert.strictEqual(doc.lineAt(LINE).text, '\\<lbrakk>A\\<rbrakk>')
   r = await type('\\<>')
