@@ -61,6 +61,12 @@ export function registerAbbreviations(
       selector, new SessionAbbrevProvider(abbrevs, serverRunning)),
     vscode.languages.registerHoverProvider(selector, new SymbolHoverProvider(table, shorthands)),
     vscode.workspace.onDidChangeTextDocument(e => void rewriteOnType(e, shorthands)),
+    // For the tests, which wait for the rewriter rather than guess how long it takes.
+    vscode.commands.registerCommand('isabelle.shorthandsState', () => ({
+      rewritesInFlight,
+      rewritesRejected,
+      keys: shorthands.entries().map(([k]) => k),
+    })),
     vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('isabelle.input.customShorthands')) {
         shorthands.setCustom(custom())
@@ -220,6 +226,11 @@ class SymbolHoverProvider implements vscode.HoverProvider {
   }
 }
 
+/* An edit is applied only if the document is still at the version it was made for; one
+   that loses the race against the next keystroke is dropped, and counted here. */
+let rewritesInFlight = 0
+let rewritesRejected = 0
+
 /**
  * Expand as soon as the typed word is an unambiguous complete symbol name.
  * "\subset" must NOT fire immediately, because "\subseteq" extends it - those wait
@@ -280,11 +291,17 @@ async function rewriteOnType(
   const target = new vscode.Range(start, end)
 
   const { before, after } = exp
-  const ok = await editor.edit(b => b.replace(target, before + after),
-    { undoStopBefore: false, undoStopAfter: false })
-  if (ok && after) {
-    const inside = start.translate(0, before.length)
-    editor.selection = new vscode.Selection(inside, inside)
+  rewritesInFlight++
+  try {
+    const ok = await editor.edit(b => b.replace(target, before + after),
+      { undoStopBefore: false, undoStopAfter: false })
+    if (!ok) rewritesRejected++
+    if (ok && after) {
+      const inside = start.translate(0, before.length)
+      editor.selection = new vscode.Selection(inside, inside)
+    }
+  } finally {
+    rewritesInFlight--
   }
 }
 

@@ -24,6 +24,24 @@ async function run() {
   const editor = await vscode.window.showTextDocument(doc, { preview: false })
   await wait(500)
 
+  const state = () => vscode.commands.executeCommand('isabelle.shorthandsState')
+
+  /* Wait for the rewriter instead of sleeping a fixed time: it answers a keystroke with an
+     edit of its own, a round trip that takes much longer on a CI machine shared with a
+     prover. Typing on before it lands makes VS Code drop the edit as stale, so a sleep
+     that is too short both misses the expansion and loses it for good. Settled means no
+     edit in flight and the document unchanged across two polls. */
+  async function settle() {
+    const deadline = Date.now() + 10_000
+    let version = -1
+    for (;;) {
+      if ((await state()).rewritesInFlight === 0 && doc.version === version) return
+      if (Date.now() > deadline) throw new Error('the shorthand rewriter did not settle within 10 s')
+      version = doc.version
+      await wait(25)
+    }
+  }
+
   /** Clear the probe line, then type `text` one character at a time. */
   async function type(text) {
     await editor.edit(b => b.replace(doc.lineAt(LINE).range, ''))
@@ -31,11 +49,14 @@ async function run() {
     await vscode.window.showTextDocument(doc, { preview: false, preserveFocus: false })
     await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup')
     editor.selection = new vscode.Selection(start, start)
+    const rejected = (await state()).rewritesRejected
     for (const ch of text) {
       await vscode.commands.executeCommand('type', { text: ch })
-      await wait(80)
+      await settle()
     }
-    await wait(200)
+    // Cannot happen while each keystroke waits; if it does, say so instead of a bare diff.
+    assert.strictEqual((await state()).rewritesRejected, rejected,
+      `a rewrite was dropped as stale while typing ${JSON.stringify(text)}`)
     return { line: doc.lineAt(LINE).text, caret: editor.selection.active.character }
   }
 
@@ -71,7 +92,7 @@ async function run() {
   assert.strictEqual(r.line, '\\<lbrakk>\\<rbrakk>', 'the brackets VS Code closed go with the key')
   assert.strictEqual(r.caret, '\\<lbrakk>'.length, 'the caret sits between the halves')
   await vscode.commands.executeCommand('type', { text: 'A' })
-  await wait(150)
+  await settle()
   assert.strictEqual(doc.lineAt(LINE).text, '\\<lbrakk>A\\<rbrakk>')
   r = await type('\\<>')
   assert.strictEqual(r.line, '\\<langle>\\<rangle>')
@@ -108,7 +129,11 @@ async function run() {
   // ---------- custom shorthands ----------
   const cfg = vscode.workspace.getConfiguration('isabelle')
   await cfg.update('input.customShorthands', { cup: '∪' }, vscode.ConfigurationTarget.Global)
-  await wait(300)
+  // The extension hears of the new setting by an event of its own, some time after this.
+  for (const deadline = Date.now() + 10_000; !(await state()).keys.includes('cup');) {
+    if (Date.now() > deadline) throw new Error('the custom shorthand never took effect')
+    await wait(25)
+  }
   r = await type('\\cup')
   assert.strictEqual(r.line, '\\<union>', 'a custom shorthand written with a glyph types the escape')
   await cfg.update('input.customShorthands', undefined, vscode.ConfigurationTarget.Global)

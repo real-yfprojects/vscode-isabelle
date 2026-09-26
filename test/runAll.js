@@ -121,10 +121,11 @@ async function main() {
 
   for (const f of failed) {
     console.log(`\n--- ${f.name} ---`)
-    // Enough to identify the failure without reprinting a whole editor startup log.
+    // Enough to identify the failure without reprinting a whole editor startup log: from the
+    // first error on, so that an assertion keeps the actual/expected lines under it.
     const lines = f.out.split(/\r?\n/)
-      .filter(l => /FAIL|AssertionError|Error:|expected|actual|timed out/.test(l))
-    console.log(lines.slice(0, 15).join('\n') || f.out.slice(-1500))
+    const first = lines.findIndex(l => /FAIL|AssertionError|Error:|expected|actual|timed out/.test(l))
+    console.log(first >= 0 ? lines.slice(first, first + 15).join('\n') : f.out.slice(-1500))
   }
 
   process.exit(failed.length > 0 ? 1 : 0)
