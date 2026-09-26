@@ -29,7 +29,14 @@ env:
   # 372-byte redirect body and then stalls, which is what the first run of this job did.
   # Permitting the downgrade does not help either: plain http on that host does not serve.
   # https straight to the redirect target does, so go there directly.
-  ISABELLE_DIST: https://dist.isabelle.cit.tum.de/dist
+  #
+  # Tried in order. The TUM host alone is a single point of failure: it once stopped
+  # answering altogether, and the Windows job ran out of retries on it. Cambridge is
+  # the mirror the Isabelle download page lists, serves the same bundles, and ignores
+  # the token query.
+  ISABELLE_MIRRORS: >-
+    https://dist.isabelle.cit.tum.de/dist
+    https://www.cl.cam.ac.uk/research/hvg/Isabelle/dist
 
 jobs:
   build:
@@ -91,8 +98,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ~/isabelle-dist
-          curl -fL --retry 3 --retry-delay 10 --connect-timeout 30 \
-            "$ISABELLE_DIST/${{ matrix.bundle }}?token=Isabelle" -o /tmp/isabelle-bundle
+          # A command tested by `if` does not trip set -e, so a dead mirror only
+          # moves on to the next one; the final test fails the step if none served.
+          ok=
+          for base in $ISABELLE_MIRRORS; do
+            if curl -fL --retry 2 --retry-delay 10 --connect-timeout 30 \
+                 "$base/${{ matrix.bundle }}?token=Isabelle" -o /tmp/isabelle-bundle; then
+              ok=1; break
+            fi
+            echo "::warning::$base did not serve ${{ matrix.bundle }}, trying the next mirror"
+          done
+          test -n "$ok"
           case "${{ matrix.bundle }}" in
             # The Windows bundle is a self-extracting 7z, so 7z unpacks it without running
             # it. 7-Zip is preinstalled on the runner.
