@@ -1,7 +1,8 @@
 // Completion end to end, against a PATCHED Isabelle carrying the vscode-completion branch
 // of mirror-isabelle: item kinds, templates as snippets, commit characters, no duplicate
 // symbol items, and semantic names (facts) that show up right after an edit -- first by
-// waiting for the prover, then by filtering the list it already reported.
+// waiting for the prover, then by filtering the list it already reported. Within inner
+// syntax, the names of the context: constants, fixed variables and types.
 // Runs against a patched Isabelle or against the stock one with the extended server; see
 // test/server_target.js. Skips itself when there is neither, so it is safe in any run.
 const vscode = require('vscode')
@@ -221,6 +222,64 @@ async function run() {
   assert.ok(!arrow.commitCharacters.some(c => /[A-Za-z0-9_'.]/.test(c)),
     `word characters must not commit: ${arrow.commitCharacters.join('')}`)
   pass('a unique item commits on punctuation, never on a word character')
+
+  // ---------- inner syntax: the names of the context ----------
+  // Within a term the prover reports names only for a name it rejects; a word being typed
+  // is merely a free variable. The server asks for the names visible after the command
+  // before the caret's, once, and filters them. A freshly written statement has no
+  // language markup until the prover has seen it, so the first answers may lack them.
+  async function innerNames(text, word, what) {
+    await setProbe(text)
+    const pos = new vscode.Position(PROBE, text.lastIndexOf(word) + word.length)
+    const found = await until(`${what}: the names of the context`, 60, async () => {
+      const r1 = await complete(doc, pos)
+      return r1.items.some(i => i.detail && kindName(i) !== 'Text' &&
+        kindName(i) !== 'Operator') && !r1.incomplete ? r1 : undefined
+    })
+    assert.ok(found, `${what}: no names of the context arrived`)
+    console.log(`${what}: ${found.ms} ms, ${found.items.length} items: ${show(found.items)}`)
+    return { ...found, pos }
+  }
+
+  r = await innerNames('lemma "rev (app) = []"', 'app', 'a constant within a term')
+  const append = named(r.items, 'append')
+  assert.ok(append, `append should be offered for app: ${show(r.items)}`)
+  assert.strictEqual(kindName(append), 'Constant', 'a constant should have kind Constant')
+  assert.ok(append.detail.includes('List.append'), `the detail names it in full: ${append.detail}`)
+  pass('constants are completed within a term, with kind Constant')
+
+  // Once there, the names of that context need no prover: another letter is answered at
+  // once, from the same list, and VS Code may filter the list by itself.
+  await editor.edit(b => b.insert(r.pos, 'e'))
+  const r2 = await complete(doc, r.pos.translate(0, 1))
+  assert.ok(named(r2.items, 'append'), `append should still be offered for appe: ${show(r2.items)}`)
+  assert.ok(!r2.incomplete, 'a complete list of the context lets VS Code filter it')
+  assert.ok(r2.ms < 400, `the names of a known context come without waiting (${r2.ms} ms)`)
+  pass(`the names of a known context are answered at once (${r2.ms} ms)`)
+
+  r = await innerNames(
+    'lemma "True" proof - fix zeta_var :: nat have "zeta_v = 0" sorry',
+    'zeta_v', 'a fixed variable')
+  const zeta = named(r.items, 'zeta_var')
+  assert.ok(zeta, `zeta_var, fixed by the command before, should be offered: ${show(r.items)}`)
+  assert.strictEqual(kindName(zeta), 'Variable', 'a fixed variable should have kind Variable')
+  pass('fixed variables are completed, with kind Variable')
+
+  r = await innerNames('typ "nat li"', 'li', 'a type')
+  const list = named(r.items, 'list')
+  assert.ok(list, `the type list should be offered for li: ${show(r.items)}`)
+  assert.strictEqual(kindName(list), 'Struct', 'a type name should have kind Struct')
+  assert.ok(!r.items.some(i => i.detail && kindName(i) === 'Constant'),
+    `a type offers no constants: ${show(r.items)}`)
+  pass('within a type, only type names are offered')
+
+  // Text is not inner syntax: its words are no names of the context.
+  col = await setProbe('text \\<open>app\\<close>')
+  await wait(2000)
+  r = await complete(doc, new vscode.Position(PROBE, 'text \\<open>app'.length))
+  assert.ok(!r.items.some(i => i.detail && kindName(i) === 'Constant'),
+    `text should offer no constants: ${show(r.items)}`)
+  pass('text offers no constants')
 
   await setProbe('')
   await doc.save()

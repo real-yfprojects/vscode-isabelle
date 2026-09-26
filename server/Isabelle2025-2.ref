@@ -1,4 +1,4 @@
 # The mirror-isabelle commit scripts/build-server-jar.sh compiles for Isabelle2025-2:
 # the tip of branch vscode-2025-2, which is the release commit 8d9ad3f298 plus the
 # backport. Move this forward when the branch moves.
-316480cc37de929d4b6de7a8ee11fa68c32a5c75
+cfc92085ff4c17d149865dd15eae842c0a1703c7

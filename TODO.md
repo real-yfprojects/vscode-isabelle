@@ -1,7 +1,7 @@
 This documents tracks features and tasks that might already be tracked in other places. This file serves a place for quick note taking.
 
 ### Release
-- [ ] very limited completion for inner syntax (e.g. HOL)
+- [x] very limited completion for inner syntax (e.g. HOL)
 - [ ] Show casing gif at top of README
 - [ ] Mark features with † in README that need extended LSP
 - [ ] VSCode Getting Started Guide for the extension, including how to install and configure Isabelle, how to use the extension, and how to troubleshoot common issues.
@@ -204,6 +204,14 @@ This documents tracks features and tasks that might already be tracked in other 
     instead of `completion_limit` (40); quick suggestions are on inside strings/cartouches
   - client: server `\name` symbol items dropped (ours match substrings and show the
     glyph); session abbrevs left to the server while it runs
+  - inner syntax: the prover names only a name it rejects, and a word being typed is a
+    free variable, so a term got symbols and abbrevs only. A query operation
+    (`vscode_completion.ML`, loaded from the jar as a prelude of the prover -- no heap of
+    its own) lists every constant, fixed variable and type name visible after the command
+    before the caret's. The server asks once per such command and filters the list the
+    way VS Code does, so later keystrokes need no prover; within a type, type names only.
+    Not offered: names the command itself introduces (its `fixes`, `obtain`, bound
+    variables), a locale target's names (`lemma (in loc)`); no types in the detail
 
 - [x] proper auto indent
 - [x] syntax highlighting in "" (e.g. in HOL)

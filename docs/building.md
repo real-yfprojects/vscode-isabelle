@@ -168,8 +168,9 @@ The commit named in `server/Isabelle2025-2.ref`, currently the tip of `vscode-20
 above: `main` of mirror-isabelle, including the completion work, plus the two
 `vscode-simplifier-trace` commits not yet merged there -- adapted to the release as in the
 table above -- and indentation (onTypeFormatting and rangeFormatting, jEdit's indentation
-rule), the `semantic_*` categories of inner syntax, and the infoview (`PIDE/infoview_*`),
-all written on this branch first.
+rule), the `semantic_*` categories of inner syntax, the infoview (`PIDE/infoview_*`), and
+completion of the context's names within inner syntax (with its ML, see below), all
+written on this branch first.
 And two things from the development tree
 that 2025-2 lacks:
 `PIDE/goto_command`, and upstream's `f425404488`, without which one failing delayed event
@@ -203,6 +204,19 @@ The one component a user always has besides the distribution is `$ISABELLE_HOME_
 (`~/.isabelle/Isabelle2025-2`), and its `etc/options` is read too. Declaring options by
 writing there would work, but it edits the user's Isabelle settings for every tool, jEdit
 included, and has to merge with whatever the user keeps there; the fallback is simpler.
+
+### Not a limit: ML
+
+A released heap cannot gain ML, but the prover can load some at startup. Completion within
+inner syntax needs a query operation that Pure lacks, so `vscode_completion.ML` is a
+resource of the jar (`resources` in `etc/build.props`). The server writes it to a
+temporary file and passes that as `use_prelude` to `Isabelle_Process.start`. `ML_Process`
+then runs it with `--use` after loading the heap and before `Isabelle_Process.init ()`.
+Such a prelude sees only what Pure puts in Poly/ML's global name space, which includes
+`Query_Operation`, `Proof_Context` and `Name_Space`. It sees nothing of HOL, whose ML
+lives in theory contexts. It has no antiquotations either. And it must declare nothing at
+the toplevel, since Poly/ML prints every declaration on the process output. The development
+tree loads it the same way, so the branches do not differ.
 
 ### Building the jar
 

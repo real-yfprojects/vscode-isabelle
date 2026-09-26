@@ -96,8 +96,10 @@ if [ -z "${BUILD_SERVER_JAR_INNER:-}" ]; then
     git init -q "$source"
     git -C "$source" config core.autocrlf false
     git -C "$source" config core.sparseCheckout true
+    # The ML of the server travels as a resource too (vscode_completion.ML): the prover
+    # loads it at startup, since a released heap does not contain it.
     printf '%s\n' '/etc/build.props' '/lib/services/' '/lib/logo/' '*.scala' '*.java' \
-      > "$source/.git/info/sparse-checkout"
+      '/src/Tools/VSCode/src/*.ML' > "$source/.git/info/sparse-checkout"
     echo "fetching $commit from $MIRROR_URL"
     git -C "$source" fetch -q --depth 1 --filter=blob:none "$MIRROR_URL" "$commit"
     git -C "$source" -c advice.detachedHead=false checkout -q FETCH_HEAD
@@ -160,8 +162,9 @@ resources="$(props_list resources "$source/etc/build.props" | sed 's/:.*//')"
 # jar: multi-line string literals carry the \r into the classes, and every .tasty records
 # different positions. Built from a Windows worktree, 862 of 3620 entries differed from
 # the jar built from the fetched commit. So compile what the commit holds: LF. The text
-# resources under lib/services too; lib/logo is images and must stay as it is.
-find "$comp/src" \( -name '*.scala' -o -name '*.java' \) -exec perl -pi -e 's/\r$//' {} +
+# resources under src and lib/services too; lib/logo is images and must stay as it is.
+find "$comp/src" \( -name '*.scala' -o -name '*.java' -o -name '*.ML' \) \
+  -exec perl -pi -e 's/\r$//' {} +
 if [ -d "$comp/lib/services" ]; then
   find "$comp/lib/services" -type f -exec perl -pi -e 's/\r$//' {} +
 fi
