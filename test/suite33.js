@@ -272,13 +272,20 @@ async function run() {
     `after List. only names under it: ${show(r.items)}`)
   pass('after a qualifier and a dot, the names under it')
 
-  // The parameters of class instances are internal: one writes the class's constant. (Not
-  // with a word ending in "_": the prover rejects that as an internal name and reports
-  // its own list, instance parameters and all, which takes precedence.)
+  // The parameters of class instances are internal: one writes the class's constant.
   r = await innerNames('lemma "plus = x"', 'plus', 'names without instance parameters')
   assert.ok(!r.items.some(i => label(i).includes('_inst.')),
     `no instance parameters: ${show(r.items)}`)
   pass('the parameters of class instances are not offered')
+
+  // Nor from the prover's own report, which lists them among the constants for a name it
+  // rejects -- here one ending in "_", which it takes for an internal name.
+  r = await innerNames('lemma "plus_ = x"', 'plus_', "the prover's own report")
+  assert.ok(r.items.some(i => i.detail && kindName(i) === 'Constant'),
+    `the prover's report should still be there: ${show(r.items)}`)
+  assert.ok(!r.items.some(i => label(i).includes('_inst.')),
+    `no instance parameters in the prover's report: ${show(r.items)}`)
+  pass("the prover's own report leaves out the parameters of class instances")
 
   r = await innerNames(
     'lemma "True" proof - fix zeta_var :: nat have "zeta_v = 0" sorry',
