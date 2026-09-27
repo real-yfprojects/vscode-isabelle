@@ -257,6 +257,29 @@ async function run() {
   assert.ok(r2.ms < 400, `the names of a known context come without waiting (${r2.ms} ms)`)
   pass(`the names of a known context are answered at once (${r2.ms} ms)`)
 
+  // A qualified form picks a name whose base name is ambiguous (PosReal.ppos next to
+  // PosRat.ppos): offered when the word begins it, and after the qualifier and a dot.
+  r = await innerNames('lemma "rev (Lis) = []"', 'Lis', 'the start of a qualified name')
+  assert.ok(named(r.items, 'List.append'),
+    `List.append should be offered for Lis: ${show(r.items)}`)
+  pass('a qualified form is offered when the word begins it')
+
+  r = await innerNames('lemma "rev (List.) = []"', 'List.', 'a qualifier and a dot')
+  assert.ok(named(r.items, 'List.append'),
+    `List.append should be offered after List.: ${show(r.items)}`)
+  assert.ok(r.items.filter(i => i.detail && kindName(i) === 'Constant')
+    .every(i => label(i).startsWith('List.')),
+    `after List. only names under it: ${show(r.items)}`)
+  pass('after a qualifier and a dot, the names under it')
+
+  // The parameters of class instances are internal: one writes the class's constant. (Not
+  // with a word ending in "_": the prover rejects that as an internal name and reports
+  // its own list, instance parameters and all, which takes precedence.)
+  r = await innerNames('lemma "plus = x"', 'plus', 'names without instance parameters')
+  assert.ok(!r.items.some(i => label(i).includes('_inst.')),
+    `no instance parameters: ${show(r.items)}`)
+  pass('the parameters of class instances are not offered')
+
   r = await innerNames(
     'lemma "True" proof - fix zeta_var :: nat have "zeta_v = 0" sorry',
     'zeta_v', 'a fixed variable')
