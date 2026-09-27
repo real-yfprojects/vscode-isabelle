@@ -199,7 +199,7 @@
       {
         "id": "gettingStarted",
         "title": "Get Started with Isabelle/PIDE",
-        "description": "Set up Isabelle in VS Code and prove your first lemma.",
+        "description": "Set up Isabelle in VS Code and prove your first lemma. Some steps include examples beside the text; widen the walkthrough pane to see them.",
         "featuredFor": [
           "**/*.thy",
           "**/ROOT"
