@@ -32,8 +32,11 @@ MIRROR_URL="${MIRROR_URL:-https://github.com/real-yfprojects/mirror-isabelle.git
 
 repo="$(cd "$(dirname "$0")/.." && pwd)"
 # Inside the repository rather than under /tmp: Isabelle's Cygwin maps /tmp into the
-# distribution itself.
-work="$repo/.server-build"
+# distribution itself. One directory per run, since the dev launcher runs this on every
+# start: runs that shared one deleted each other's files, and failed with `*** I/O error`
+# on a resource of the component.
+run="${BUILD_SERVER_JAR_RUN:-run-$$}"
+work="$repo/.server-build/$run"
 
 
 # sources: resolved in whatever shell started this, which has git
@@ -82,6 +85,7 @@ if [ -z "${BUILD_SERVER_JAR_INNER:-}" ]; then
   fi
 
   rm -rf "$work"
+  mkdir -p "$work"
   trap 'rm -rf "$work"' EXIT
 
   if [ -n "$source" ]; then
@@ -112,7 +116,7 @@ if [ -z "${BUILD_SERVER_JAR_INNER:-}" ]; then
       script_w="$(cygpath -m "$(cd "$(dirname "$0")" && pwd)/$(basename "$0")")"
       # The login shell sets up Cygwin's PATH; the script itself runs in a plain child,
       # since run as the login shell it exits silently before its first line.
-      BUILD_SERVER_JAR_INNER=1 BUILD_SERVER_JAR_KEY="$key" \
+      BUILD_SERVER_JAR_INNER=1 BUILD_SERVER_JAR_KEY="$key" BUILD_SERVER_JAR_RUN="$run" \
         exec "$(cygpath -m "$home")/contrib/cygwin/bin/bash.exe" -l \
         -c 'exec bash "$0" "$1" "$2"' "$script_w" "$(cygpath -m "$home")" "$(cygpath -m "$source")"
       ;;
