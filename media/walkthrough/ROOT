@@ -1,0 +1,3 @@
+session VSCode_Tutorial = HOL +
+  theories
+    Tutorial

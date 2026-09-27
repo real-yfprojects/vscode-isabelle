@@ -54,8 +54,18 @@ export function withIcons(items: PickItem[]): PickItem[] {
   return items.map(i => ({ ...i, iconPath: icon(i.icon) }))
 }
 
+const additionalRoots = new Set<string>()
+
+/** Include generated project folders such as the tutorial alongside workspace roots. */
+export function registerSessionRoot(root: string): void {
+  additionalRoots.add(root)
+}
+
 export function workspaceRoots(): string[] {
-  return (vscode.workspace.workspaceFolders ?? []).map(f => f.uri.fsPath)
+  return [
+    ...(vscode.workspace.workspaceFolders ?? []).map(f => f.uri.fsPath),
+    ...additionalRoots,
+  ]
 }
 
 /* The status bar item that shows the session lives in status_bar.ts, which follows the

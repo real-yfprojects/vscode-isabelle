@@ -4,7 +4,7 @@ This documents tracks features and tasks that might already be tracked in other 
 - [x] very limited completion for inner syntax (e.g. HOL)
 - [x] Show casing gif at top of README -- `node scripts/demo/record.js` re-records it
 - [ ] Mark features with † in README that need extended LSP
-- [ ] VSCode Getting Started Guide for the extension, including how to install and configure Isabelle, how to use the extension, and how to troubleshoot common issues.
+- [x] VSCode Getting Started Guide for the extension, including how to install and configure Isabelle, how to use the extension, and how to troubleshoot common issues.
 - [ ] Make ready for marketplace (metadata, icon)
 - [ ] publish to marketplace
 
