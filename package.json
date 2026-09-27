@@ -2,7 +2,7 @@
   "name": "vscode-isabelle",
   "displayName": "Isabelle/PIDE",
   "description": "Isabelle proof assistant support for unmodified VS Code, on top of Isabelle's own language server.",
-  "version": "0.0.1",
+  "version": "2026.9.0",
   "preview": true,
   "publisher": "yfprojects",
   "license": "BSD-3-Clause",
