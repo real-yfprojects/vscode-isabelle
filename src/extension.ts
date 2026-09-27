@@ -33,6 +33,7 @@ import { stalenessWarning } from './sessions'
 import { BuildProgress } from './build_progress'
 import { registerTerminal } from './terminal'
 import { closeVerdict } from './restart_policy'
+import { refreshExtendedServer, registerWalkthrough, setHomeFound } from './walkthrough'
 
 const buildProgress = new BuildProgress()
 let client: LanguageClient | undefined
@@ -373,6 +374,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
      so a reload is the one step that applies this setting everywhere. */
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(async e => {
     if (!e.affectsConfiguration('isabelle.extendedServer')) return
+    refreshExtendedServer()
     const choice = await vscode.window.showInformationMessage(
       'Reload the window to switch the Isabelle language server.', 'Reload Window')
     if (choice) await vscode.commands.executeCommand('workbench.action.reloadWindow')
@@ -380,10 +382,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // Before the lookup below, so that a missing distribution is reported, not a missing command.
   registerTerminal(context, reportStartupFailure)
+  registerWalkthrough(context, reportStartupFailure)
 
   try {
     isabelleHome = findIsabelleHome()
     log(`Isabelle home: ${isabelleHome}`)
+    setHomeFound(true)
   } catch (err) {
     serverFailed(err)
     return
@@ -543,7 +547,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   try {
-    await startClient()
+    // Keep activation, including the walkthrough, usable while the heap image loads.
+    void startClient().catch(err => serverFailed(err))
   } catch (err) {
     serverFailed(err)
   }
@@ -601,9 +606,11 @@ function reportStartupFailure(err: unknown): void {
   const message = err instanceof Error ? err.message : String(err)
   log(`Startup failed: ${message}`)
   if (err instanceof IsabelleNotFound) {
-    void vscode.window.showErrorMessage(message, 'Open Settings').then(choice => {
+    void vscode.window.showErrorMessage(message, 'Open Settings', 'Setup Guide').then(choice => {
       if (choice === 'Open Settings') {
         void vscode.commands.executeCommand('workbench.action.openSettings', 'isabelle.home')
+      } else if (choice === 'Setup Guide') {
+        void vscode.commands.executeCommand('isabelle.gettingStarted')
       }
     })
   } else {

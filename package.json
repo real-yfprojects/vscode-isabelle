@@ -169,6 +169,172 @@
       {
         "command": "isabelle.openTerminal",
         "title": "Isabelle: Open Terminal"
+      },
+      {
+        "command": "isabelle.gettingStarted",
+        "title": "Isabelle: Get Started"
+      },
+      {
+        "command": "isabelle.openTutorial",
+        "title": "Isabelle: Open Tutorial Theory"
+      },
+      {
+        "command": "isabelle.selectTutorialSession",
+        "title": "Isabelle: Select Tutorial Session Image"
+      },
+      {
+        "command": "isabelle.checkInstallation",
+        "title": "Isabelle: Check Installation"
+      },
+      {
+        "command": "isabelle.revealFonts",
+        "title": "Isabelle: Show Font Folder"
+      },
+      {
+        "command": "isabelle.useIsabelleFont",
+        "title": "Isabelle: Use Isabelle Fonts for Theories"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "gettingStarted",
+        "title": "Get Started with Isabelle/PIDE",
+        "description": "Set up Isabelle in VS Code and prove your first lemma.",
+        "featuredFor": [
+          "**/*.thy",
+          "**/ROOT"
+        ],
+        "steps": [
+          {
+            "id": "isabelle",
+            "title": "Connect Isabelle2025-2",
+            "description": "The extension runs your Isabelle2025-2 distribution; the VSCodium bundled with it is not needed. It is found automatically in the usual places.\n[Check Isabelle](command:isabelle.checkInstallation)\n[Download Isabelle](https://isabelle.in.tum.de/)",
+            "media": {
+              "markdown": "media/walkthrough/isabelle.md"
+            },
+            "completionEvents": [
+              "onCommand:isabelle.checkInstallation",
+              "onContext:isabelle.homeFound"
+            ]
+          },
+          {
+            "id": "fonts",
+            "title": "Install the Isabelle fonts",
+            "description": "Symbols like these need Isabelle's fonts; ordinary fonts show boxes. Install every file in the font folder (Windows: right-click, Install; macOS: Font Book; Linux: copy to ~/.local/share/fonts, run fc-cache -f), then restart VS Code.\n[Open Font Folder](command:isabelle.revealFonts)\n[Use Them for Theories](command:isabelle.useIsabelleFont)",
+            "media": {
+              "image": {
+                "light": "media/walkthrough/fonts-light.png",
+                "dark": "media/walkthrough/fonts-dark.png",
+                "hc": "media/walkthrough/fonts-dark.png",
+                "hcLight": "media/walkthrough/fonts-light.png"
+              },
+              "altText": "Isabelle symbols such as script letters, bold digits and long arrows, drawn in the Isabelle font"
+            },
+            "completionEvents": [
+              "onCommand:isabelle.useIsabelleFont"
+            ]
+          },
+          {
+            "id": "extendedServer",
+            "title": "Turn on the extended server",
+            "description": "Recommended. Adds Find Theorems, indentation, more colours and more panels. Your Isabelle installation is not changed.\n[Turn It On](command:toSide:workbench.action.openSettings?%5B%22isabelle.extendedServer%22%5D)",
+            "media": {
+              "markdown": "media/walkthrough/extended.md"
+            },
+            "completionEvents": [
+              "onSettingChanged:isabelle.extendedServer",
+              "onContext:isabelle.extendedServerEnabled == true"
+            ]
+          },
+          {
+            "id": "restart",
+            "title": "Restart VS Code",
+            "description": "Restart VS Code after installing the Isabelle fonts or changing the extended server setting.\n[Reload VS Code](command:workbench.action.reloadWindow)",
+            "media": {
+              "markdown": "media/walkthrough/restart.md"
+            },
+            "completionEvents": [
+              "onCommand:workbench.action.reloadWindow"
+            ]
+          },
+          {
+            "id": "tutorial",
+            "title": "Open the tutorial",
+            "description": "A short theory to try everything on. Isabelle checks it around the cursor as you read and type.\n[Open Tutorial](command:isabelle.openTutorial)",
+            "media": {
+              "markdown": "media/walkthrough/tutorial.md"
+            },
+            "completionEvents": [
+              "onCommand:isabelle.openTutorial",
+              "onContext:isabelle.tutorialOpened",
+              "onContext:editorLangId == isabelle"
+            ]
+          },
+          {
+            "id": "symbols",
+            "title": "Type mathematics",
+            "description": "Type a backslash and a name, then a space: `all` gives ∀, `ex` ∃, `\to` ⇒, `le` ≤, `in` ∈. The file keeps ASCII escapes like `<forall>`; only the editor shows glyphs. Hover a symbol to see how to type it.\n[Show Me](command:isabelle.openTutorial?%5B%22symbols%22%5D)\n[Symbols Panel](command:isabelle-symbols.focus)",
+            "media": {
+              "image": {
+                "light": "media/walkthrough/symbols-light.png",
+                "dark": "media/walkthrough/symbols-dark.png",
+                "hc": "media/walkthrough/symbols-dark.png",
+                "hcLight": "media/walkthrough/symbols-light.png"
+              },
+              "altText": "A theory with rendered symbols and highlighting; the symbol at the cursor shows its ASCII escape"
+            },
+            "completionEvents": [
+              "onStepSelected"
+            ]
+          },
+          {
+            "id": "infoview",
+            "title": "Follow the proof",
+            "description": "The Infoview in the bottom panel shows the goals and messages at the cursor. Move through a proof and watch the goals change.\n[Show Me](command:isabelle.openTutorial?%5B%22goals%22%5D)\n[Show Infoview](command:isabelle.infoview)",
+            "media": {
+              "markdown": "media/walkthrough/infoview.md"
+            },
+            "completionEvents": [
+              "onCommand:isabelle.infoview",
+              "onView:isabelle-infoview"
+            ]
+          },
+          {
+            "id": "prove",
+            "title": "Let Isabelle find proofs",
+            "description": "Put the cursor on a `sorry` and run Sledgehammer. It searches the library and offers proofs to click in.\n[Show Me](command:isabelle.openTutorial?%5B%22sledgehammer%22%5D)\n[Run Sledgehammer](command:isabelle.sledgehammer)",
+            "media": {
+              "markdown": "media/walkthrough/prove.md"
+            },
+            "completionEvents": [
+              "onCommand:isabelle.sledgehammer",
+              "onView:isabelle-sledgehammer"
+            ]
+          },
+          {
+            "id": "personalize",
+            "title": "Make it yours",
+            "description": "Colours, how far Isabelle checks, how symbols look and type.\n[Isabelle Settings](command:toSide:workbench.action.openSettings?%5B%22%40ext%3Ayfprojects.vscode-isabelle%22%5D)",
+            "media": {
+              "markdown": "media/walkthrough/personalize.md"
+            },
+            "completionEvents": [
+              "onStepSelected"
+            ]
+          },
+          {
+            "id": "sessions",
+            "title": "Work on a project",
+            "description": "In a folder with a `ROOT` file, pick the session you work in. Its imports then load from a prebuilt image instead of being checked on every start.\n[Select Session Image](command:isabelle.selectTutorialSession)",
+            "media": {
+              "markdown": "media/walkthrough/sessions.md"
+            },
+            "completionEvents": [
+              "onCommand:isabelle.selectTutorialSession",
+              "onSettingChanged:isabelle.logic"
+            ]
+          }
+        ]
       }
     ],
     "terminal": {
@@ -634,7 +800,7 @@
     "build": "tsc -p ./ && node ./scripts/server-jar.js",
     "watch": "tsc -watch -p ./",
     "dev": "node ./test/dev.js",
-    "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29 suite32 suite38 suite41 suite42 suite44",
+    "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29 suite32 suite38 suite41 suite42 suite44 suite46",
     "test": "node ./test/runTest.js",
     "package": "vsce package --out vscode-isabelle.vsix",
     "release": "node ./scripts/release.js"

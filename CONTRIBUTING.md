@@ -60,6 +60,13 @@ Some suites are not in the regression set:
 | `suite3`, `7`, `10`, `11`, `13`, `20`, `22` | Nothing, but they only keep a window open for screenshots. They check nothing on their own. |
 | `suite8` | A performance measurement, not a pass/fail test |
 
+The Get Started walkthrough's images (`media/walkthrough/*.png`) show the tutorial theory
+as the extension draws it. After changing how symbols or colours look, or
+`media/walkthrough/Tutorial.thy`, run `node scripts/walkthrough-shots.js`. It drives VS Code
+through Playwright and screenshots the editor's own page, never the screen, in a light and
+a dark theme. `suite46` checks that the images and everything else the walkthrough refers
+to exist.
+
 CI ([.github/workflows](.github/workflows)) runs the unit suites, builds the extended
 server, then runs the regression set against a released Isabelle with that jar on Linux,
 macOS and Windows, and builds the `.vsix` with the same jar in it.

@@ -1,0 +1,5 @@
+# LF on every platform, whatever core.autocrlf says. bash cannot run a script with CRLF
+# endings ("$'\r': command not found"), which is what a Windows checkout gets otherwise;
+# the tutorial theory is copied into users' storage as it is in the package.
+*.sh text eol=lf
+media/walkthrough/Tutorial.thy text eol=lf

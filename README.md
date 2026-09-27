@@ -29,6 +29,9 @@ in your `.thy` files.
 
 ## Getting Started
 
+Once installed, VS Code opens a short walkthrough that goes through the steps below
+and a tutorial theory to try things on. **Isabelle: Get Started** opens it again.
+
 ### Requirements
 
 - VS Code 1.85 or newer
