@@ -2,6 +2,12 @@
 
 Isabelle/PIDE client for unmodified VS Code - no need to use a dedicated Isabelle fork of VSCodium
 
+![Finding a function with Ctrl+T, proving a lemma by induction while the infoview follows,
+typing ==> and seeing ⟹, completing lemma names, and jumping into HOL's List.thy](docs/demo.gif)
+
+*Recorded with the [extended server](#2-turn-on-the-extended-server-optional-recommended)
+turned on.*
+
 Currently the Isabelle project ships with a fork of VSCodium that implements very
 limited Isabelle language support. This extension brings more than jEdit parity
 in terms of Isabelle support as a standard VS Code extension that can be added

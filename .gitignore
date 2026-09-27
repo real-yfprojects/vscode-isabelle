@@ -30,3 +30,6 @@ test/workspace/.vscode/
 server/*.jar
 server/*.jar.source
 .server-build/
+
+# scripts/demo/record.js: the packaged extension, a throwaway profile and the frames.
+.demo-recording/

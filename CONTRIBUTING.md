@@ -92,6 +92,24 @@ to the ones proposed upstream.
 npm run package      # writes vscode-isabelle.vsix
 ```
 
+## The README's demo
+
+`docs/demo.gif` is recorded by a script, so it can be redone after the extension changes:
+
+```sh
+node scripts/demo/record.js               # package, record, write docs/demo.gif
+node scripts/demo/record.js --encode-only # re-encode the last take, e.g. with --gif-width
+```
+
+It packages the extension as a release would, installs it into a throwaway profile, and
+types the storyboard in [scripts/demo/record.js](scripts/demo/record.js) into a copy of
+`scripts/demo/Demo.thy`. It needs a stock Isabelle2025-2
+with its HOL image, and `ffmpeg` on the `PATH` (or in `$FFMPEG`). A separate VS Code window
+opens for about two minutes. Frames come from that window's renderer, not the screen, but
+keep your mouse off it: a real pointer over it still opens hovers. When a step does not
+appear in time the take stops, says which one, and saves the page as it was then to
+`.demo-recording/failure.png`.
+
 ## Releasing
 
 Versions are dates: `YYYY.M.N`, the year and month of the release and a counter that
