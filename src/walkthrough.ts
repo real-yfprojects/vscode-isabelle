@@ -17,7 +17,13 @@ export const WALKTHROUGH = 'gettingStarted'
 export const HOME_FOUND = 'isabelle.homeFound'
 export const EXTENDED_SERVER_ENABLED = 'isabelle.extendedServerEnabled'
 const TUTORIAL_OPENED = 'isabelle.tutorialOpened'
+/** Set on the first Sledgehammer run, from the walkthrough's button or the panel's. */
+export const SLEDGEHAMMER_RAN = 'isabelle.sledgehammerRan'
 const ISABELLE_FONT = "'Isabelle DejaVu Sans Mono', monospace"
+/** Tutorial sections whose "Show Me" is about the Infoview. */
+const INFOVIEW_SECTIONS = new Set(['goals', 'facts'])
+/** Tutorial documents whose word wrap openTutorial has turned on. */
+const wrapped = new Set<string>()
 
 export function setHomeFound(found: boolean): void {
   void vscode.commands.executeCommand('setContext', HOME_FOUND, found)
@@ -53,6 +59,7 @@ export function registerWalkthrough(
       await openTutorial(context, 'sessions')
       return vscode.commands.executeCommand('isabelle.selectSession')
     }),
+    vscode.workspace.onDidCloseTextDocument(d => wrapped.delete(d.uri.toString())),
   )
 }
 
@@ -141,10 +148,29 @@ async function openTutorial(context: vscode.ExtensionContext, section?: string):
   const editor = await vscode.window.showTextDocument(uri,
     { viewColumn: shown?.viewColumn ?? vscode.ViewColumn.Beside, preview: false })
   void vscode.commands.executeCommand('setContext', TUTORIAL_OPENED, true)
+  /* Beside the walkthrough, and often a side bar and the Chat view too, the tutorial gets
+     a column of 40 characters or less, and its prose ran off the right edge. Wrap this
+     document only: the command sets a transient override on it, which is a toggle, so it
+     runs once per document -- the override goes when the document does. */
+  const key = editor.document.uri.toString()
+  if (!wrapped.has(key) &&
+      vscode.workspace.getConfiguration('editor', editor.document).get('wordWrap') === 'off') {
+    wrapped.add(key)
+    await vscode.commands.executeCommand('editor.action.toggleWordWrap')
+  }
   if (section === undefined) return
   const at = anchorPosition(editor.document.getText(), section)
   if (!at) return
   const position = new vscode.Position(at.line, at.character)
   editor.selection = new vscode.Selection(position, position)
   editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter)
+  /* These sections are about what the Infoview shows, and a new profile starts with the
+     panel closed: the cursor would sit on the goal with nothing showing it. The view's
+     own focus command exists before the server does, unlike isabelle.infoview, which a
+     tutorial that has only just opened may not have registered yet. preserveFocus keeps
+     the keyboard in the theory: without it the webview takes focus once it has loaded,
+     after anything done here to take it back. */
+  if (INFOVIEW_SECTIONS.has(section)) {
+    await vscode.commands.executeCommand('isabelle-infoview.focus', { preserveFocus: true })
+  }
 }

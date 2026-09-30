@@ -147,18 +147,23 @@ export class SessionPicker {
 
   async apply(logic: string, requirements: boolean): Promise<void> {
     const cfg = vscode.workspace.getConfiguration('isabelle')
+    /* Workspace rather than Global: which session to boot is a property of the project in
+       front of you, unlike checkWholeTheory which is a property of how you work. A window
+       without a folder has no workspace settings, and writing them fails -- the
+       walkthrough's tutorial is such a window, its theory living in global storage -- so
+       there the choice goes where VS Code's own Settings editor puts it: the user's. */
+    const global = vscode.workspace.workspaceFolders === undefined
+    const target = global ? vscode.ConfigurationTarget.Global : vscode.ConfigurationTarget.Workspace
     /* A ROOT in the workspace is not automatically visible to Isabelle -- it must be a
        registered component, listed in a ROOTS catalogue, or passed with -d. Register the
        chosen session's own directory so every session the picker offers actually starts. */
     const existing = cfg.get<string[]>('sessionDirs') ?? []
     const dirs = sessionDirsFor(this.sessions, logic, existing)
     if (dirs.length !== existing.length) {
-      await cfg.update('sessionDirs', dirs, vscode.ConfigurationTarget.Workspace)
+      await cfg.update('sessionDirs', dirs, target)
     }
-    /* Workspace rather than Global: which session to boot is a property of the project in
-       front of you, unlike checkWholeTheory which is a property of how you work. */
-    await cfg.update('logic', logic, vscode.ConfigurationTarget.Workspace)
-    await cfg.update('logicRequirements', requirements, vscode.ConfigurationTarget.Workspace)
+    await cfg.update('logic', logic, target)
+    await cfg.update('logicRequirements', requirements, target)
     // A new frontier makes every previous verdict obsolete, so ask again where it applies.
     this.warned.clear()
     await vscode.commands.executeCommand('isabelle.restartServer')
@@ -169,7 +174,8 @@ export class SessionPicker {
        picker cannot spend. The server reports its own build via build_started, which is
        the honest source. */
     void vscode.window.showInformationMessage(
-      `Isabelle session: ${logic}. Restarting the server; if its heap image is missing ` +
-      `it will be built first, which can take a while.`)
+      `Isabelle session: ${logic}${global ? ', saved in your user settings since no folder is open' : ''}. ` +
+      'Restarting the server; if its heap image is missing it will be built first, ' +
+      'which can take a while.')
   }
 }

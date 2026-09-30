@@ -16,6 +16,7 @@
 
 import * as vscode from 'vscode'
 import { LanguageClient } from 'vscode-languageclient/node'
+import { SLEDGEHAMMER_RAN } from './walkthrough'
 import { isabelleCss, scriptNonce } from './webview'
 
 interface InsertParams { uri: string; line: number; character: number; text: string }
@@ -83,6 +84,9 @@ export class SledgehammerPanel implements vscode.WebviewViewProvider {
   }
 
   private async run(provers: string, isar: boolean, try0: boolean): Promise<void> {
+    // Completes the walkthrough's step; merely seeing the view, which shares a container
+    // with the Symbols panel, did so before.
+    void vscode.commands.executeCommand('setContext', SLEDGEHAMMER_RAN, true)
     this.status = 'Starting…'
     this.post({ type: 'status', message: this.status })
     await this.client.sendNotification('PIDE/sledgehammer_request', { provers, isar, try0 })
