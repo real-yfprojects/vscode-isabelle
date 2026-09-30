@@ -17,6 +17,8 @@ export const WALKTHROUGH = 'gettingStarted'
 export const HOME_FOUND = 'isabelle.homeFound'
 export const EXTENDED_SERVER_ENABLED = 'isabelle.extendedServerEnabled'
 const TUTORIAL_OPENED = 'isabelle.tutorialOpened'
+/** Set on the first Sledgehammer run, from the walkthrough's button or the panel's. */
+export const SLEDGEHAMMER_RAN = 'isabelle.sledgehammerRan'
 const ISABELLE_FONT = "'Isabelle DejaVu Sans Mono', monospace"
 
 export function setHomeFound(found: boolean): void {

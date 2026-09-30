@@ -308,7 +308,7 @@
             },
             "completionEvents": [
               "onCommand:isabelle.sledgehammer",
-              "onView:isabelle-sledgehammer"
+              "onContext:isabelle.sledgehammerRan"
             ]
           },
           {
