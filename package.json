@@ -638,24 +638,28 @@
         {
           "id": "isabelle-documentation",
           "name": "Documentation",
-          "type": "webview"
+          "type": "webview",
+          "visibility": "collapsed"
         },
         {
           "id": "isabelle-query",
           "name": "Query",
           "type": "webview",
+          "visibility": "collapsed",
           "when": "config.isabelle.queryPanel || config.isabelle.extendedServer"
         },
         {
           "id": "isabelle-simplifier-trace",
           "name": "Simplifier Trace",
           "type": "webview",
+          "visibility": "collapsed",
           "when": "config.isabelle.simplifierTrace || config.isabelle.extendedServer"
         },
         {
           "id": "isabelle-graphview",
           "name": "Graph View",
           "type": "webview",
+          "visibility": "collapsed",
           "when": "config.isabelle.graphview || config.isabelle.extendedServer"
         }
       ],
