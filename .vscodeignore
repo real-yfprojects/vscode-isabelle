@@ -9,6 +9,10 @@
 .vscode/**
 .vscode-test/**
 .dev-profile/**
+# scripts/demo/record.js packages from this folder, so its last take would go into the
+# next one, and every earlier take with it.
+.demo-recording/**
+*.vsix
 .github/**
 .gitignore
 
@@ -37,5 +41,8 @@ server/*.ref
 server/*.jar.source
 .server-build/**
 
-node_modules/**
+# No node_modules/** here: vsce already leaves out devDependencies, and excluding the
+# folder also drops vscode-languageclient, so the extension fails to activate. Nothing in
+# the repository notices, because an install inside the checkout finds the repository's
+# node_modules by walking up.
 package-lock.json

@@ -298,6 +298,14 @@ jobs:
       # server for everyone who turns the setting on, so check it went in.
       - name: Check the extended server is packaged
         run: unzip -l vscode-isabelle.vsix | grep -E 'extension/server/Isabelle2025-2\.jar'
+      # Without its runtime dependencies the extension does not activate at all. Every
+      # suite runs it from the checkout, where require() finds the repository's
+      # node_modules, so only the package itself can show that they are missing.
+      - name: Check the runtime dependencies are packaged
+        run: |
+          for dep in $(node -p "Object.keys(require('./package.json').dependencies).join(' ')"); do
+            unzip -l vscode-isabelle.vsix | grep -F "extension/node_modules/$dep/package.json"
+          done
       # Packaging is itself a test: vsce fails on a missing contribution path, so a
       # grammar or language-configuration dropped from .vscodeignore is caught here
       # rather than by someone installing the result.
