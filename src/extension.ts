@@ -36,7 +36,20 @@ import { closeVerdict } from './restart_policy'
 import { refreshExtendedServer, registerWalkthrough, setHomeFound } from './walkthrough'
 
 const buildProgress = new BuildProgress()
-let client: LanguageClient | undefined
+
+/**
+ * A client that stopClient() can silence. Stopping one mid-start fails its `initialize`,
+ * and the client reports that with a notification it forces past every option. The
+ * lines still reach the output channel; only the pop-up about a stop we asked for goes.
+ */
+class IsabelleClient extends LanguageClient {
+  quiet = false
+  override error(message: string, data?: unknown, showNotification: boolean | 'force' = true): void {
+    super.error(message, data, this.quiet ? false : showNotification)
+  }
+}
+
+let client: IsabelleClient | undefined
 let output: vscode.OutputChannel
 let isabelleHome: string | undefined
 let table: SymbolTable | undefined
@@ -183,12 +196,21 @@ async function startClient(): Promise<void> {
      from "the prover died and should come back". */
   let everRunning = false
   let closes = 0
+  /* A restart can land while this start is still in `initialize` -- the walkthrough's
+     session button opens the tutorial, which starts HOL, and then picks a session.
+     stopClient() then kills this server under us, and everything that reports on it
+     afterwards is about a server nobody wants any more: its close would blame the *new*
+     settings for a build that never ran, and its start would carry on into a client that
+     is gone. From the moment `client` is someone else, this one leaves quietly. */
+  const label = logicLabel()
+  const superseded = () => client !== c
   const errorHandler: ErrorHandler = {
     error: (_error, _message, count) => ({
       action: count !== undefined && count <= 3 ? ErrorAction.Continue : ErrorAction.Shutdown,
     }),
     closed: () => {
-      const verdict = closeVerdict({ everRunning, restarts: closes, logic: logicLabel() })
+      if (superseded()) return { action: CloseAction.DoNotRestart, handled: true }
+      const verdict = closeVerdict({ everRunning, restarts: closes, logic: label })
       closes += 1
       if (verdict.restart) return { action: CloseAction.Restart }
       log(verdict.message)
@@ -201,6 +223,14 @@ async function startClient(): Promise<void> {
     documentSelector: ISABELLE_SELECTOR as any,
     outputChannel: buildProgress.channel(output),
     errorHandler,
+    /* What the client does without one, minus the pop-up for a start that was cancelled
+       on purpose. Returning false stops the client, as the default does. */
+    initializationFailedHandler: error => {
+      const message = error instanceof Error ? error.message : String(error)
+      log(`Server initialization failed${superseded() ? ' (superseded by a restart)' : ''}: ${message}`)
+      if (!superseded()) void vscode.window.showErrorMessage(message)
+      return false
+    },
     middleware: {
       /* There is no API for "the user is holding Ctrl", but VS Code asks for a definition
          exactly when it is deciding whether to draw the Ctrl+hover link -- so this is
@@ -219,12 +249,14 @@ async function startClient(): Promise<void> {
     },
   }
 
-  client = new LanguageClient('isabelle', 'Isabelle/PIDE', serverOptions, clientOptions)
+  const c = new IsabelleClient('isabelle', 'Isabelle/PIDE', serverOptions, clientOptions)
+  client = c
   /* Registered before start() so the client's own restarts (CloseAction.Restart) show
      too; those never pass through stopClient/startClient. A close that gives up has
      already said 'failed' in errorHandler.closed, and the Stopped after it must not
      overwrite that with a plain 'off'. */
-  clientScope.push(client.onDidChangeState(e => {
+  clientScope.push(c.onDidChangeState(e => {
+    if (superseded()) return // the status bar belongs to the client that replaced this one
     if (e.newState === State.Starting) {
       status?.setServer('starting')
       /* Every start, including the client's own restarts: each one runs the server's
@@ -246,12 +278,17 @@ async function startClient(): Promise<void> {
      build, and buildProgress relays the server's own progress lines into the notification
      so it says which session and how far, not just "working". */
   try {
-    await buildProgress.during(logicLabel(), () => (client as LanguageClient).start())
+    await buildProgress.during(label, () => c.start())
   } catch (err) {
+    if (superseded()) { log(`superseded start of ${label} ended`); return }
     lastError = err instanceof Error ? (err.stack ?? err.message) : String(err)
     log(`client.start() threw: ${lastError}`)
     throw err
   }
+  /* A start can also *succeed* after stopClient() let go of it, the server having got
+     through `initialize` before the kill arrived. stopClient() has already dealt with
+     its process; wiring panels to it would only fail on the cleared `client`. */
+  if (superseded()) { log(`superseded start of ${label} ended`); return }
   // Only now is a later close worth restarting: the server got past `initialize`, so its
   // heap image exists and coming back does not mean rebuilding it.
   everRunning = true
@@ -339,6 +376,7 @@ async function stopClient(): Promise<void> {
   const proc = serverProcess
   serverProcess = undefined
   if (c) {
+    c.quiet = true
     try { await c.stop(SHUTDOWN_TIMEOUT_MS) } catch (err) {
       output.appendLine(`stop failed: ${err}`)
     }
