@@ -108,6 +108,19 @@ async function run() {
   }
   pass('every completion event can fire')
 
+  // A backslash meant for the reader is a JSON escape in package.json: `\to` parses as a
+  // tab and an "o", and the walkthrough shows a gap where the word should be. Step text
+  // is not Markdown either -- only its links become buttons -- so a code span shows its
+  // backticks. The media .md files are rendered, and may use both.
+  for (const step of walkthrough.steps) {
+    for (const [field, text] of [['title', step.title], ['description', step.description]]) {
+      const bad = /[\x00-\x09\x0b-\x1f]/.exec(text)
+      assert.ok(!bad, `${step.id}: ${field} has control character U+${bad?.[0].charCodeAt(0).toString(16).padStart(4, '0')}`)
+      assert.ok(!text.includes('`'), `${step.id}: ${field} has a backtick, which the walkthrough shows as is`)
+    }
+  }
+  pass('step text is plain: no control characters, no code spans')
+
   // --- the tutorial theory ----------------------------------------------------------
   const theory = fs.readFileSync(path.join(ROOT, 'media', 'walkthrough', TUTORIAL_FILE), 'utf8')
   assert.ok(/^[\x00-\x7f]*$/.test(theory), 'isabelle build rejects literal Unicode')
