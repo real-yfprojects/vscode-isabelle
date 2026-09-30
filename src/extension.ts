@@ -50,6 +50,8 @@ class IsabelleClient extends LanguageClient {
 }
 
 let client: IsabelleClient | undefined
+/** Starts the server when the first theory opens, if activation found none. */
+let startOnTheory: vscode.Disposable | undefined
 let output: vscode.OutputChannel
 let isabelleHome: string | undefined
 let table: SymbolTable | undefined
@@ -128,6 +130,9 @@ function logicLabel(): string {
 const SHUTDOWN_TIMEOUT_MS = 5000
 
 async function startClient(): Promise<void> {
+  // Whatever started this, the start that was waiting for a theory is no longer needed.
+  startOnTheory?.dispose()
+  startOnTheory = undefined
   lastError = undefined
   // Re-resolve on every start rather than reusing the value cached at activation:
   // otherwise changing isabelle.home and restarting the server silently keeps using
@@ -584,11 +589,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     return
   }
 
-  try {
+  /* Only once a theory is open, though. The walkthrough and the terminal profile activate
+     the extension too, and a prover started for them would load its image before the
+     walkthrough's third step turns on the extended server -- which then takes a reload
+     anyway. Activation by a theory finds it open already. */
+  const isTheory = (d: vscode.TextDocument) => d.languageId === 'isabelle'
+  if (vscode.workspace.textDocuments.some(isTheory)) {
     // Keep activation, including the walkthrough, usable while the heap image loads.
     void startClient().catch(err => serverFailed(err))
-  } catch (err) {
-    serverFailed(err)
+  } else {
+    log('no theory open; the server starts with the first one')
+    startOnTheory = vscode.workspace.onDidOpenTextDocument(d => {
+      if (isTheory(d)) void startClient().catch(err => serverFailed(err))
+    })
+    context.subscriptions.push(startOnTheory)
   }
 }
 

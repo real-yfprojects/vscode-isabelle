@@ -432,7 +432,7 @@
         "isabelle.autoStart": {
           "type": "boolean",
           "default": true,
-          "description": "Start the language server when the extension activates. Turn this off to open .thy files without a prover -- symbol rendering, the outline and symbol input all work without one, and starting a session loads a heap image, which takes a while. Use \"Isabelle: Start / Restart Language Server\" when you want it."
+          "description": "Start the language server when a theory is open. Turn this off to open .thy files without a prover -- symbol rendering, the outline and symbol input all work without one, and starting a session loads a heap image, which takes a while. Use \"Isabelle: Start / Restart Language Server\" when you want it."
         },
         "isabelle.checkWholeTheory": {
           "type": "boolean",
