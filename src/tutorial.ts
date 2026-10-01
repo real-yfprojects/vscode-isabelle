@@ -22,7 +22,7 @@ export const ANCHORS: Record<string, Anchor> = {
   goals: { needle: 'case (Cons x xs)', offset: 0 },
   // On the lemma declaration, Sledgehammer sees the proof context before sorry.
   sledgehammer: { needle: 'lemma "distinct xs \\<Longrightarrow> card (set xs) = length xs"', offset: 0 },
-  facts: { needle: 'find_theorems', offset: 0 },
+  facts: { needle: 'find_theorems "rev (rev _)"', offset: 0 },
 }
 
 /** Line and character of a section's anchor, or undefined if it is not in `text`. */

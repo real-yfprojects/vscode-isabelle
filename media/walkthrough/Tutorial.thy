@@ -5,8 +5,15 @@ begin
 text \<open>
   Isabelle checks this theory while you read and edit
   it: the status bar shows how far, and a proof that
-  fails is underlined in red. Try it: change "x + 1" to
-  "x - 1" in the first lemma below.
+  fails is underlined in red. Hover over the underline
+  to read the error; the Problems view lists them all.
+  Try it: change "x + 1" to "x - 1" in the first lemma
+  below.
+
+  The first start loads the HOL image, which takes a few
+  seconds up to a minute. Then Isabelle checks from the
+  top down to 50 lines below the cursor, and again as
+  you type.
 \<close>
 
 section \<open>Symbols\<close>
@@ -59,10 +66,13 @@ section \<open>Finding facts\<close>
 
 text \<open>
   With the cursor on the next line, the Infoview lists
-  every theorem that matches. Ctrl+click rev to open its
+  every theorem that matches; the line after it finds
+  theorems by name. Hover over rev to see its type, and
+  Ctrl+click it (Cmd+click on macOS) to open its
   definition.
 \<close>
 
 find_theorems "rev (rev _)"
+find_theorems name: card
 
 end
