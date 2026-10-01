@@ -99,6 +99,7 @@ export class Infoview implements vscode.WebviewViewProvider {
         pending: this.pending,
         live: this.shownLive,
         pins: this.pins,
+        inView: this.view !== undefined,
         inEditor: this.editorPanel !== undefined,
       })),
       vscode.window.onDidChangeTextEditorSelection(e => {

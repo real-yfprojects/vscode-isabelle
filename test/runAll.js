@@ -28,7 +28,7 @@ const REGRESSION = ['suite', 'suite2', 'suite4', 'suite6', 'suite12', 'suite15',
                     'suite26', 'suite27', 'suite28', 'suite29', 'suite30', 'suite31',
                     'suite32', 'suite33', 'suite34', 'suite35', 'suite36', 'suite37',
                     'suite38', 'suite39', 'suite40', 'suite41', 'suite42', 'suite43',
-                    'suite44', 'suite45', 'suite46', 'suite47', 'suite48', 'suite49']
+                    'suite44', 'suite45', 'suite46', 'suite47', 'suite48', 'suite49', 'suite50']
 
 /** Suites that need no editor at all, and so cost nothing to run. */
 const PURE = new Set(['suite25', 'suite27', 'suite28', 'suite29', 'suite31', 'suite32',
@@ -48,7 +48,7 @@ const PURE = new Set(['suite25', 'suite27', 'suite28', 'suite29', 'suite31', 'su
  * confusing failure, and the cost of being conservative is half a minute.
  */
 const NO_PROVER = new Set(['suite4', 'suite16', 'suite19', 'suite21', 'suite26', 'suite35',
-                           'suite40', 'suite43'])
+                           'suite40', 'suite43', 'suite50'])
 
 function copyWorkspace(name) {
   const dest = fs.mkdtempSync(path.join(os.tmpdir(), `isa-ws-${name}-`))

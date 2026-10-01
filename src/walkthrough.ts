@@ -166,9 +166,8 @@ async function openTutorial(context: vscode.ExtensionContext, section?: string):
   editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter)
   /* These sections are about what the Infoview shows, and a new profile starts with the
      panel closed: the cursor would sit on the goal with nothing showing it. The view's
-     own focus command exists before the server does, unlike isabelle.infoview, which a
-     tutorial that has only just opened may not have registered yet. preserveFocus keeps
-     the keyboard in the theory: without it the webview takes focus once it has loaded,
+     own focus command rather than isabelle.infoview, for preserveFocus, which keeps the
+     keyboard in the theory: without it the webview takes focus once it has loaded,
      after anything done here to take it back. */
   if (INFOVIEW_SECTIONS.has(section)) {
     await vscode.commands.executeCommand('isabelle-infoview.focus', { preserveFocus: true })
