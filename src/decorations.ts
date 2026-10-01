@@ -164,16 +164,20 @@ export class SymbolRenderer implements vscode.Disposable {
 
     // Sticky-header lines sit above the viewport but are still painted, so scan them too.
     const first = editor.visibleRanges[0]?.start.line ?? 0
-    const spans: vscode.Range[] = stickyLines(doc, first)
+    const lines: [number, number][] = stickyLines(doc, first)
       .filter(line => line < first - margin)
-      .map(line => new vscode.Range(line, 0, line, doc.lineAt(line).text.length))
+      .map(line => [line, line])
     for (const visible of editor.visibleRanges) {
-      const startLine = Math.max(0, visible.start.line - margin)
-      const endLine = Math.min(doc.lineCount - 1, visible.end.line + margin)
-      spans.push(new vscode.Range(startLine, 0, endLine, doc.lineAt(endLine).text.length))
+      lines.push([Math.max(0, visible.start.line - margin),
+                  Math.min(doc.lineCount - 1, visible.end.line + margin)])
     }
 
-    for (const span of spans) {
+    /* A fold, or a diff editor's collapsed unchanged regions, splits the viewport into
+       several visible ranges, and with the margin around each they overlap. Scanning
+       them one by one decorated every escape in the overlap once per range, and each of
+       those decorations brings its own glyph: the diff showed `∀∀`. */
+    for (const [startLine, endLine] of mergeLines(lines)) {
+      const span = new vscode.Range(startLine, 0, endLine, doc.lineAt(endLine).text.length)
       const text = doc.getText(span)
       const base = doc.offsetAt(span.start)
 
@@ -331,6 +335,17 @@ function entersInterior(sel: vscode.Selection, range: vscode.Range): boolean {
   }
   const overlap = sel.intersection(range)
   return !!overlap && !overlap.isEmpty
+}
+
+/** Inclusive line intervals, sorted, with overlapping and adjacent ones joined. */
+function mergeLines(spans: [number, number][]): [number, number][] {
+  const out: [number, number][] = []
+  for (const [start, end] of [...spans].sort((a, b) => a[0] - b[0])) {
+    const last = out[out.length - 1]
+    if (last && start <= last[1] + 1) last[1] = Math.max(last[1], end)
+    else out.push([start, end])
+  }
+  return out
 }
 
 function config<T>(key: string, fallback: T): T {

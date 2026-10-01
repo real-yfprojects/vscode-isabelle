@@ -238,6 +238,34 @@ async function run() {
   assert.strictEqual(wordAt(wline.indexOf('True')), 'True')
   pass('symbolic operators are words, so the editor can underline them on Ctrl+hover')
 
+  // ==================== split viewport ====================
+  // A fold splits the visible ranges, as do a diff editor's collapsed unchanged regions.
+  // With the render margin around each they overlap, and the escapes in the overlap were
+  // decorated once per range: two glyphs on top of each other, `∀∀`.
+  const proofLines = Array.from({ length: 12 }, (_, i) => `  have "x${i} = x${i}" by simp`)
+  const folded = await open('Folded.thy', [
+    'theory Folded', '  imports Main', 'begin', '',
+    'lemma a: "\\<forall>x. x = x"', '  by simp', '',
+    'lemma b: "True"', 'proof -', ...proofLines, '  show ?thesis by simp', 'qed', '',
+    'lemma c: "A \\<and> B \\<longrightarrow> A"', '  by simp', '',
+    'end', '',
+  ])
+  await setCaret(folded.editor, 0, 0)
+  assert.strictEqual(await glyphCount(), 3, 'one glyph per escape before folding')
+  // The folding ranges arrive asynchronously; folding before they do is a silent no-op.
+  for (let i = 0; i < 20 && folded.editor.visibleRanges.length < 2; i++) {
+    await vscode.commands.executeCommand('editor.fold', { selectionLines: [7], levels: 1 })
+    await wait(300)
+  }
+  await wait(400)
+  const visible = folded.editor.visibleRanges.map(r => `${r.start.line}-${r.end.line}`)
+  console.log(`  visible ranges after folding lemma b: ${visible.join(', ')}`)
+  assert.ok(visible.length >= 2, 'folding lemma b must split the viewport, or this tests nothing')
+  assert.strictEqual(await glyphCount(), 3,
+    'an escape within the margin of two visible ranges must still be decorated only once')
+  pass('a split viewport decorates each escape once')
+  await vscode.commands.executeCommand('editor.unfoldAll')
+
   console.log(`\n${passed} checks passed`)
   console.log('SUITE4_OK')
 }
