@@ -4,11 +4,12 @@
  *     { sections: [ { title, important, entries: [ { print_html, platform_path } ] } ] }
  *
  * `platform_path` points at a real file in the distribution -- usually a PDF, sometimes a
- * directory or text file -- so entries open through VS Code rather than being rendered here.
+ * directory or text file -- so entries are opened (openDoc) rather than rendered here.
  */
 
 import * as vscode from 'vscode'
 import { LanguageClient } from 'vscode-languageclient/node'
+import { CustomEditorContribution, EditorAssociations, pdfViewerRegistered } from './doc_open'
 import { isabelleCss, scriptNonce } from './webview'
 
 interface DocEntry { print_html: string; platform_path: string }
@@ -116,12 +117,23 @@ ${body}
   }
 }
 
-/** PDFs go to the external/native viewer; anything else opens as a text document. */
+/**
+ * PDFs open in VS Code when something there can show them, and in the system's viewer
+ * otherwise (see doc_open.ts); anything else opens as a text document.
+ */
 async function openDoc(platformPath: string): Promise<void> {
   const uri = vscode.Uri.file(platformPath)
   try {
     if (platformPath.toLowerCase().endsWith('.pdf')) {
-      await vscode.commands.executeCommand('vscode.open', uri)
+      const customEditors = vscode.extensions.all.flatMap(
+        e => (e.packageJSON?.contributes?.customEditors ?? []) as CustomEditorContribution[])
+      const associations = vscode.workspace.getConfiguration('workbench')
+        .get<EditorAssociations>('editorAssociations')
+      if (pdfViewerRegistered(platformPath, customEditors, associations)) {
+        await vscode.commands.executeCommand('vscode.open', uri)
+      } else if (!await vscode.env.openExternal(uri)) {
+        void vscode.window.showWarningMessage(`No application opened ${platformPath}.`)
+      }
     } else {
       const doc = await vscode.workspace.openTextDocument(uri)
       await vscode.window.showTextDocument(doc)
