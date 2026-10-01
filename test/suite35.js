@@ -1,7 +1,8 @@
 // `\` shorthands in a real editor, typed through VS Code's own typing path (the `type`
 // command), so auto-closed brackets and the rewriter's edits interleave as they do for a
 // user. No prover: the symbol table, the rewriter, the hover and the completion list are
-// all client-side.
+// all client-side. Also typing in general, where VS Code's own auto-closing is what
+// a person meets: a comment.
 const vscode = require('vscode')
 const assert = require('assert')
 const fs = require('fs')
@@ -120,6 +121,15 @@ async function run() {
   assert.strictEqual(r.line, '\\<langle>\\<rangle>')
   assert.strictEqual(r.caret, '\\<langle>'.length)
   pass('pairs: \\[[ and \\<> leave the caret inside')
+
+  // ---------- typing a comment ----------
+  /* `(*` used to be an auto-closing pair of its own. VS Code never types over a closer of
+     two characters, so the `*)` a person types to end the comment landed in front of the
+     one it had inserted: `(* x *)*)`, an outer syntax error on the next command. Now
+     only the `(` closes, and the typed `)` goes over that. */
+  r = await type('(* x *)')
+  assert.strictEqual(r.line, '(* x *)', 'nothing auto-inserted is left after a typed comment')
+  pass('typing (* x *) leaves exactly the comment')
 
   // ---------- hover: every way to type the symbol under the mouse ----------
   await editor.edit(b => b.replace(doc.lineAt(LINE).range, 'x \\<forall>y'))
