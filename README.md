@@ -104,10 +104,10 @@ once it is installed.
 
 Open a folder with your theories and open a `.thy` file. The extension starts Isabelle in
 the background and begins checking the text around your cursor. Errors appear as squiggles
-and in the Problems view. The **Infoview**, in the bottom panel, shows the goals and
-messages of the command at the cursor. **Pin** keeps a command's goals in view while you
-work elsewhere, and **Pause** stops the view from following the cursor. You can drag the
-view into a side bar, or open it in an editor tab beside the theory with the
+and in the Problems view. The **Isabelle Infoview**, in the bottom panel, shows the goals
+and messages of the command at the cursor. **Pin** keeps a command's goals in view while
+you work elsewhere, and **Pause** stops the view from following the cursor. You can drag
+the view into a side bar, or open it in an editor tab beside the theory with the
 **Open in Editor** button in its title bar.
 
 To find Isabelle, the extension first checks `$ISABELLE_HOME`. After that it looks for a

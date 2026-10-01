@@ -290,7 +290,7 @@
           {
             "id": "infoview",
             "title": "Follow the proof",
-            "description": "The Infoview in the bottom panel shows the goals and messages at the cursor. Move through a proof and watch the goals change.\n[Show Me](command:isabelle.openTutorial?%5B%22goals%22%5D)\n[Show Infoview](command:isabelle.infoview)",
+            "description": "The Isabelle Infoview in the bottom panel shows the goals and messages at the cursor. Move through a proof and watch the goals change.\n[Show Me](command:isabelle.openTutorial?%5B%22goals%22%5D)\n[Show Infoview](command:isabelle.infoview)",
             "media": {
               "markdown": "media/walkthrough/infoview.md"
             },
@@ -666,7 +666,7 @@
       "isabelle-panel": [
         {
           "id": "isabelle-infoview",
-          "name": "Infoview",
+          "name": "Isabelle Infoview",
           "type": "webview"
         }
       ]

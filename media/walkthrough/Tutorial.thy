@@ -31,8 +31,8 @@ lemma "x\<^sub>1 + x\<^sub>2 = x\<^sub>2 + (x\<^sub>1::nat)"
 section \<open>Goals\<close>
 
 text \<open>
-  Move the cursor through this proof: the Infoview shows
-  the goal at each step.
+  Move the cursor through this proof: the Isabelle
+  Infoview shows the goal at each step.
 \<close>
 
 lemma "rev (rev xs) = xs"

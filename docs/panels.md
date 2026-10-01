@@ -6,7 +6,7 @@ the one-line verdict for each; this is the detail behind it.
 
 Extracted from `GAPS.md`.
 
-## Infoview
+## Isabelle Infoview
 
 jEdit's Output and State dockables in one view, after Lean's infoview. The Output dockable
 shows every message of the command at the caret, and the State dockable shows its proof

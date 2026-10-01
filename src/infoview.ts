@@ -217,7 +217,7 @@ export class Infoview implements vscode.WebviewViewProvider {
 
   private openInEditor(): void {
     if (this.editorPanel) { this.editorPanel.reveal(undefined, true); return }
-    const panel = vscode.window.createWebviewPanel(Infoview.editorViewType, 'Infoview',
+    const panel = vscode.window.createWebviewPanel(Infoview.editorViewType, 'Isabelle Infoview',
       { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
       { enableScripts: true, retainContextWhenHidden: true })
     this.editorPanel = panel

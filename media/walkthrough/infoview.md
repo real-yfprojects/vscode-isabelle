@@ -1,4 +1,4 @@
-# The Infoview
+# The Isabelle Infoview
 
 The goals and messages of the command at the cursor, in the bottom panel.
 
