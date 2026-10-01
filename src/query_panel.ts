@@ -19,6 +19,7 @@
 
 import * as vscode from 'vscode'
 import { LanguageClient } from 'vscode-languageclient/node'
+import { markupText, renderMarkup } from './markup_render'
 import { isabelleCss, scriptNonce } from './webview'
 
 const FIND_THEOREMS = 'find_theorems'
@@ -238,7 +239,9 @@ ${isabelleCss()}
     }
   });
 
-  // Results are XML, as for Sledgehammer; rebuild as nodes rather than assigning innerHTML.
+  // Results are XML, as for Sledgehammer; rebuilt as nodes by markup_render.ts.
+  ${markupText}
+  ${renderMarkup}
   function renderOutput(xml) {
     const out = $('out');
     out.textContent = '';
@@ -246,18 +249,7 @@ ${isabelleCss()}
     try { parsed = new DOMParser().parseFromString('<root>' + xml + '</root>', 'application/xml'); }
     catch (e) { out.textContent = xml; return; }
     if (!parsed || parsed.getElementsByTagName('parsererror').length) { out.textContent = xml; return; }
-    const walk = (node, into) => {
-      for (const child of node.childNodes) {
-        if (child.nodeType === 3) into.appendChild(document.createTextNode(child.nodeValue));
-        else if (child.nodeType === 1) {
-          const span = document.createElement('span');
-          span.className = child.nodeName;
-          walk(child, span);
-          into.appendChild(span);
-        }
-      }
-    };
-    walk(parsed.documentElement, out);
+    renderMarkup(parsed.documentElement, out, document);
   }
 
   // Every query opens with an empty output, so "finished and still empty" is the only

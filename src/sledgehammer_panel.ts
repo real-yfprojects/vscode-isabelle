@@ -16,6 +16,7 @@
 
 import * as vscode from 'vscode'
 import { LanguageClient } from 'vscode-languageclient/node'
+import { markupText, renderMarkup } from './markup_render'
 import { SLEDGEHAMMER_RAN } from './walkthrough'
 import { isabelleCss, scriptNonce } from './webview'
 
@@ -167,7 +168,9 @@ ${isabelleCss()}
   // Results arrive as XML; <sendback> elements are the clickable proof suggestions.
   // Parsed as data and rebuilt with createElement/createTextNode rather than assigned
   // to innerHTML: the text can include content echoed from theory files, and this way
-  // nothing in it is ever interpreted as markup.
+  // nothing in it is ever interpreted as markup (markup_render.ts).
+  ${markupText}
+  ${renderMarkup}
   function renderOutput(xml) {
     const out = $('out');
     out.textContent = '';
@@ -175,29 +178,8 @@ ${isabelleCss()}
     try { parsed = new DOMParser().parseFromString('<root>' + xml + '</root>', 'application/xml'); }
     catch (e) { out.textContent = xml; return; }
     if (!parsed || parsed.getElementsByTagName('parsererror').length) { out.textContent = xml; return; }
-
-    const walk = (node, into) => {
-      for (const child of node.childNodes) {
-        if (child.nodeType === 3) {
-          into.appendChild(document.createTextNode(child.nodeValue));
-        } else if (child.nodeType === 1) {
-          if (child.nodeName === 'sendback') {
-            const text = child.textContent.trim();
-            const button = document.createElement('button');
-            button.className = 'sendback';
-            button.textContent = text;
-            button.addEventListener('click', () => vscode.postMessage({ command: 'sendback', text }));
-            into.appendChild(button);
-          } else {
-            const span = document.createElement('span');
-            span.className = child.nodeName;
-            walk(child, span);
-            into.appendChild(span);
-          }
-        }
-      }
-    };
-    walk(parsed.documentElement, out);
+    renderMarkup(parsed.documentElement, out, document,
+      text => vscode.postMessage({ command: 'sendback', text }));
   }
 
   window.addEventListener('message', e => {

@@ -28,12 +28,12 @@ const REGRESSION = ['suite', 'suite2', 'suite4', 'suite6', 'suite12', 'suite15',
                     'suite26', 'suite27', 'suite28', 'suite29', 'suite30', 'suite31',
                     'suite32', 'suite33', 'suite34', 'suite35', 'suite36', 'suite37',
                     'suite38', 'suite39', 'suite40', 'suite41', 'suite42', 'suite43',
-                    'suite44', 'suite45', 'suite46', 'suite47', 'suite48']
+                    'suite44', 'suite45', 'suite46', 'suite47', 'suite48', 'suite49']
 
 /** Suites that need no editor at all, and so cost nothing to run. */
 const PURE = new Set(['suite25', 'suite27', 'suite28', 'suite29', 'suite31', 'suite32',
                     'suite34', 'suite38', 'suite41', 'suite42', 'suite44', 'suite46',
-                    'suite48'])
+                    'suite48', 'suite49'])
 
 /**
  * Suites that assert nothing the prover produces.
