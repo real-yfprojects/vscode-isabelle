@@ -21,12 +21,15 @@ import { colorOf } from './colors'
 import { stickyLines } from './viewport'
 import { themeColorsMarkup } from './semantic_tokens'
 
-const BACKGROUND = [
+/* Palette entries by what they colour: BACKGROUND are tints behind the text, mostly
+   translucent, DOTTED underlines, TEXT the text itself. webview.ts styles the markup
+   classes in prover output by the same lists. */
+export const BACKGROUND = [
   'unprocessed1', 'running1', 'canceled', 'bad', 'intensify', 'quoted', 'antiquoted',
   'markdown_bullet1', 'markdown_bullet2', 'markdown_bullet3', 'markdown_bullet4',
 ]
 const FOREGROUND = ['quoted', 'antiquoted']
-const DOTTED = ['writeln', 'information', 'warning']
+export const DOTTED = ['writeln', 'information', 'warning']
 const TEXT = [
   'main', 'keyword1', 'keyword2', 'keyword3', 'quasi_keyword', 'improper', 'operator',
   'tfree', 'tvar', 'free', 'skolem', 'bound', 'var', 'inner_numeral', 'inner_quoted',

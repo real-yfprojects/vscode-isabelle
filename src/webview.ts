@@ -14,6 +14,7 @@
 import { randomBytes } from 'crypto'
 import * as vscode from 'vscode'
 import { ISABELLE_COLORS, colorOf } from './colors'
+import { BACKGROUND, DOTTED } from './pide_decorations'
 
 /**
  * Message styling, from VS Code's own semantic colours rather than Isabelle's palette.
@@ -56,9 +57,15 @@ export function isabelleCss(): string {
     .get<Record<string, string>>('textColorOverrides') ?? {}
   const rules: string[] = []
 
+  /* As in the editor (pide_decorations.ts) and in Isabelle's own isabelle.css: `quoted`
+     is a 15% grey *background*, and as a text colour it made every constant inside a
+     quoted term, which has no colour of its own, near invisible in the preview. */
   for (const name of Object.keys(ISABELLE_COLORS)) {
     const color = colorOf(name, light, overrides)
-    if (color) rules.push(`.${name} { color: ${color}; }`)
+    if (!color) continue
+    if (BACKGROUND.includes(name)) rules.push(`.${name} { background-color: ${color}; }`)
+    else if (DOTTED.includes(name)) rules.push(`.${name} { border-bottom: 1px dotted ${color}; }`)
+    else rules.push(`.${name} { color: ${color}; }`)
   }
   for (const [cls, style] of Object.entries(MESSAGE_STYLES)) {
     rules.push(`.${cls} { display: block; padding: 2px 6px; margin: 2px 0; ${style} }`)

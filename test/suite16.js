@@ -8,7 +8,7 @@ const path = require('path')
 const { progressBar, statusIcon, statusDescription, splitTheory, groupBySession,
         sessionDescription, sessionIsBusy, sessionIcon, settling } =
   require(path.join(__dirname, '..', 'out', 'theories_panel.js'))
-const { documentBody } = require(path.join(__dirname, '..', 'out', 'webview.js'))
+const { documentBody, isabelleCss } = require(path.join(__dirname, '..', 'out', 'webview.js'))
 
 let passed = 0
 const pass = m => { passed++; console.log('PASS: ' + m) }
@@ -124,6 +124,17 @@ async function run() {
   // A fragment (or anything unparsable) must pass through rather than vanish.
   assert.strictEqual(documentBody('<p class="free">x</p>'), '<p class="free">x</p>')
   pass('preview leaves a plain fragment alone')
+
+  // The classes are coloured from the editor's palette by what each entry is for. The
+  // preview's quoted terms are wrapped in `quoted`, a 15% grey tint: as a text colour it
+  // left every constant inside them, which has no colour of its own, near invisible.
+  const css = isabelleCss()
+  assert.match(css, /\.quoted \{ background-color: rgba\(/)
+  assert.match(css, /\.antiquoted \{ background-color: rgba\(/)
+  assert.match(css, /\.keyword1 \{ color: /, 'text colours stay text colours')
+  const faint = [...css.matchAll(/\.(\w+) \{ color: rgba\([^)]*,\s*0\.\d+\)/g)].map(m => m[1])
+  assert.deepStrictEqual(faint, [], 'no class may get a translucent text colour')
+  pass('palette tints style backgrounds in prover output, not text')
 
   // A theory opened before its imports are loaded has a *failing header*: PIDE reports
   // the unresolved `imports` as a failed command. Shown as a failure it looks alarming
