@@ -422,6 +422,7 @@
           "comments": "off",
           "strings": "on"
         },
+        "editor.acceptSuggestionOnEnter": "smart",
         "editor.formatOnType": true,
         "editor.semanticHighlighting.enabled": true
       }
