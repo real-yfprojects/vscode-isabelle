@@ -26,6 +26,11 @@
  * bottom panel or either side bar, and optionally an editor tab beside the theory. The
  * page is loaded once per host and later bodies are posted into it, so an update keeps
  * the scroll position and which blocks are collapsed.
+ *
+ * Both hosts outlive any one server, and are registered at activation: VS Code restores
+ * the view and the editor tab on a reload or a restart, and a view without a provider
+ * stays blank while one without a serializer is dropped. Each client is bound in turn
+ * once it runs, and until then the page says it is waiting.
  */
 
 import * as vscode from 'vscode'
@@ -57,6 +62,7 @@ export class Infoview implements vscode.WebviewViewProvider {
   private viewMargin: number | undefined
   private editorMargin: number | undefined
 
+  private client: LanguageClient | undefined
   private mode: InfoviewMode = 'waiting'
   private backend: Backend | undefined
   private latest: InfoSection | undefined
@@ -67,19 +73,19 @@ export class Infoview implements vscode.WebviewViewProvider {
   private renderScheduled = false
   private lastEditor: vscode.TextEditor | undefined
 
-  constructor(
-    private readonly client: LanguageClient,
-    private readonly log: (m: string) => void,
-    private readonly tryExtended: boolean,
-  ) {
+  constructor(private readonly log: (m: string) => void) {
     const editor = vscode.window.activeTextEditor
     if (editor?.document.languageId === 'isabelle') this.lastEditor = editor
   }
 
+  /** The hosts and commands, for the extension's lifetime; see the header. */
   register(disposables: vscode.Disposable[]): void {
     disposables.push(
       vscode.window.registerWebviewViewProvider(Infoview.viewType, this,
         { webviewOptions: { retainContextWhenHidden: true } }),
+      vscode.window.registerWebviewPanelSerializer(Infoview.editorViewType, {
+        deserializeWebviewPanel: async panel => this.adoptEditorPanel(panel),
+      }),
       vscode.commands.registerCommand('isabelle.infoview',
         () => vscode.commands.executeCommand(`${Infoview.viewType}.focus`)),
       vscode.commands.registerCommand('isabelle.infoviewPin', () => this.pin()),
@@ -103,17 +109,43 @@ export class Infoview implements vscode.WebviewViewProvider {
       }),
       // The palette is baked into the stylesheet, so a theme switch reloads the pages.
       vscode.window.onDidChangeActiveColorTheme(() => this.reload()),
-      { dispose: () => { this.backend?.dispose(); this.editorPanel?.dispose() } },
+      { dispose: () => { this.unbind(); this.editorPanel?.dispose() } },
     )
-    void this.start()
   }
 
-  private async start(): Promise<void> {
-    const answered = this.handshake()
-    if (!this.tryExtended) this.use('stock', new StockBackend(this.client, this.log, this))
+  /** A client that has started. It asks whether the server speaks PIDE/infoview_*
+      whenever `tryExtended` is set; it may still be the stock one, if the jar does not fit
+      the distribution. Unbound when `disposables` are. */
+  bind(client: LanguageClient, tryExtended: boolean, disposables: vscode.Disposable[]): void {
+    this.unbind()
+    this.client = client
+    disposables.push({ dispose: () => { if (this.client === client) this.unbind() } })
+    void this.start(client, tryExtended)
+  }
+
+  /* The server is gone, and its pins with it: back to waiting for the next one. */
+  private unbind(): void {
+    this.backend?.dispose()
+    this.backend = undefined
+    this.client = undefined
+    this.mode = 'waiting'
+    this.latest = undefined
+    this.frozen = undefined
+    this.pins = []
+    this.paused = false
+    this.pending = false
+    this.scheduleRender()
+  }
+
+  /* Every step after an await checks that the client is still the bound one: a restart
+     within the handshake's wait must not hand the old client a backend. */
+  private async start(client: LanguageClient, tryExtended: boolean): Promise<void> {
+    const answered = this.handshake(client, tryExtended)
+    if (!tryExtended) this.use('stock', new StockBackend(client, this.log, this))
     const extended = await answered
-    if (extended) this.use('extended', new ExtendedBackend(this.client, this.log, this))
-    else if (this.mode === 'waiting') this.use('stock', new StockBackend(this.client, this.log, this))
+    if (this.client !== client) return
+    if (extended) this.use('extended', new ExtendedBackend(client, this.log, this))
+    else if (this.mode === 'waiting') this.use('stock', new StockBackend(client, this.log, this))
   }
 
   /* Resolves true with the first PIDE/infoview_response, whose content is shown at once.
@@ -121,26 +153,31 @@ export class Infoview implements vscode.WebviewViewProvider {
      The listener is gone before this resolves, and has to be: the client keeps one handler
      per method, and disposing a registration deletes whichever handler holds the method at
      the time -- so a later dispose would take the extended backend's own with it. */
-  private handshake(): Promise<boolean> {
+  private handshake(client: LanguageClient, tryExtended: boolean): Promise<boolean> {
     return new Promise(resolve => {
       let listener: vscode.Disposable | undefined
       const timer = setTimeout(() => {
         listener?.dispose()
-        if (this.tryExtended) {
+        if (tryExtended && this.client === client) {
           this.log('infoview: no answer to PIDE/infoview_request; using the State and Output messages')
         }
         resolve(false)
-      }, this.tryExtended ? HANDSHAKE_MS : 4 * HANDSHAKE_MS)
-      listener = this.client.onNotification('PIDE/infoview_response',
+      }, tryExtended ? HANDSHAKE_MS : 4 * HANDSHAKE_MS)
+      listener = client.onNotification('PIDE/infoview_response',
         (p: { live?: InfoSection; pins?: InfoSection[] }) => {
           clearTimeout(timer)
           listener?.dispose()
-          this.setExtended(p)
+          if (this.client === client) this.setExtended(p)
           resolve(true)
         })
-      void this.client.sendNotification('PIDE/infoview_request', {})
+      void client.sendNotification('PIDE/infoview_request', {})
         .catch(err => this.log(`infoview_request failed: ${err}`))
     })
+  }
+
+  /** Whether `backend` is the one in use, for a backend's output that arrives late. */
+  isCurrent(backend: Backend): boolean {
+    return this.backend === backend
   }
 
   private use(mode: InfoviewMode, backend: Backend): void {
@@ -217,10 +254,18 @@ export class Infoview implements vscode.WebviewViewProvider {
 
   private openInEditor(): void {
     if (this.editorPanel) { this.editorPanel.reveal(undefined, true); return }
-    const panel = vscode.window.createWebviewPanel(Infoview.editorViewType, 'Isabelle Infoview',
+    this.adoptEditorPanel(vscode.window.createWebviewPanel(Infoview.editorViewType, 'Isabelle Infoview',
       { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
-      { enableScripts: true, retainContextWhenHidden: true })
+      { enableScripts: true, retainContextWhenHidden: true }))
+  }
+
+  /* A new tab, or one VS Code restored after a reload. Its page is replaced either way,
+     and scripts are switched on here so the restored one does not depend on what VS Code
+     kept of the options. */
+  private adoptEditorPanel(panel: vscode.WebviewPanel): void {
+    if (this.editorPanel) { panel.dispose(); return }
     this.editorPanel = panel
+    panel.webview.options = { enableScripts: true }
     panel.webview.onDidReceiveMessage((msg: WebviewMessage) => this.onMessage(msg, 'editor'))
     panel.onDidDispose(() => {
       this.editorPanel = undefined
@@ -255,7 +300,7 @@ export class Infoview implements vscode.WebviewViewProvider {
   /** `uri#line`, from an enclosing goal's header; the uri is the server's. */
   private async revealLine(arg: string): Promise<void> {
     const hash = arg.lastIndexOf('#')
-    if (hash < 0) return
+    if (hash < 0 || !this.client) return
     try {
       await revealLine(this.client.protocol2CodeConverter.asUri(arg.slice(0, hash)),
         Number(arg.slice(hash + 1)))
@@ -504,6 +549,8 @@ class StockBackend implements Backend {
   /* The header says where the cursor was when the output came, which is the closest a
      released server comes to saying which command it is. */
   private publishLive(): void {
+    // A state_init answered after a restart or the switch to the extended backend.
+    if (!this.infoview.isCurrent(this)) return
     const editor = this.infoview.caretEditor
     this.infoview.setLive({
       uri: editor?.document.uri.toString(),
@@ -514,6 +561,7 @@ class StockBackend implements Backend {
   }
 
   private publishPins(): void {
+    if (!this.infoview.isCurrent(this)) return
     this.infoview.setPins([...this.pins.values()].map(p => ({ ...p })))
   }
 

@@ -303,11 +303,8 @@ async function startClient(): Promise<void> {
   pide = new PideDecorations(log)
   pide.register(clientScope, client)
   registerSemanticTokens(clientScope, ISABELLE_SELECTOR, pide)
-  /* Asks the server whether it speaks PIDE/infoview_* whenever the extended server is
-     configured; it may still be the stock one, if the jar does not fit the distribution. */
-  infoview = new Infoview(client, log,
-    vscode.workspace.getConfiguration('isabelle').get<boolean>('extendedServer', false))
-  infoview.register(clientScope)
+  infoview?.bind(client,
+    vscode.workspace.getConfiguration('isabelle').get<boolean>('extendedServer', false), clientScope)
   sledgehammer = new SledgehammerPanel(client, log)
   sledgehammer.register(clientScope)
   docPanel = new DocumentationPanel(client, log)
@@ -366,7 +363,6 @@ async function stopClient(): Promise<void> {
     try { d.dispose() } catch { /* a provider may already be gone */ }
   }
   pide = undefined
-  infoview = undefined
   sledgehammer = undefined
   docPanel = undefined
   previews = undefined
@@ -426,6 +422,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Before the lookup below, so that a missing distribution is reported, not a missing command.
   registerTerminal(context, reportStartupFailure)
   registerWalkthrough(context, reportStartupFailure)
+  /* Before it too: VS Code restores the infoview's view and editor tab on a reload, and
+     without a provider and serializer they stay blank or are dropped. Each server binds
+     to it once it runs. */
+  infoview = new Infoview(log)
+  infoview.register(context.subscriptions)
 
   try {
     isabelleHome = findIsabelleHome()
