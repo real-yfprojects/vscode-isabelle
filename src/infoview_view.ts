@@ -10,8 +10,8 @@ import { escapeAttr, escapeHtml } from './graphview_panel_view'
 
 export type CommandStatus = 'unprocessed' | 'running' | 'finished' | 'failed'
 
-/** The goals of a level around the command, as the command that last printed them left
-    them. Only the extended server sends these. */
+/** The goals of a level around the command, or of its own level, as the command that last
+    printed them left them. Only the extended server sends these. */
 export interface OuterGoals {
   /** 0-based. */
   line: number
@@ -36,6 +36,10 @@ export interface InfoSection {
   /** Server HTML. Absent when the server cannot tell goals apart (a stock pin shows only
       its proof state, as `goals`, and says nothing of messages). */
   goals?: string
+  /** The goal of the command's own level, when the command printed none: a diag command
+      like `try` prints no proof state, and `then` prints the facts it chains but not the
+      goal. Neither changes the goal, so this is the one the command before it left. */
+  current?: OuterGoals
   /** The goals of each enclosing level, innermost first: Isabelle prints only the
       innermost goal, so inside `have` or `show` these are the rest of the proof. */
   outer?: OuterGoals[]
@@ -87,18 +91,23 @@ function emptyText(section: InfoSection): string {
   }
 }
 
-/* Below the command's own goals, one entry per enclosing level, so all open goals are in
-   view with the current one on top. Each says where it was printed, and goes there. */
+/* A level's goals, printed by another command: its own goal's level when the command
+   printed none, and each enclosing level. Each says where it was printed, and goes there. */
+function levelGoals(section: InfoSection, label: string, level: OuterGoals): string {
+  const where = section.uri ? `${section.uri}#${level.line}` : ''
+  return `<div class="outer">` +
+    `<div class="outer-head">${escapeHtml(label)}` +
+    (where ? ` <a class="location" data-command="revealLine" data-arg="${escapeAttr(where)}" ` +
+      `title="Go to the command">line ${level.line + 1}</a>` : '') +
+    (level.source ? ` <span class="cmdtext">${escapeHtml(level.source)}</span>` : '') +
+    `</div>${level.goals}</div>`
+}
+
+/* Below the command's own goals, the goal it left unchanged, then one entry per enclosing
+   level, so all open goals are in view with the current one on top. */
 function outerGoals(section: InfoSection): string {
-  return (section.outer ?? []).map(level => {
-    const where = section.uri ? `${section.uri}#${level.line}` : ''
-    return `<div class="outer">` +
-      `<div class="outer-head">Enclosing` +
-      (where ? ` <a class="location" data-command="revealLine" data-arg="${escapeAttr(where)}" ` +
-        `title="Go to the command">line ${level.line + 1}</a>` : '') +
-      (level.source ? ` <span class="cmdtext">${escapeHtml(level.source)}</span>` : '') +
-      `</div>${level.goals}</div>`
-  }).join('')
+  return (section.current ? levelGoals(section, 'Unchanged since', section.current) : '') +
+    (section.outer ?? []).map(level => levelGoals(section, 'Enclosing', level)).join('')
 }
 
 function sectionBody(section: InfoSection, key: string): string {
@@ -182,6 +191,7 @@ export const INFOVIEW_CSS = `
   .empty { opacity: .6; font-family: var(--vscode-font-family); }
   .pins-footer { text-align: right; }
   .outer { margin-top: 6px; padding-top: 4px; border-top: 1px dashed var(--vscode-panel-border, rgba(128,128,128,.35)); }
+  .output > .outer:first-child { margin-top: 0; padding-top: 0; border-top: none; }
   .outer > .source { opacity: .75; }
   .outer-head { font-family: var(--vscode-font-family); font-size: .9em; opacity: .7; margin-bottom: 2px;
                 display: flex; gap: 6px; align-items: baseline; }

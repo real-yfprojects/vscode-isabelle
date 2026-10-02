@@ -21,7 +21,8 @@ PIDE/infoview_pin         { id, uri, line, character }
 PIDE/infoview_unpin       { id }
 PIDE/infoview_set_margin  { margin }
 PIDE/infoview_response    { live?, pins: [ { id?, uri, line, command, source, status,
-                                             goals, outer, messages, stale? } ] }
+                                             goals, current?, outer, messages, stale? } ] }
+                              current?: { line, command, source, goals }
                               outer: [ { line, command, source, goals } ], innermost first
 ```
 
@@ -42,13 +43,24 @@ change either, because the extended server is Scala in a jar.
 The keywords give the nesting instead, as in `Text_Structure`'s indentation: a goal
 statement opens a level, and a qed closes one. Each enclosing level's goals were printed
 by the last command at that level before the inner block began. That is `proof` before
-a first `show`, or the `by` that closed a sibling before a later one. `enclosing` walks
+a first `show`, or the `by` that closed a sibling before a later one. `levels` walks
 back from the command, skips closed blocks, and at each level takes the latest state that
 holds a goal. The goal header's `keyword1` "goal" identifies such a state; a state in
 chain mode has no header. The walk stops at the statement that opened the proof, at
 `oops`, and at any command outside a proof, so it never leaves the current lemma. The
 client puts these levels under the command's own goals, current first. That way every
 open goal is in view, with the one being proved on top.
+
+**A command that prints no goal.** Only theory goals and proof commands print a state
+(`Keyword.is_printed`), so a diag command like `try`, `sledgehammer` or `thm` has none.
+A command that chains facts (`then`, `from`, `with`, `ultimately`) prints them in chain
+mode, without the goal. Neither changes the goal, so the walk starts at the command's own
+level and takes the latest goal there as well. When that is not the command's own state,
+it goes out as `current`, which the client shows as "Unchanged since" that command. Diag
+and document commands are passed over by the walk, so a leftover `thm` does not cut off
+the enclosing levels for the commands after it. The stock backend's State panel query
+prints the state after any command, so it shows a diag command's goal, but not the goal
+behind a chain.
 
 **A pin holds on to a place, not only a command.** `Query_Operation`, which the State panel
 pins with, holds a `Command`. Editing that command replaces it with a new one, and from

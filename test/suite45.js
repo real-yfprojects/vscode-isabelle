@@ -38,7 +38,9 @@ async function until(what, predicate, timeoutMs = 120000) {
   const brief = s => s && {
     mode: s.mode, paused: s.paused, pending: s.pending,
     live: s.live && { line: s.live.line, command: s.live.command, source: s.live.source,
-      status: s.live.status, goals: text(s.live.goals).slice(0, 80) },
+      status: s.live.status, goals: text(s.live.goals).slice(0, 80),
+      current: s.live.current && { line: s.live.current.line, goals: text(s.live.current.goals).slice(0, 80) },
+      outer: (s.live.outer ?? []).map(o => o.line) },
     pins: s.pins.map(p => ({ id: p.id, line: p.line, source: p.source, status: p.status,
       stale: p.stale, goals: text(p.goals).slice(0, 80) })),
   }
@@ -109,7 +111,30 @@ async function drive() {
     '  show D using that(2) by simp',                  // 27
     'qed',                                             // 28
     '',                                                // 29
-    'end',                                             // 30
+    'lemma chain: "A \\<and> B" if "A" "B"',           // 30
+    'proof',                                           // 31
+    '  show A using that(1) by simp',                  // 32
+    '  from that(2)',                                  // 33
+    '  show B .',                                      // 34
+    'qed',                                             // 35
+    '',                                                // 36
+    'lemma diag: "x + 0 = (x::nat)"',                  // 37
+    '  term x',                                        // 38
+    '  apply (rule sym)',                              // 39
+    '  thm sym',                                       // 40
+    '  by simp',                                       // 41
+    '',                                                // 42
+    'lemma diag_nest: "C \\<and> D" if "C" "D"',       // 43
+    'proof',                                           // 44
+    '  show C',                                        // 45
+    '    thm that',                                    // 46
+    '    using that(1) by simp',                       // 47
+    '  show D using that(2) by simp',                  // 48
+    'qed',                                             // 49
+    '',                                                // 50
+    'term "0::nat"',                                   // 51
+    '',                                                // 52
+    'end',                                             // 53
     '',
   ].join('\n'), 'utf8')
   const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file))
@@ -156,6 +181,45 @@ async function drive() {
   assert.deepStrictEqual(outerLines(s), [24, 22], 'innermost first, one entry per level')
   assert.ok(/2 subgoals/.test(text(s.live.outer[1].goals)))
   pass('inside show, the goals of every enclosing level follow the current one')
+
+  // --- commands that print no goal of their own ----------------------------------------
+  // A diag command (try, sledgehammer, thm, term) prints no proof state at all, and one
+  // that chains facts (then, from, with) prints them without the goal. Either way the goal
+  // is the one the command before it left, which the server adds as `current`.
+  const currentLine = s => s.live?.current?.line
+  const currentGoals = s => text(s.live?.current?.goals)
+  at(33, 4)
+  s = await until('the goal at a chaining command', s => s.live?.line === 33 && currentLine(s) === 32)
+  assert.ok(/picking/.test(text(s.live.goals)), `its own chained facts stay: ${text(s.live.goals)}`)
+  assert.ok(/1 subgoal/.test(currentGoals(s)) && /\bB\b/.test(currentGoals(s)), currentGoals(s))
+  pass('a chaining command shows the goal the command before it left')
+
+  at(38, 4)
+  s = await until('the goal at a diag command after the statement',
+    s => s.live?.line === 38 && currentLine(s) === 37)
+  assert.ok(!text(s.live.goals), `the diag command printed no state itself: ${text(s.live.goals)}`)
+  assert.ok(/x \+ 0 = x/.test(currentGoals(s)), currentGoals(s))
+  at(40, 4)
+  s = await until('the goal at a diag command after apply', s => s.live?.line === 40 && currentLine(s) === 39)
+  assert.ok(/x = x \+ 0/.test(currentGoals(s)), currentGoals(s))
+  pass('a diag command shows the goal it runs on')
+
+  at(46, 6)
+  s = await until('the goals at a diag command inside show',
+    s => s.live?.line === 46 && currentLine(s) === 45 && outerLines(s).length === 1)
+  assert.deepStrictEqual(outerLines(s), [44], 'a diag command does not end the walk to the enclosing levels')
+  assert.ok(/2 subgoals/.test(text(s.live.outer[0].goals)))
+  at(47, 10)
+  s = await until('the goals after a diag command inside show',
+    s => s.live?.line === 47 && outerLines(s).length === 1)
+  assert.deepStrictEqual(outerLines(s), [44], 'nor for the commands after it')
+  pass('a diag command inside show keeps the enclosing goals in view')
+
+  at(51, 4)
+  s = await until('a diag command outside any proof', s => s.live?.line === 51)
+  assert.strictEqual(s.live.current, undefined, `no goal outside a proof: ${currentGoals(s)}`)
+  assert.deepStrictEqual(outerLines(s), [])
+  pass('a diag command outside a proof shows no goal')
 
   // --- a pin stays put ---------------------------------------------------------------
   caret(5)

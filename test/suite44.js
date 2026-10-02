@@ -101,6 +101,25 @@ async function run() {
   assert.ok(html.includes('live:goals'), 'enclosing goals alone still make a Goals block')
   pass('enclosing goals follow the current one, each going to where it was printed')
 
+  // A diag command prints no goal, a chaining one only its facts: the goal comes from the
+  // command before, between the command's own state and the enclosing levels.
+  const chained = Object.assign({}, inShow, {
+    goals: '<pre>proof (chain) picking this: A</pre>',
+    current: { line: 8, command: 'by', source: 'have A by simp', goals: '<pre>goal (1 subgoal): 1. B</pre>' },
+  })
+  html = infoviewBody(model({ live: chained }))
+  const chainBlock = html.slice(html.indexOf('live:goals'), html.indexOf('live:messages'))
+  assert.ok(chainBlock.indexOf('picking') < chainBlock.indexOf('1. B') &&
+            chainBlock.indexOf('1. B') < chainBlock.indexOf('2 subgoals'),
+    'own state, then the goal it left unchanged, then the enclosing levels')
+  assert.ok(chainBlock.includes('Unchanged since') && chainBlock.includes('line 9') &&
+            chainBlock.includes('have A by simp'), 'it says which command printed the goal')
+  assert.ok(html.includes('data-arg="file:///c%3A/work/Foo.thy#8"'), 'and goes there')
+  html = infoviewBody(model({ live: Object.assign({}, chained, { goals: '', outer: [] }) }))
+  assert.ok(html.includes('live:goals') && !html.includes('No output.'),
+    'a diag command with nothing of its own still shows the goal')
+  pass('a command that printed no goal shows the one it left unchanged')
+
   // --- escaping -------------------------------------------------------------------
   const hostile = {
     uri: 'file:///t/%3Cimg%20src%3Dx%3E.thy', line: 0,
