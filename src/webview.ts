@@ -86,6 +86,10 @@ export function isabelleCss(): string {
     a { color: inherit; text-decoration: none; border-bottom: 1px dotted currentColor; cursor: pointer; }
     .bold { font-weight: bold; }
     .hidden { display: none; }
+    /* Atoms that carry their type as a title: every one of a goal does, so they are not
+       marked until the pointer is on one, as in the editor's own hover highlight. */
+    .typing:hover, .xml_elem[title]:hover {
+      background-color: var(--vscode-editor-hoverHighlightBackground); cursor: help; }
     ${rules.join('\n    ')}
   `
 }

@@ -74,6 +74,26 @@ async function run() {
   assert.strictEqual(shown(out3), 'e: Try this: by (metis x foo) (12 ms)')
   pass('without a handler a sendback is ordinary text')
 
+  // A typing the prover wraps around a variable: its data half is the type, which the
+  // span shows as its title, as jEdit shows it on hover -- and never as text.
+  const typed = (wrapped, data, ...children) => ({
+    ...el('xml_elem', el('xml_body', ...data), ...children),
+    getAttribute: name => (name === 'xml_name' ? wrapped : null),
+  })
+  const goal = el('root', el('writeln_message',
+    typed('typing', [el('block', el('tconst', txt('nat')), txt(' '), el('tconst', txt('list')))],
+      el('free', txt('xs'))),
+    txt(' = '),
+    typed('sorting', [el('tclass', txt('order'))], el('tfree', txt("'a")))))
+  const out4 = doc.createElement('pre')
+  renderMarkup(goal, out4, doc)
+  assert.strictEqual(shown(out4), "xs = 'a")
+  const spans = []
+  const collect = n => { if (n.title) spans.push([shown(n), n.title]); (n.children ?? []).forEach(collect) }
+  collect(out4)
+  assert.deepStrictEqual(spans, [['xs', ':: nat list'], ["'a", ':: order']])
+  pass('a wrapped typing or sorting titles its span with the type or sort')
+
   console.log(passed + ' checks passed')
   console.log('SUITE49_OK')
 }

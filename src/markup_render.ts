@@ -15,11 +15,13 @@ export interface MarkupNode {
   nodeName: string
   nodeValue: string | null
   childNodes: ArrayLike<MarkupNode>
+  getAttribute?(name: string): string | null
 }
 
 /** As much of a DOM element or text node as the rendering writes. */
 export interface OutputNode {
   className?: string
+  title?: string
   textContent?: string | null
   appendChild(child: OutputNode): unknown
   addEventListener?(type: string, listener: () => void): void
@@ -46,7 +48,9 @@ export function markupText(node: MarkupNode): string {
 
 /**
  * Append what `node` holds to `into`: text as text, each element as a span classed by
- * its markup name, which isabelleCss() colours, and no `xml_body` (see markupText).
+ * its markup name, which isabelleCss() colours, and no `xml_body` (see markupText) --
+ * except that the type or sort a wrapped typing or sorting carries becomes the title of
+ * its span, which shows on hover as it does in jEdit.
  * Given `sendback`, a <sendback> element -- a proof Sledgehammer suggests -- becomes a
  * button that passes its text on when clicked.
  */
@@ -68,6 +72,15 @@ export function renderMarkup(
     } else {
       const span = doc.createElement('span')
       span.className = child.nodeName
+      const wrapped = child.getAttribute?.('xml_name')
+      if (child.nodeName === 'xml_elem' && (wrapped === 'typing' || wrapped === 'sorting')) {
+        const body = Array.from(child.childNodes)
+          .find(c => c.nodeType === 1 && c.nodeName === 'xml_body')
+        if (body) {
+          span.title = ':: ' +
+            Array.from(body.childNodes).map(markupText).join('').replace(/\s+/g, ' ').trim()
+        }
+      }
       renderMarkup(child, span, doc, sendback)
       into.appendChild(span)
     }
