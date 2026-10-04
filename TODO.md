@@ -42,7 +42,10 @@ This documents tracks features and tasks that might already be tracked in other 
   - [ ] not done: jEdit's ML heap widget. Needs a mirror branch forwarding
     `Session.runtime_statistics` as a throttled `PIDE/runtime_statistics`
 - [ ] expose isabelle cygwin terminal in vscode
-- [ ] completion preview types/statements for lemmas
+- [x] completion preview types/statements for lemmas -- `completionItem/resolve` on the
+    extended server: the item VS Code shows gets the statement of a fact (all of its theorems,
+    the first as the detail), the type of a constant or of a fixed variable, from the hover's
+    query (`vscode_hover.ML`) in the context the names come from. Test: suite65
 - [~] code skeletons -- light bulb and ghost text (`skeleton_provider.ts`; server:
     `vscode_skeletons.ML` on the `vscode-skeletons` mirror branch), tests: suite60 (pure),
     suite61, suite62
