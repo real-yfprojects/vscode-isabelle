@@ -23,7 +23,8 @@ main                                       (all of the above, merged)
 
 8d9ad3f298  (the Isabelle2025-2 release, on master's history)
  +- vscode-2025-2                         (the backport users run; see below)
-     +- vscode-skeletons                  (code skeletons as code actions; see below)
+     merged: vscode-skeletons             (code skeletons as code actions; see below)
+     merged: vscode-hover-info            (what a name stands for, on hover)
 ```
 
 The feature branches exist to be proposed upstream one at a time, so they stay separate
@@ -165,9 +166,9 @@ Anything else falls back to the standard server with a warning.
 
 ### What is in it
 
-The commit named in `server/Isabelle2025-2.ref`, currently the tip of `vscode-skeletons`,
-which adds the code skeletons (see "Not a limit: ML" below) to the tip of `vscode-2025-2`
-above: `main` of mirror-isabelle, including the completion work, plus the two
+The commit named in `server/Isabelle2025-2.ref`, currently the tip of `vscode-2025-2`
+above, with `vscode-skeletons` (code skeletons, see "Not a limit: ML" below) and
+`vscode-hover-info` (what a name stands for, on hover) merged in: `main` of mirror-isabelle, including the completion work, plus the two
 `vscode-simplifier-trace` commits not yet merged there -- adapted to the release as in the
 table above -- and indentation (onTypeFormatting and rangeFormatting, jEdit's indentation
 rule), the `semantic_*` categories of inner syntax, the infoview (`PIDE/infoview_*`),
@@ -221,9 +222,12 @@ lives in theory contexts. It has no antiquotations either. And it must declare n
 the toplevel, since Poly/ML prints every declaration on the process output. The development
 tree loads it the same way, so the branches do not differ.
 
-`vscode_skeletons.ML` is a second prelude of the same kind (`vscode-skeletons`, on top of
-`vscode-2025-2`). It computes code skeletons from the state after a command: an Isar
-sketch of a pending goal, subgoal blocks for a proof script, and the definitions and
+Three more preludes of the same kind go through the same loader,
+`Language_Server.ml_prelude`. `vscode_sledgehammer.ML` runs the Sledgehammer panel's query
+below the checking of the document (see its header). `vscode_hover.ML` (`vscode-hover-info`,
+merged into `vscode-2025-2`) says what a name stands for, which the markup only names.
+`vscode_skeletons.ML` (`vscode-skeletons`, likewise) computes code skeletons from the
+state after a command: an Isar sketch of a pending goal, subgoal blocks for a proof script, and the definitions and
 instance proof an instantiation still lacks. The printing follows
 `HOL/ex/Sketch_and_Explore.thy`, minus that theory's HOL dependencies (`ATP_Util`,
 `Sledgehammer_Util`), since a prelude cannot reach them. To check that a prelude really
