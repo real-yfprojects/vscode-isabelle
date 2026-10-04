@@ -25,6 +25,8 @@ main                                       (all of the above, merged)
  +- vscode-2025-2                         (the backport users run; see below)
      merged: vscode-skeletons             (code skeletons as code actions; see below)
      merged: vscode-hover-info            (what a name stands for, on hover)
+     merged: vscode-completion-preview    (the same for the item completion shows;
+                                           on vscode-hover-info, whose query it asks)
 ```
 
 The feature branches exist to be proposed upstream one at a time, so they stay separate
@@ -168,7 +170,8 @@ Anything else falls back to the standard server with a warning.
 
 The commit named in `server/Isabelle2025-2.ref`, currently the tip of `vscode-2025-2`
 above, with `vscode-skeletons` (code skeletons, see "Not a limit: ML" below) and
-`vscode-hover-info` (what a name stands for, on hover) merged in: `main` of mirror-isabelle, including the completion work, plus the two
+`vscode-hover-info` (what a name stands for, on hover) and `vscode-completion-preview` (the
+same for the completion item VS Code shows, `completionItem/resolve`) merged in: `main` of mirror-isabelle, including the completion work, plus the two
 `vscode-simplifier-trace` commits not yet merged there -- adapted to the release as in the
 table above -- and indentation (onTypeFormatting and rangeFormatting, jEdit's indentation
 rule), the `semantic_*` categories of inner syntax, the infoview (`PIDE/infoview_*`),
@@ -225,7 +228,8 @@ tree loads it the same way, so the branches do not differ.
 Three more preludes of the same kind go through the same loader,
 `Language_Server.ml_prelude`. `vscode_sledgehammer.ML` runs the Sledgehammer panel's query
 below the checking of the document (see its header). `vscode_hover.ML` (`vscode-hover-info`,
-merged into `vscode-2025-2`) says what a name stands for, which the markup only names.
+merged into `vscode-2025-2`) says what a name stands for, which the markup only names;
+completion asks it too, for the item VS Code shows (`vscode-completion-preview`).
 `vscode_skeletons.ML` (`vscode-skeletons`, likewise) computes code skeletons from the
 state after a command: an Isar sketch of a pending goal, subgoal blocks for a proof script, and the definitions and
 instance proof an instantiation still lacks. The printing follows
