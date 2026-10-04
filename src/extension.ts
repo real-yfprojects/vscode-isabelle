@@ -236,6 +236,11 @@ async function startClient(): Promise<void> {
       if (!superseded()) void vscode.window.showErrorMessage(message)
       return false
     },
+    /* The extended server sends a hover as HTML when asked to: a <pre> block like the plain
+       text, with each name that has a definition linked to it. Only a server that reads
+       htmlHovers sends any; the stock one ignores it and keeps to plain text. */
+    initializationOptions: { htmlHovers: true },
+    markdown: { supportHtml: true },
     middleware: {
       /* There is no API for "the user is holding Ctrl", but VS Code asks for a definition
          exactly when it is deciding whether to draw the Ctrl+hover link -- so this is

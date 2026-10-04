@@ -30,11 +30,23 @@ This documents tracks features and tasks that might already be tracked in other 
   - [ ] cases
   - [ ] ...
 - [ ] search in isabelle output panel (e.g. for print_classes)
-- [ ] information on hover
-  - [ ] type hints
-    - [ ] click to jump to type definition
-  - [ ] theorem statement
-  - [ ] descriptions/explanations for proof methods
+- [x] information on hover -- a query of the extended server (`vscode_hover.ML`,
+    `vscode_hover_info.scala` on the mirror branch) asks the context of the command for
+    what the markup only names. Tests: suite52 (server), suite49 (pure)
+  - [x] type hints: fixed variables at their binding sites (`fixes`, `fix`, `obtain`,
+    `case (C x)`), the declared type of a constant beside the type at the occurrence
+    - [x] click to jump to type definition: hovers are HTML (`htmlHovers`), every name
+      with a definition linked to it
+    - [x] in the infoview: each atom of a goal has its type as a title
+    - [ ] no type at all on the symbol of a binder or other notation with a parse
+      translation (`∀`, `λ`, `{x. _}`, `[a, b]`), nor anywhere in a term that failed to check
+  - [x] theorem statement: facts, with a selection (`assms(2)`), local facts, case names
+    (`?case` and the case's assumptions)
+  - [x] schematic variable contents: `?thesis`, `?case`, `let ?x`
+  - [x] abbreviations: what they stand for, as an equation over their arguments
+    (`sq x ≡ x * x`, `x ≠ y ≡ ¬ x = y`), also on notation for one (`≠`)
+  - [ ] descriptions/explanations for proof methods: the comment of a method or attribute
+    is not exported by Pure (`Method.get_methods` is private), so the prelude cannot read it
 
 ### Medium
 - [ ] LLM integration into vscode copilot or claude.

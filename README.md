@@ -19,7 +19,7 @@ in your `.thy` files.
 ## Features
 
 - *Writing*: renders math glyphs from ASCII sources; symbol shorthands, Isar and inner syntax (e.g. HOL) completion;
-  Isar and inner syntax highlighting (with semantic colours†); types and messages on hover; auto-indentation†; normalise any accidental actual Unicode characters to ASCII
+  Isar and inner syntax highlighting (with semantic colours†); types and messages on hover, and what a name stands for† (the statement of a fact, the type of a variable, the term of `?thesis`), linked to its definition†; auto-indentation†; normalise any accidental actual Unicode characters to ASCII
 - *Checking*: continuous live PIDE verification; goals and messages at the cursor in one infoview, with pinned goals (that follow your edits†); cache session management
 - *Proving*: sledgehammer, find theorems† and simplifier trace† panels, overview over checked theories and timing†
 - *Navigating*: outline, breadcrumbs, indexed code symbols, code folding, go to definition, Graph View† for theory, class, locale and code dependencies
