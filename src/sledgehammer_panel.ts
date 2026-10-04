@@ -51,6 +51,9 @@ export class SledgehammerPanel implements vscode.WebviewViewProvider {
         await vscode.commands.executeCommand('isabelle-sledgehammer.focus')
         await this.run(this.provers, false, true)
       }),
+      // Test hook: the panel's Cancel button.
+      vscode.commands.registerCommand('isabelle.sledgehammerCancel',
+        () => this.client.sendNotification('PIDE/sledgehammer_cancel', {})),
     )
   }
 

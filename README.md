@@ -65,6 +65,8 @@ extension comes with an extended version of the server that adds them. It gives 
   typing, set `editor.formatOnType` to off for Isabelle.
 - colours for the rest of a checked term: constants, type names, classes, operators
   and numerals each get their own theme colour, not only the variables
+- checking that keeps up while Sledgehammer runs: without the extended server, a proof
+  you edit meanwhile is checked only when Sledgehammer is done
 
 To turn it on, open the Settings (`Ctrl+,`, or `Cmd+,` on macOS), search for
 **Isabelle: Extended Server** and tick the box. When VS Code asks, click

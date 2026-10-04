@@ -1,8 +1,9 @@
 # Behaviours that look like bugs
 
-Four things that were reported, or looked wrong, and turned out to have precise causes:
+Five things that were reported, or looked wrong, and turned out to have precise causes:
 two in how a glyph is drawn, one in how PIDE reports a theory whose imports have not
-loaded yet, one in how decoration colours fight a colour theme.
+loaded yet, one in how decoration colours fight a colour theme, one in how the prover
+schedules Sledgehammer.
 
 Extracted from `GAPS.md`, which now carries only the gap analysis itself.
 
@@ -116,3 +117,28 @@ Isabelle command orange in Breeze Dark. To colour one category yourself, name it
 `editor.semanticTokenColorCustomizations`, e.g. `"isabelleImproper": "#ED1515"` for
 jEdit's red `apply`.
 
+## Edits that wait for Sledgehammer
+
+While Sledgehammer ran, a proof edited near the caret showed nothing new -- no error, no
+goal -- until Sledgehammer was done, about 20 s later. An edit in its first two seconds
+went through, which made it look intermittent. The cause is in the prover's scheduling,
+so Isabelle/jEdit and Isabelle's own language server behave the same.
+
+Sledgehammer forks all its prover slices at once (`Par_List.map`, 24 per worker thread),
+and a forked task inherits the priority of the task that forks it. The panel's query runs
+in the print's task, which `Command.run_process` enrolls with priority 0, whatever the
+query was registered with. The proof of an edited command is forked too
+(`Proof.future_terminal_proof`, `Toplevel.future_proof`), at priority ~1: the lowest in
+Pure. So the queue ran every slice forked before the edit first. The first two seconds go
+through because Sledgehammer is still filtering facts and has forked nothing yet.
+
+It is the order, not a shortage of workers: none is held for long (a slice runs its
+external prover for 1--7 s, and a trace of the processes showed at most five at once), but
+each freed worker took the next slice. Lowering the query's registered priority changes
+nothing either, for the reason above. So the extended server loads
+`vscode_sledgehammer.ML` as a prelude, which registers the panel's query again, unchanged
+except that Sledgehammer runs in a task of its own at priority ~2, below everything the
+document's checking forks. Measured on the same theory, an edit took 0.8--3 s to check
+throughout two whole runs, against up to 28 s before; Cancel still reaches the run and its
+slices, since they are subtasks of the print's exec. `suite53` checks both, and that a
+proof is still found.
