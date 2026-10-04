@@ -18,6 +18,17 @@ This documents tracks features and tasks that might already be tracked in other 
     markup serial: `lemma fixes x shows` reads `x` twice with two serials, and
     `definition c` binds the constant and its equation's fixed variable at one token. Runs
     off the message loop (~150 ms over `HOL-Library.Multiset` loaded from source)
+  - [x] in theories nobody has checked: **Find All References, Checking Dependent
+    Theories** (editor context menu; `src/dependents.ts`, test: suite52).
+    `PIDE/dependents` picks the workspace's unloaded `.thy` files that import where the
+    entity is bound (also indirectly, by their headers) and spell its name;
+    `PIDE/check_theories` loads them as *required* models (a plain theory model is not:
+    `File_Format.registry.is_theory` means ROOT/BibTeX, so without that PIDE knows the
+    commands but never runs them) and is polled for progress; then the ordinary search
+    runs. They stay loaded, so later edits upstream re-check them, as in jEdit's
+    Theories panel. Misses a theory that uses the entity only through notation; project
+    theories in the session image are listed, not searched (that is the build-database
+    idea, not done)
 - [x] status bar widget -- the session picker's item grown into a status: session, server
     phase (off / starting / building / running / failed) and a theory count rolled up from
     `PIDE/theories_response`; tooltip links to session, restart, output, Theories.

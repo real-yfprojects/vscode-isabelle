@@ -34,6 +34,7 @@ import { BuildProgress } from './build_progress'
 import { registerTerminal } from './terminal'
 import { closeVerdict } from './restart_policy'
 import { refreshExtendedServer, registerWalkthrough, setHomeFound } from './walkthrough'
+import { registerDependents } from './dependents'
 
 const buildProgress = new BuildProgress()
 
@@ -422,6 +423,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Before the lookup below, so that a missing distribution is reported, not a missing command.
   registerTerminal(context, reportStartupFailure)
   registerWalkthrough(context, reportStartupFailure)
+  registerDependents(context.subscriptions, () => client, log)
   /* Before it too: VS Code restores the infoview's view and editor tab on a reload, and
      without a provider and serializer they stay blank or are dropped. Each server binds
      to it once it runs. */

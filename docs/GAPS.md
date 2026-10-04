@@ -38,7 +38,7 @@ corrupt" banner. Building a fork is the only stable way to get the encoding in.
 | Feature | How |
 |---|---|
 | Diagnostics, hover, completion, goto-definition, document highlight | standard LSP, wired automatically by `vscode-languageclient` |
-| **Find references** | `textDocument/references` on the extended server (`vscode_entities.scala`): entity markup of every loaded node, matched by where a name is bound; wired by `vscode-languageclient` |
+| **Find references** | `textDocument/references` on the extended server (`vscode_entities.scala`): entity markup of every loaded node, matched by where a name is bound; wired by `vscode-languageclient`. Theories nobody has checked: **Find All References, Checking Dependent Theories** (`src/dependents.ts`) has the server load the unloaded ones that import the binding and spell the name, as required nodes (`PIDE/dependents`, `PIDE/check_theories`) |
 | **Sledgehammer / `try0` sendback** | **standard LSP code actions — verified, needs no PIDE-specific code** |
 | Caret perspective | `PIDE/caret_update`; without it PIDE processes nothing |
 | Unicode symbol display | viewport decorations over an ASCII buffer |

@@ -194,6 +194,14 @@
       {
         "command": "isabelle.useIsabelleFont",
         "title": "Isabelle: Use Isabelle Fonts for Theories"
+      },
+      {
+        "command": "isabelle.findReferencesInDependents",
+        "title": "Isabelle: Find All References, Checking Dependent Theories"
+      },
+      {
+        "command": "isabelle.checkDependentTheories",
+        "title": "Isabelle: Check Dependent Theories"
       }
     ],
     "walkthroughs": [
@@ -722,6 +730,21 @@
         {
           "command": "isabelle.graphviewOpenInEditor",
           "when": "config.isabelle.graphview || config.isabelle.extendedServer"
+        },
+        {
+          "command": "isabelle.findReferencesInDependents",
+          "when": "editorLangId == isabelle && config.isabelle.extendedServer"
+        },
+        {
+          "command": "isabelle.checkDependentTheories",
+          "when": "false"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "isabelle.findReferencesInDependents",
+          "when": "editorLangId == isabelle && config.isabelle.extendedServer",
+          "group": "navigation@91"
         }
       ]
     },

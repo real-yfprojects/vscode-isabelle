@@ -170,8 +170,8 @@ above: `main` of mirror-isabelle, including the completion work, plus the two
 table above -- and indentation (onTypeFormatting and rangeFormatting, jEdit's indentation
 rule), the `semantic_*` categories of inner syntax, the infoview (`PIDE/infoview_*`),
 completion of the context's names within inner syntax (with its ML, see below), and
-find references (`textDocument/references`, `vscode_entities.scala`), all written on this
-branch first.
+find references (`textDocument/references`, `vscode_entities.scala`, with `PIDE/dependents`
+and `PIDE/check_theories` for theories not yet checked), all written on this branch first.
 And two things from the development tree
 that 2025-2 lacks:
 `PIDE/goto_command`, and upstream's `f425404488`, without which one failing delayed event
