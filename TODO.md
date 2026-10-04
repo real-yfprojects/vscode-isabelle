@@ -25,10 +25,17 @@ This documents tracks features and tasks that might already be tracked in other 
     `Session.runtime_statistics` as a throttled `PIDE/runtime_statistics`
 - [ ] expose isabelle cygwin terminal in vscode
 - [ ] completion preview types/statements for lemmas
-- [ ] code skeletons
-  - [ ] instantiations: proof and attributes to define
-  - [ ] cases
-  - [ ] ...
+- [~] code skeletons -- light bulb and ghost text (`skeleton_provider.ts`; server:
+    `vscode_skeletons.ML` on the `vscode-skeletons` mirror branch), tests: suite60 (pure),
+    suite61, suite62
+  - [x] cases: Isabelle's own outline after `proof (induct/cases ...)`, a sendback the
+    stock server already sends as a code action; now titled and kinded, and ghost text on
+    the blank line below
+  - [x] instantiations: the definitions still missing and `instance proof ... qed`, also as
+    ghost text
+  - [x] Isar sketch of a pending goal, subgoal blocks after `apply` (light bulb only); a
+    placeholder `sorry`/`oops` after it is replaced
+  - [ ] `fun`/`primrec` equations and `case ... of` terms per constructor
 - [ ] search in isabelle output panel (e.g. for print_classes)
 - [ ] information on hover
   - [ ] type hints

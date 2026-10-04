@@ -20,7 +20,7 @@ const os = require('os')
 const path = require('path')
 
 // The set that is expected to be green at all times. The suites for the experimental
-// panels and server features (15, 17, 30, 33, 36, 37, 45) run against the extended server
+// panels and server features (15, 17, 30, 33, 36, 37, 45, 62) run against the extended server
 // when its jar is built, as in CI, and skip themselves otherwise (test/server_target.js).
 // suite24 also needs a project workspace, so it is not listed.
 const REGRESSION = ['suite', 'suite2', 'suite4', 'suite6', 'suite12', 'suite15', 'suite16',
@@ -28,12 +28,13 @@ const REGRESSION = ['suite', 'suite2', 'suite4', 'suite6', 'suite12', 'suite15',
                     'suite26', 'suite27', 'suite28', 'suite29', 'suite30', 'suite31',
                     'suite32', 'suite33', 'suite34', 'suite35', 'suite36', 'suite37',
                     'suite38', 'suite39', 'suite40', 'suite41', 'suite42', 'suite43',
-                    'suite44', 'suite45', 'suite46', 'suite47', 'suite48', 'suite49', 'suite50']
+                    'suite44', 'suite45', 'suite46', 'suite47', 'suite48', 'suite49', 'suite50',
+                    'suite60', 'suite61', 'suite62']
 
 /** Suites that need no editor at all, and so cost nothing to run. */
 const PURE = new Set(['suite25', 'suite27', 'suite28', 'suite29', 'suite31', 'suite32',
                     'suite34', 'suite38', 'suite41', 'suite42', 'suite44', 'suite46',
-                    'suite48', 'suite49'])
+                    'suite48', 'suite49', 'suite60'])
 
 /**
  * Suites that assert nothing the prover produces.
@@ -128,7 +129,9 @@ async function main() {
     // Enough to identify the failure without reprinting a whole editor startup log: from the
     // first error on, so that an assertion keeps the actual/expected lines under it.
     const lines = f.out.split(/\r?\n/)
-    const first = lines.findIndex(l => /FAIL|AssertionError|Error:|expected|actual|timed out/.test(l))
+    // VS Code's own "Error: Error mutex already exists" opens every log and says nothing.
+    const first = lines.findIndex(l => /FAIL|AssertionError|Error:|expected|actual|timed out/.test(l) &&
+      !/mutex already exists/.test(l))
     console.log(first >= 0 ? lines.slice(first, first + 15).join('\n') : f.out.slice(-1500))
   }
 

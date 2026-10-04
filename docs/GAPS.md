@@ -61,6 +61,15 @@ exposed it as LSP code actions, so it arrives for free. Asking for code actions 
 `try0` line returned six: `by simp`, `by presburger`, `by fastforce`, `by force`,
 `by auto`, `by linarith`, each carrying a `newText` that rewrites the line.
 
+The same route carries Isabelle's own proof outline. `proof (induct xs)` prints "Proof
+outline with cases" as a sendback (`Proof_Context.print_cases_proof`), so the server
+offers `case Nil … next case (Cons a xs) … qed` as a code action on the `proof` line. A
+stock server sends these actions titled with the raw snippet and without a kind.
+`src/skeleton_provider.ts` gives them a title and a kind ("Insert proof outline
+(2 cases)", "Insert proof: by simp"). It also shows the outline as ghost text on the blank
+line below the `proof`. The extended server titles the actions itself and adds skeletons
+of its own (`vscode-skeletons`, see building.md).
+
 ### The LSP surface is now fully consumed
 
 **All 32 of the 32** `PIDE/*` messages the server defines are in use. Verified
