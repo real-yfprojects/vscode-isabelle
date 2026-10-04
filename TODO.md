@@ -10,7 +10,14 @@ This documents tracks features and tasks that might already be tracked in other 
 
 
 ### High
-- [ ] find references
+- [x] find references -- `textDocument/references` on the extended server
+    (`vscode_entities.scala`), test: suite51. Shift+F12, Shift+Alt+F12 and Go to References
+    come from `vscode-languageclient` with no client code. Scope: every node PIDE has loaded
+    (open theories and what they import, as far as checked); an entity of the session image
+    adds its source file as the declaration. Identity is the *binding position*, not the
+    markup serial: `lemma fixes x shows` reads `x` twice with two serials, and
+    `definition c` binds the constant and its equation's fixed variable at one token. Runs
+    off the message loop (~150 ms over `HOL-Library.Multiset` loaded from source)
 - [x] status bar widget -- the session picker's item grown into a status: session, server
     phase (off / starting / building / running / failed) and a theory count rolled up from
     `PIDE/theories_response`; tooltip links to session, restart, output, Theories.
@@ -146,9 +153,9 @@ This documents tracks features and tasks that might already be tracked in other 
     when the server advertises `documentSymbolProvider` (both registered = duplicate
     rows). It also feeds the workspace-symbol provider and sticky scroll
     (`viewport.ts`), so a server outline has to cover those before the TS one can go
-  - the `find references` sub-item above is *not* subsumed by this: theirs is a name-based
-    workspace scan, honest about not being scope-aware, and the server has no
-    `referencesProvider` either -- worth folding into the same branch as a fourth capability
+  - `find references` is done on `vscode-2025-2` instead (see Release), from PIDE markup,
+    so it needs checked theories; theirs is a name-based workspace scan that works cold but
+    is not scope-aware. A cold fallback would belong here, not in the markup search
   - [ ] **proof-gap audit for `sorry` and `oops`.** First dismissed as already covered by
     PIDE; that is true for exactly half of it. `sorry` runs `Skip_Proof.report`, which
     emits `Markup.markup (Markup.bad ()) "Skipped proof"`, and `Markup.BAD` survives

@@ -47,9 +47,9 @@ starts its own VS Code and, usually, its own Isabelle, so more than 3 at a time 
 cause timeouts.
 
 The suites for the experimental panels (`suite15`, `17`, `30`, `33`, `36`), for the
-infoview's pins (`suite45`), for indentation
-(`suite37`) and for inner-syntax colours (`suite39`) run against the
-extended server when its jar is built, and skip themselves otherwise. Setting
+infoview's pins (`suite45`), for indentation (`suite37`), for inner-syntax colours
+(`suite39`) and for find references (`suite51`) run against the extended server when its
+jar is built, and skip themselves otherwise. Setting
 `ISABELLE_PATCHED_HOME` points them at a hand-patched Isabelle instead.
 
 Some suites are not in the regression set:

@@ -22,7 +22,7 @@ in your `.thy` files.
   Isar and inner syntax highlighting (with semantic colours†); types and messages on hover; auto-indentation†; normalise any accidental actual Unicode characters to ASCII
 - *Checking*: continuous live PIDE verification; goals and messages at the cursor in one infoview, with pinned goals (that follow your edits†); cache session management
 - *Proving*: sledgehammer, find theorems† and simplifier trace† panels, overview over checked theories and timing†
-- *Navigating*: outline, breadcrumbs, indexed code symbols, code folding, go to definition, Graph View† for theory, class, locale and code dependencies
+- *Navigating*: outline, breadcrumbs, indexed code symbols, code folding, go to definition, find references† (across theories, by identity rather than name), Graph View† for theory, class, locale and code dependencies
 - *Docs*: preview, documentation panel
 
 † = these features need a patch to the Isabelle LSP. See [step 2](#2-turn-on-the-extended-server-optional-recommended).

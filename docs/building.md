@@ -168,9 +168,10 @@ The commit named in `server/Isabelle2025-2.ref`, currently the tip of `vscode-20
 above: `main` of mirror-isabelle, including the completion work, plus the two
 `vscode-simplifier-trace` commits not yet merged there -- adapted to the release as in the
 table above -- and indentation (onTypeFormatting and rangeFormatting, jEdit's indentation
-rule), the `semantic_*` categories of inner syntax, the infoview (`PIDE/infoview_*`), and
-completion of the context's names within inner syntax (with its ML, see below), all
-written on this branch first.
+rule), the `semantic_*` categories of inner syntax, the infoview (`PIDE/infoview_*`),
+completion of the context's names within inner syntax (with its ML, see below), and
+find references (`textDocument/references`, `vscode_entities.scala`), all written on this
+branch first.
 And two things from the development tree
 that 2025-2 lacks:
 `PIDE/goto_command`, and upstream's `f425404488`, without which one failing delayed event
