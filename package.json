@@ -449,6 +449,11 @@
           "default": false,
           "markdownDescription": "Check every visible theory to its end. Off, the prover checks each theory from the top down to `vscode_caret_perspective` lines below the cursor (50 unless set in `#isabelle.serverOptions#`) and stops there. Checking is continuous either way; this only sets how far it goes. Takes effect on server restart."
         },
+        "isabelle.completion.inlineSkeletons": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "On the blank line below `proof (induct xs)`, `proof (cases x)` and the like, show the proof outline Isabelle prints for it (`case Nil … next case (Cons a xs) … qed`) as ghost text; `Tab` accepts it. With `#isabelle.extendedServer#`, also the definitions and instance proof an `instantiation` still lacks. The same skeletons are always offered from the light bulb, together with those that are only suggestions (an Isar sketch of a goal, subgoal blocks)."
+        },
         "isabelle.continuousChecking": {
           "type": "boolean",
           "default": false,
@@ -829,7 +834,7 @@
     "build": "tsc -p ./ && node ./scripts/server-jar.js",
     "watch": "tsc -watch -p ./",
     "dev": "node ./test/dev.js",
-    "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29 suite32 suite38 suite41 suite42 suite44 suite46 suite48 suite49",
+    "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29 suite32 suite38 suite41 suite42 suite44 suite46 suite48 suite49 suite60",
     "test": "node ./test/runTest.js",
     "package": "vsce package --out vscode-isabelle.vsix",
     "release": "node ./scripts/release.js"

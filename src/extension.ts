@@ -25,6 +25,7 @@ import { TheoriesPanel } from './theories_panel'
 import { SimplifierTracePanel } from './simplifier_trace_panel'
 import { GraphviewPanel } from './graphview_panel'
 import { registerOutline } from './outline'
+import { registerSkeletons, retitleSendbacks } from './skeleton_provider'
 import { registerSemanticTokens } from './semantic_tokens'
 import { SessionPicker } from './session_picker'
 import { IsabelleStatus } from './status_bar'
@@ -252,6 +253,8 @@ async function startClient(): Promise<void> {
       },
       provideCompletionItem: async (document, position, context, token, next) =>
         dropDuplicateSymbols(document, await next(document, position, context, token)),
+      provideCodeActions: async (document, range, context, token, next) =>
+        retitleSendbacks(await next(document, range, context, token)),
     },
   }
 
@@ -454,6 +457,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   new SymbolsPanel(table).register(context.subscriptions)
   // Outline, breadcrumbs and folding: plain LSP features the server does not provide.
   registerOutline(context, ISABELLE_SELECTOR)
+  // Ghost text for proof outlines; asks the server only once it runs.
+  registerSkeletons(context.subscriptions, ISABELLE_SELECTOR, () => client)
 
   /* The session image decides what is cached: imports already in the heap are never
      re-checked, everything else is elaborated from source on every start. The stock
