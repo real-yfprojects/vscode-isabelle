@@ -27,6 +27,7 @@ main                                       (all of the above, merged)
      merged: vscode-hover-info            (what a name stands for, on hover)
      merged: vscode-completion-preview    (the same for the item completion shows;
                                            on vscode-hover-info, whose query it asks)
+     merged: vscode-agent                 (tools for AI agents; docs/agents.md)
 ```
 
 The feature branches exist to be proposed upstream one at a time, so they stay separate
@@ -171,7 +172,8 @@ Anything else falls back to the standard server with a warning.
 The commit named in `server/Isabelle2025-2.ref`, currently the tip of `vscode-2025-2`
 above, with `vscode-skeletons` (code skeletons, see "Not a limit: ML" below) and
 `vscode-hover-info` (what a name stands for, on hover) and `vscode-completion-preview` (the
-same for the completion item VS Code shows, `completionItem/resolve`) merged in: `main` of mirror-isabelle, including the completion work, plus the two
+same for the completion item VS Code shows, `completionItem/resolve`) and `vscode-agent`
+(tools for AI agents, docs/agents.md) merged in: `main` of mirror-isabelle, including the completion work, plus the two
 `vscode-simplifier-trace` commits not yet merged there -- adapted to the release as in the
 table above -- and indentation (onTypeFormatting and rangeFormatting, jEdit's indentation
 rule), the `semantic_*` categories of inner syntax, the infoview (`PIDE/infoview_*`),
@@ -238,6 +240,19 @@ instance proof an instantiation still lacks. The printing follows
 uses nothing of HOL, load it with `ML_file` into a theory that imports only `Pure`.
 Isabelle's ML compiler also refuses a `handle` that catches every exception, so a
 failure that must not escape goes through `Exn.result`.
+
+`vscode_agent.ML` (`vscode-agent`) runs proof candidates and Sledgehammer for the tools of
+AI agents (`vscode_agent.scala`). Two traps it fell into, both invisible to a test with
+`ML_file`:
+
+- The loader is Poly/ML's own `--use`, not Isabelle's ML compiler, so a string literal
+  must not spell an Isabelle symbol: `"\<proof>"` stops the prover at startup (exit code
+  127, "standard_output terminated"); write `"\092<proof>"`. Load a prelude with
+  `isabelle ML_process -l HOL -f FILE -e 'writeln "OK"'` to check it the way the server
+  loads it.
+- Overlay arguments travel to the prover as YXML, so an argument must not be YXML itself:
+  its control characters break the document update, and the query never runs. Pass
+  plain strings.
 
 ### Building the jar
 

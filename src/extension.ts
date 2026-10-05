@@ -36,6 +36,7 @@ import { registerTerminal } from './terminal'
 import { closeVerdict } from './restart_policy'
 import { refreshExtendedServer, registerWalkthrough, setHomeFound } from './walkthrough'
 import { registerDependents } from './dependents'
+import { Agents } from './agent/agents'
 
 const buildProgress = new BuildProgress()
 
@@ -432,6 +433,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registerTerminal(context, reportStartupFailure)
   registerWalkthrough(context, reportStartupFailure)
   registerDependents(context.subscriptions, () => client, log)
+  /* Before the lookup below too: an agent asking while Isabelle is missing is told so. A
+     tool may start the server, which otherwise waits for a theory to be opened. */
+  new Agents(context, () => client, () => table, async () => {
+    if (client || !isabelleHome) return
+    if (vscode.workspace.getConfiguration('isabelle').get<boolean>('autoStart') === false) return
+    await startClient()
+  }, log).register()
   /* Before it too: VS Code restores the infoview's view and editor tab on a reload, and
      without a provider and serializer they stay blank or are dropped. Each server binds
      to it once it runs. */

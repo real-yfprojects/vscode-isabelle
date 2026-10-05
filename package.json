@@ -36,7 +36,8 @@
   "activationEvents": [
     "onLanguage:isabelle",
     "onTerminalProfile:isabelle.terminal",
-    "onWebviewPanel:isabelle-infoview-editor"
+    "onWebviewPanel:isabelle-infoview-editor",
+    "workspaceContains:**/*.thy"
   ],
   "contributes": {
     "languages": [
@@ -202,6 +203,10 @@
       {
         "command": "isabelle.checkDependentTheories",
         "title": "Isabelle: Check Dependent Theories"
+      },
+      {
+        "command": "isabelle.setUpAgents",
+        "title": "Isabelle: Set Up AI Agents"
       }
     ],
     "walkthroughs": [
@@ -608,6 +613,11 @@
           "type": "boolean",
           "default": false,
           "description": "Verbose language-server logging (-v)."
+        },
+        "isabelle.agents.enabled": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Offer the prover of this window to AI agents (Claude Code, GitHub Copilot, any MCP client) as tools: check a theory, show the goals at a line, try proof candidates and Sledgehammer without editing the file, find theorems. Served only on this machine (127.0.0.1) and only to agents holding the token in `~/.isabelle-vscode/agents`. **Isabelle: Set Up AI Agents** turns this on and adds the server to a project's `.mcp.json`. Needs the extended server (`#isabelle.extendedServer#`). See [AI agents](https://github.com/real-yfprojects/vscode-isabelle/blob/main/docs/agents.md)."
         }
       }
     },
@@ -827,6 +837,12 @@
           ]
         }
       }
+    ],
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "isabelle.agents",
+        "label": "Isabelle"
+      }
     ]
   },
   "scripts": {
@@ -834,7 +850,7 @@
     "build": "tsc -p ./ && node ./scripts/server-jar.js",
     "watch": "tsc -watch -p ./",
     "dev": "node ./test/dev.js",
-    "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29 suite32 suite38 suite41 suite42 suite44 suite46 suite48 suite49 suite60",
+    "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29 suite32 suite38 suite41 suite42 suite44 suite46 suite48 suite49 suite60 suite63",
     "test": "node ./test/runTest.js",
     "package": "vsce package --out vscode-isabelle.vsix",
     "release": "node ./scripts/release.js"
