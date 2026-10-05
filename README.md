@@ -23,6 +23,7 @@ in your `.thy` files.
 - *Checking*: continuous live PIDE verification; goals and messages at the cursor in one infoview, with pinned goals (that follow your edits†); cache session management
 - *Proving*: sledgehammer, find theorems† and simplifier trace† panels, overview over checked theories and timing†
 - *Navigating*: outline, breadcrumbs, indexed code symbols, code folding, go to definition, find references† (across theories, by identity rather than name, also in theories not yet checked), Graph View† for theory, class, locale and code dependencies
+- *AI agents*†: Claude Code, Copilot and other MCP clients check theories, read goals, try proofs and run Sledgehammer with the prover of your window
 - *Docs*: preview, documentation panel
 
 † = these features need a patch to the Isabelle LSP. See [step 2](#2-turn-on-the-extended-server-optional-recommended).
@@ -67,6 +68,7 @@ extension comes with an extended version of the server that adds them. It gives 
   and numerals each get their own theme colour, not only the variables
 - checking that keeps up while Sledgehammer runs: without the extended server, a proof
   you edit meanwhile is checked only when Sledgehammer is done
+- tools for AI agents (step 6)
 
 To turn it on, open the Settings (`Ctrl+,`, or `Cmd+,` on macOS), search for
 **Isabelle: Extended Server** and tick the box. When VS Code asks, click
@@ -140,6 +142,18 @@ With a stock Isabelle2025-2, building the image fails for sessions that import t
 from outside their parent session: the server reports a missing heap image. The extended
 server from step 2 fixes this. [docs/sessions.md](docs/sessions.md) explains how the
 images work.
+
+### 6. Let AI agents use the prover (optional)
+
+Claude Code, GitHub Copilot and other MCP clients can use the prover of your window as
+tools: check a theory in seconds, read the goals at a line, try several proofs at once
+without editing the file, run Sledgehammer, and find theorems. Without them, an agent can
+only run `isabelle build`, which loads the session image again for every check.
+
+With the extended server on, run **Isabelle: Set Up AI Agents** in your project. It turns
+the tools on and adds them to the project's `.mcp.json` for Claude Code; Copilot finds
+them by itself. [docs/agents.md](docs/agents.md) describes the tools and how they are
+secured.
 
 ## Other VS Code extensions
 

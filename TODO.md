@@ -77,7 +77,15 @@ This documents tracks features and tasks that might already be tracked in other 
     is not exported by Pure (`Method.get_methods` is private), so the prelude cannot read it
 
 ### Medium
-- [ ] LLM integration into vscode copilot or claude.
+- [x] LLM integration into vscode copilot or claude -- MCP tools served by the extension
+    (`src/agent/`, docs/agents.md), on the extended server's `PIDE/agent_*` requests
+    (`vscode_agent.scala`, `vscode_agent.ML`, mirror branch `vscode-agent`). Tests: suite63
+    (transport, pure), suite64 (tools against the prover)
+  - [x] both transports checked with the official MCP TypeScript SDK client (1.32): stdio
+    through the relay, as Claude Code connects, and Streamable HTTP with the token, as
+    Copilot does; `claude mcp list` reads the `.mcp.json` the setup writes
+  - [ ] Copilot: check the tools picker on a VS Code with `registerMcpServerDefinitionProvider`
+  - [ ] a headless fallback for agents without a window (`isabelle server` kept alive)
 - [ ] code formatting / prettier extension
 - [ ] extension user docs s.t. copilot/claude can help you with usage questions
 - [ ] Look at these features: https://github.com/Arthur742Ramos/Isabelle-VSCode#-features and decide which we are missing.
