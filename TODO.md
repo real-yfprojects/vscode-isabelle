@@ -1,15 +1,7 @@
 This documents tracks features and tasks that might already be tracked in other places. This file serves a place for quick note taking.
 
 ### Release
-- [x] very limited completion for inner syntax (e.g. HOL)
-- [x] Show casing gif at top of README -- `node scripts/demo/record.js` re-records it
-- [ ] Mark features with † in README that need extended LSP
-- [x] VSCode Getting Started Guide for the extension, including how to install and configure Isabelle, how to use the extension, and how to troubleshoot common issues.
-- [ ] Make ready for marketplace (metadata, icon)
-- [ ] publish to marketplace
-
-
-### High
+- [x] cursor on try -> infoview no longer shows goal, same for other proof methods or then (and possibly more, test for further cases)
 - [x] find references -- `textDocument/references` on the extended server
     (`vscode_entities.scala`), test: suite51. Shift+F12, Shift+Alt+F12 and Go to References
     come from `vscode-languageclient` with no client code. Scope: every node PIDE has loaded
@@ -29,24 +21,21 @@ This documents tracks features and tasks that might already be tracked in other 
     Theories panel. Misses a theory that uses the entity only through notation; project
     theories in the session image are listed, not searched (that is the build-database
     idea, not done)
-- [x] status bar widget -- the session picker's item grown into a status: session, server
-    phase (off / starting / building / running / failed) and a theory count rolled up from
-    `PIDE/theories_response`; tooltip links to session, restart, output, Theories.
-    `status_items.ts` + `status_bar.ts`, tests: suite41 (pure), suite26, suite17
-  - [x] stale heap image: the server rebuilds an outdated image at start
-    (`build_session`'s no_build check), so it can only go stale *afterwards*. Content
-    digests of the image's workspace `.thy`/`.ML` taken at every start, compared on
-    disk changes and in unsaved buffers (`heap_files.ts`, `heap_watch.ts`): `· N stale`
-    with warning background, the files listed and linked in the tooltip,
-    `isabelle.showStaleFiles`. Tests: suite41, suite42 (pure), suite43
-  - [ ] not done: jEdit's ML heap widget. Needs a mirror branch forwarding
-    `Session.runtime_statistics` as a throttled `PIDE/runtime_statistics`
-- [ ] expose isabelle cygwin terminal in vscode
+- [ ] Rename symbol
+  - groundwork done: `VSCode_Entities.occurrences` returns each occurrence with its markup
+    (kind, internal name, def or ref) and binding, so `prepareRename`/`rename` need no new
+    search, and `isabelle.checkDependentTheories` (uri, position) gets the unchecked
+    theories that may use the name checked first. Still to decide: refuse when a dependent
+    failed to check or is in the session image; refuse when the binding is in the image or in a
+    read-only node (binding source `file:`, or a model with `external_file` that is not
+    open); a qualified reference (`Refs_A.double`) must keep its qualifier, so replace
+    only the base name at the end of each range; derived names (`double_def`, `double.simps`)
+    are separate entities on purpose (base-name guard) and would need their own pass
 - [x] completion preview types/statements for lemmas -- `completionItem/resolve` on the
     extended server: the item VS Code shows gets the statement of a fact (all of its theorems,
     the first as the detail), the type of a constant or of a fixed variable, from the hover's
     query (`vscode_hover.ML`) in the context the names come from. Test: suite65
-- [~] code skeletons -- light bulb and ghost text (`skeleton_provider.ts`; server:
+- [x] code skeletons -- light bulb and ghost text (`skeleton_provider.ts`; server:
     `vscode_skeletons.ML` on the `vscode-skeletons` mirror branch), tests: suite60 (pure),
     suite61, suite62
   - [x] cases: Isabelle's own outline after `proof (induct/cases ...)`, a sendback the
@@ -57,7 +46,6 @@ This documents tracks features and tasks that might already be tracked in other 
   - [x] Isar sketch of a pending goal, subgoal blocks after `apply` (light bulb only); a
     placeholder `sorry`/`oops` after it is replaced
   - [ ] `fun`/`primrec` equations and `case ... of` terms per constructor
-- [ ] search in isabelle output panel (e.g. for print_classes)
 - [x] information on hover -- a query of the extended server (`vscode_hover.ML`,
     `vscode_hover_info.scala` on the mirror branch) asks the context of the command for
     what the markup only names. Tests: suite54 (server), suite49 (pure)
@@ -75,8 +63,14 @@ This documents tracks features and tasks that might already be tracked in other 
     (`sq x ≡ x * x`, `x ≠ y ≡ ¬ x = y`), also on notation for one (`≠`)
   - [ ] descriptions/explanations for proof methods: the comment of a method or attribute
     is not exported by Pure (`Method.get_methods` is private), so the prelude cannot read it
+- [x] While sledgehammer runs, the PIDE doesn't update around the cursor -- in Isabelle, not
+    the client: Sledgehammer's prover slices ran at priority 0, above the proofs PIDE forks
+    (~1), so an edited proof waited for every queued slice (~20 s). The extended server
+    loads `vscode_sledgehammer.ML`, which runs the panel's Sledgehammer at ~2. Stock
+    server and jEdit unchanged. Test: suite53 (also Cancel, and that proofs are found)
 
-### Medium
+
+### High
 - [x] LLM integration into vscode copilot or claude -- MCP tools served by the extension
     (`src/agent/`, docs/agents.md), on the extended server's `PIDE/agent_*` requests
     (`vscode_agent.scala`, `vscode_agent.ML`, mirror branch `vscode-agent`). Tests: suite63
@@ -86,6 +80,14 @@ This documents tracks features and tasks that might already be tracked in other 
     Copilot does; `claude mcp list` reads the `.mcp.json` the setup writes
   - [ ] Copilot: check the tools picker on a VS Code with `registerMcpServerDefinitionProvider`
   - [ ] a headless fallback for agents without a window (`isabelle server` kept alive)
+- [ ] search in isabelle output panel (e.g. for print_classes)
+- [ ] Improve Query panel
+- [ ] Lags and performance while typing
+  - [ ] Sometimes vscode reports that the window stops responding
+  - [ ] while vscode does respond to cursor inputs, keyboard inputs are delayed and especially backspace is delayed and even reordered after other keyboard inputs
+- [ ] Sledgehammer is slow and may stop when the file is edited
+
+### Medium
 - [ ] code formatting / prettier extension
 - [ ] extension user docs s.t. copilot/claude can help you with usage questions
 - [ ] Look at these features: https://github.com/Arthur742Ramos/Isabelle-VSCode#-features and decide which we are missing.
@@ -282,6 +284,7 @@ This documents tracks features and tasks that might already be tracked in other 
 
 ### Manual (human) work
 - [ ] Test query
+- [ ] Test (* auto closing
 - [ ] PR to upstream
   - [ ] review and cleanup changes to the upstream
   - [ ] contact upstream maintainers on mailing list

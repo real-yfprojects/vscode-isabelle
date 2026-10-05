@@ -24,7 +24,7 @@ in your `.thy` files.
 - *Proving*: sledgehammer, find theorems† and simplifier trace† panels, overview over checked theories and timing†
 - *Navigating*: outline, breadcrumbs, indexed code symbols, code folding, go to definition, find references† (across theories, by identity rather than name, also in theories not yet checked), Graph View† for theory, class, locale and code dependencies
 - *AI agents*†: Claude Code, Copilot and other MCP clients check theories, read goals, try proofs and run Sledgehammer with the prover of your window
-- *Docs*: preview, documentation panel
+- *Misc*: preview, documentation panel, cygwin terminal
 
 † = these features need a patch to the Isabelle LSP. See [step 2](#2-turn-on-the-extended-server-optional-recommended).
 
