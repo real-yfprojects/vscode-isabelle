@@ -10,6 +10,10 @@
  * answered here and a tool call says what to do.
  *
  * ISABELLE_VSCODE_WORKSPACE picks the window by a folder other than the current directory.
+ *
+ * `notifications/cancelled` is not passed on: the relay aborts the request it names, which
+ * the window takes as the cancellation, or drops it while it waits in the queue. Request
+ * ids are only unique per client, and the window serves several.
  */
 import * as fs from 'fs'
 import * as http from 'http'
@@ -64,7 +68,17 @@ export function findLock(dir: string, lockDir = LOCK_DIR): Lock | undefined {
   return best?.lock
 }
 
-function post(lock: Lock, body: string): Promise<string> {
+class Cancelled extends Error {}
+
+type Id = string | number
+
+/** Requests not yet answered, those of them the agent cancelled, and the abort of each one
+    under way. */
+const pending = new Set<Id>()
+const cancelled = new Set<Id>()
+const aborts = new Map<Id, () => void>()
+
+function post(lock: Lock, body: string, id?: Id): Promise<string> {
   return new Promise((resolve, reject) => {
     const req = http.request(lock.url, {
       method: 'POST',
@@ -82,7 +96,8 @@ function post(lock: Lock, body: string): Promise<string> {
         else resolve(data)
       })
     })
-    req.on('error', reject)
+    req.on('error', err => reject(id !== undefined && cancelled.has(id) ? new Cancelled() : err))
+    if (id !== undefined) aborts.set(id, () => req.destroy())
     req.end(body)
   })
 }
@@ -94,14 +109,27 @@ async function relay(line: string, dir: string, write: (s: string) => void): Pro
     write(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }))
     return
   }
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const lock = findLock(dir)
-    if (!lock) break
-    try {
-      const reply = await post(lock, line)
-      if (reply.trim()) write(reply.trim())
-      return
-    } catch { /* the window went away: look again */ }
+  const id = typeof message.id === 'string' || typeof message.id === 'number' ? message.id : undefined
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (id !== undefined && cancelled.has(id)) return
+      const lock = findLock(dir)
+      if (!lock) break
+      try {
+        const reply = await post(lock, line, id)
+        if (reply.trim()) write(reply.trim())
+        return
+      } catch (err) {
+        if (err instanceof Cancelled) return   // the agent wants no answer
+        /* the window went away: look again */
+      }
+    }
+  } finally {
+    if (id !== undefined) {
+      pending.delete(id)
+      aborts.delete(id)
+      cancelled.delete(id)
+    }
   }
   /* No window: answer what needs none, and tell the agent why the tools cannot work. */
   if (message.method === 'tools/call') {
@@ -124,7 +152,21 @@ export function main(): void {
   rl.on('line', line => {
     if (!line.trim()) return
     let quick = false
-    try { quick = JSON.parse(line).method !== 'tools/call' } catch { /* relay reports it */ }
+    try {
+      const message = JSON.parse(line)
+      if (message.method === 'notifications/cancelled') {
+        const id = message.params?.requestId
+        if (pending.has(id)) {
+          cancelled.add(id)
+          aborts.get(id)?.()
+        }
+        return
+      }
+      quick = message.method !== 'tools/call'
+      if (!quick && (typeof message.id === 'string' || typeof message.id === 'number')) {
+        pending.add(message.id)
+      }
+    } catch { /* relay reports it */ }
     if (quick) void relay(line, dir, write)
     else queue = queue.then(() => relay(line, dir, write))
   })

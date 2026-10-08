@@ -145,6 +145,35 @@ async function run() {
     'the theory is checked without being opened')
   pass('isabelle_check loads a theory nobody opened, and reports its error with the goal, in ASCII')
 
+  // --- check: a theory being written has no end yet, and only an end consolidates ---
+  // The sleep makes a check that ran it again take seconds rather than none.
+  const draft = path.join(ws, 'Agent_Draft.thy')
+  fs.writeFileSync(draft, ['theory Agent_Draft', '  imports Main', 'begin', '',
+    'ML_val \\<open>OS.Process.sleep (Time.fromSeconds 6)\\<close>', '',
+    'lemma "rev (rev xs) = xs"', '  by simp', ''].join('\n'), 'utf8')
+  const timed = async args => {
+    const started = Date.now()
+    const result = await call('isabelle_check', args)
+    return { result, seconds: (Date.now() - started) / 1000 }
+  }
+  const first = await timed({ file: 'Agent_Draft.thy', timeout_s: 120 })
+  assert.match(first.result.text, /Agent_Draft\.thy: checked in/)
+  assert.match(first.result.text, /has no end/)
+  assert.ok(first.seconds >= 6, 'the first check waits for the theory')
+  const again = await timed({ file: 'Agent_Draft.thy', timeout_s: 120 })
+  assert.match(again.result.text, /checked in/)
+  assert.ok(again.seconds < 2, `a checked theory is not checked again (${again.seconds} s)`)
+  pass('a theory without end is checked once its commands are, and says it has no end')
+
+  const opened = await vscode.window.showTextDocument(vscode.Uri.file(draft))
+  await wait(1000)
+  const inEditor = await timed({ file: draft, timeout_s: 120 })
+  assert.match(inEditor.result.text, /checked in/)
+  assert.ok(inEditor.seconds < 2, `opening a checked theory does not check it again (${inEditor.seconds} s)`)
+  assert.strictEqual(vscode.window.activeTextEditor?.document, opened.document)
+  await vscode.commands.executeCommand('workbench.action.closeActiveEditor')
+  pass('opening the checked theory in an editor does not check it again')
+
   // --- state ---
   const state = await call('isabelle_state', { file, line: at('   apply simp') })
   assert.match(state.text, /apply simp/)
@@ -272,6 +301,7 @@ async function run() {
 
   await target_.reset(target)
   fs.rmSync(file, { force: true })
+  fs.rmSync(draft, { force: true })
 
   console.log(`\n${passed} checks passed`)
   console.log('SUITE64_OK')
