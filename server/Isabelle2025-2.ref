@@ -2,4 +2,4 @@
 # the tip of branch vscode-2025-2, which is the release commit 8d9ad3f298 plus the
 # backport, with vscode-skeletons, vscode-hover-info, vscode-completion-preview and
 # vscode-agent merged in. Move this forward when the branch moves.
-1b0670b11257f8b1860fe2bd153b64be6c635afc
+a3c0b1ef02455a08d2f255f0c7848ca52db499a7

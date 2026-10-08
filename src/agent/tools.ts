@@ -39,6 +39,8 @@ interface Report {
   outdated?: boolean
   percentage?: number
   consolidated?: boolean
+  /** Whether the theory's end was reached: a theory without one is checked all the same. */
+  finalized?: boolean
   ok?: boolean
   failed_commands?: number
   unprocessed_commands?: number
@@ -141,27 +143,36 @@ export class AgentTools {
   ) {}
 
   readonly handlers: Record<string, ToolHandler> = {
-    isabelle_check: (a, t) => this.run(() => this.check(a, t)),
-    isabelle_state: (a, t) => this.run(() => this.state(a, t)),
-    isabelle_try: (a, t) => this.run(() => this.tryCandidates(a, t)),
-    isabelle_sledgehammer: (a, t) => this.run(() => this.sledgehammer(a, t)),
-    isabelle_find_theorems: (a, t) => this.run(() => this.findTheorems(a, t)),
+    isabelle_check: (a, t) => this.run(() => this.check(a, t), t),
+    isabelle_state: (a, t) => this.run(() => this.state(a, t), t),
+    isabelle_try: (a, t) => this.run(() => this.tryCandidates(a, t), t),
+    isabelle_sledgehammer: (a, t) => this.run(() => this.sledgehammer(a, t), t),
+    isabelle_find_theorems: (a, t) => this.run(() => this.findTheorems(a, t), t),
   }
 
-  private async run(f: () => Promise<string>): Promise<ToolResult> {
-    try { return { text: truncate(await f()) } }
-    catch (err) {
-      return { text: err instanceof Error ? err.message : String(err), isError: true }
-    }
+  /** Answers at once when the call is cancelled: a request to the server may not stop. */
+  private async run(f: () => Promise<string>, token?: vscode.CancellationToken)
+      : Promise<ToolResult> {
+    const cancelled: ToolResult = { text: 'Cancelled.', isError: true }
+    if (token?.isCancellationRequested) return cancelled
+    let off: vscode.Disposable | undefined
+    const onCancel = new Promise<ToolResult>(resolve => {
+      off = token?.onCancellationRequested(() => resolve(cancelled))
+    })
+    const work = f().then(text => ({ text: truncate(text) }), (err): ToolResult =>
+      ({ text: err instanceof Error ? err.message : String(err), isError: true }))
+    try { return await Promise.race([work, onCancel]) }
+    finally { off?.dispose() }
   }
 
-  private async client(): Promise<LanguageClient> {
+  private async client(token?: vscode.CancellationToken): Promise<LanguageClient> {
     if (!this.getClient()) {
       void this.startServer().catch(() => { /* reported in the window */ })
     }
     const deadline = Date.now() + START_WAIT_MS
     let client = this.getClient()
-    while ((!client || client.state !== State.Running) && Date.now() < deadline) {
+    while ((!client || client.state !== State.Running) && Date.now() < deadline &&
+        !token?.isCancellationRequested) {
       await sleep(500)
       client = this.getClient()
     }
@@ -244,7 +255,7 @@ export class AgentTools {
 
   private async check(args: Record<string, unknown>, token?: vscode.CancellationToken)
       : Promise<string> {
-    const client = await this.client()
+    const client = await this.client(token)
     const uri = this.resolve(args)
     const timeout = (num(args, 'timeout_s') ?? 300) * 1000
     const start = Date.now()
@@ -280,6 +291,9 @@ export class AgentTools {
     const out = [`${name}: ${state} in ${(ms / 1000).toFixed(1)} s: ${counts}.`]
     if (status.status === 'pending') {
       out.push('Messages so far are below; call isabelle_check again to wait longer.')
+    } else if (r.finalized === false) {
+      out.push('The theory has no end: its commands are checked, but isabelle build rejects it ' +
+        'as it stands.')
     }
     const open = vscode.workspace.textDocuments.find(d => d.uri.toString() === uri.toString())
     if (open?.isDirty) {
@@ -305,7 +319,7 @@ export class AgentTools {
 
   private async state(args: Record<string, unknown>, token?: vscode.CancellationToken)
       : Promise<string> {
-    const client = await this.client()
+    const client = await this.client(token)
     const uri = this.resolve(args)
     const position = this.position(uri, args)
     await this.load(client, uri, token)
@@ -358,7 +372,7 @@ export class AgentTools {
 
   private async tryCandidates(args: Record<string, unknown>, token?: vscode.CancellationToken)
       : Promise<string> {
-    const client = await this.client()
+    const client = await this.client(token)
     const uri = this.resolve(args)
     const candidates = strings(args, 'candidates').map(c => this.encode(c)).filter(c => c.trim())
     if (!candidates.length) throw new ToolError('No candidates given.')
@@ -413,7 +427,7 @@ export class AgentTools {
 
   private async sledgehammer(args: Record<string, unknown>, token?: vscode.CancellationToken)
       : Promise<string> {
-    const client = await this.client()
+    const client = await this.client(token)
     const uri = this.resolve(args)
     const position = this.position(uri, args)
     const goal = goalStatement(this.encode(str(args, 'goal') ?? ''))
@@ -446,7 +460,7 @@ export class AgentTools {
 
   private async findTheorems(args: Record<string, unknown>, token?: vscode.CancellationToken)
       : Promise<string> {
-    const client = await this.client()
+    const client = await this.client(token)
     const uri = this.resolve(args)
     const query = str(args, 'query')
     if (!query) throw new ToolError('No query given.')

@@ -54,13 +54,42 @@ function relay(env) {
     }
   })
   let next = 1
-  const call = (method, params) => new Promise((resolve, reject) => {
+  /** Sends a request; its id, and the answer, which may never come. */
+  const send = (method, params, seconds = 15) => {
     const id = next++
-    const timer = setTimeout(() => reject(new Error(`no answer to ${method}`)), 15000)
-    waiting.set(id, msg => { clearTimeout(timer); resolve(msg) })
+    const answer = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`no answer to ${method}`)), seconds * 1000)
+      waiting.set(id, msg => { clearTimeout(timer); resolve(msg) })
+    })
     child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
+    return { id, answer }
+  }
+  const call = (method, params) => send(method, params).answer
+  const notify = (method, params) =>
+    child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n')
+  return { send, call, notify, close: () => child.stdin.end() }
+}
+
+/** A POST that can be aborted before its answer. */
+function postAbortable(url, body, headers) {
+  let req
+  const answer = new Promise((resolve, reject) => {
+    req = http.request(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers } },
+      res => {
+        let data = ''
+        res.on('data', c => { data += c })
+        res.on('end', () => resolve(JSON.parse(data)))
+      })
+    req.on('error', reject)
+    req.end(JSON.stringify(body))
   })
-  return { call, close: () => child.stdin.end() }
+  return { answer, abort: () => req.destroy() }
+}
+
+const until = async (probe, ms = 5000) => {
+  const deadline = Date.now() + ms
+  while (!probe() && Date.now() < deadline) await new Promise(r => setTimeout(r, 20))
+  return probe()
 }
 
 async function run() {
@@ -98,8 +127,15 @@ async function run() {
   const project = path.join(home, 'project')
   fs.mkdirSync(path.join(project, 'sub'), { recursive: true })
   const calls = []
-  const handlers = Object.fromEntries(TOOL_DEFS.map(t => [t.name, async args => {
+  const stopped = []
+  const handlers = Object.fromEntries(TOOL_DEFS.map(t => [t.name, async (args, token) => {
     calls.push([t.name, args])
+    if (args.wait) {
+      // Like a check that waits for the prover: only cancellation ends it
+      await new Promise(resolve => token.onCancellationRequested(resolve))
+      stopped.push(args.wait)
+      return { text: 'Cancelled.', isError: true }
+    }
     return args.fail ? { text: 'it failed', isError: true } : { text: `${t.name} on ${args.file}` }
   }]))
   const server = new McpHttpServer(handlers, '9.9', () => {}, lockDir)
@@ -128,6 +164,25 @@ async function run() {
   assert.strictEqual(batch.body.length, 1)
   assert.strictEqual((await post(server.url, '{not json', auth)).body.error.code, -32700)
   pass('tool calls answer with text content and isError; notifications 202; batches; parse errors')
+
+  const dropped = postAbortable(server.url, { jsonrpc: '2.0', id: 10, method: 'tools/call',
+    params: { name: 'isabelle_check', arguments: { wait: 'closed' } } }, auth)
+  dropped.answer.catch(() => { /* aborted */ })
+  assert.ok(await until(() => calls.some(c => c[1].wait === 'closed')), 'the call starts')
+  dropped.abort()
+  assert.ok(await until(() => stopped.includes('closed')), 'a closed connection cancels its call')
+  const named = postAbortable(server.url, { jsonrpc: '2.0', id: 11, method: 'tools/call',
+    params: { name: 'isabelle_check', arguments: { wait: 'named' } } }, auth)
+  assert.ok(await until(() => calls.some(c => c[1].wait === 'named')), 'the call starts')
+  const other = await post(server.url, { jsonrpc: '2.0', method: 'notifications/cancelled',
+    params: { requestId: 12 } }, auth)
+  assert.strictEqual(other.status, 202)
+  assert.ok(!stopped.includes('named'), 'a cancellation of another request leaves it running')
+  await post(server.url, { jsonrpc: '2.0', method: 'notifications/cancelled',
+    params: { requestId: 11, reason: 'user' } }, auth)
+  assert.strictEqual((await named.answer).result.isError, true)
+  assert.ok(stopped.includes('named'))
+  pass('a tool call is cancelled by closing its connection, or by notifications/cancelled')
 
   const lock = JSON.parse(fs.readFileSync(path.join(lockDir, `${process.pid}.json`), 'utf8'))
   assert.strictEqual(lock.url, server.url)
@@ -163,8 +218,23 @@ async function run() {
   const rCall = await r.call('tools/call', { name: 'isabelle_state', arguments: { file: 'B.thy', line: 3 } })
   assert.strictEqual(rCall.result.content[0].text, 'isabelle_state on B.thy')
   assert.deepStrictEqual(calls[calls.length - 1], ['isabelle_state', { file: 'B.thy', line: 3 }])
-  r.close()
   pass('the relay passes initialize, tools/list and tool calls to the window')
+
+  const long = r.send('tools/call', { name: 'isabelle_check', arguments: { wait: 'relayed' } })
+  let answered = false
+  long.answer.then(() => { answered = true }, () => { /* never answered: right */ })
+  const queued = r.send('tools/call', { name: 'isabelle_check', arguments: { wait: 'queued' } })
+  queued.answer.then(() => { answered = true }, () => {})
+  assert.ok(await until(() => calls.some(c => c[1].wait === 'relayed')), 'the call reaches the window')
+  r.notify('notifications/cancelled', { requestId: queued.id })
+  r.notify('notifications/cancelled', { requestId: long.id, reason: 'user' })
+  assert.ok(await until(() => stopped.includes('relayed')), 'the window stops the call')
+  const after = await r.call('tools/call', { name: 'isabelle_state', arguments: { file: 'C.thy' } })
+  assert.strictEqual(after.result.content[0].text, 'isabelle_state on C.thy', 'the queue goes on')
+  assert.ok(!calls.some(c => c[1].wait === 'queued'), 'a cancelled call in the queue never starts')
+  assert.ok(!answered, 'a cancelled call gets no answer')
+  r.close()
+  pass('the relay cancels a call the agent cancels, under way or still queued')
 
   const lost = relay({ ...env, ISABELLE_VSCODE_WORKSPACE: os.tmpdir() })
   const lInit = await lost.call('initialize', { protocolVersion: '2025-06-18' })

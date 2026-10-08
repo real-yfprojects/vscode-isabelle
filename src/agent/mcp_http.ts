@@ -9,6 +9,9 @@
  * (mcp_stdio.ts) that Claude Code starts in a project finds the window for it.
  *
  * Copilot connects here directly, through registerMcpServerDefinitionProvider.
+ *
+ * A tool call is cancelled when its connection closes before the answer (the relay aborts
+ * it so), or when `notifications/cancelled` names it.
  */
 import * as crypto from 'crypto'
 import * as fs from 'fs'
@@ -16,6 +19,7 @@ import * as http from 'http'
 import * as os from 'os'
 import * as path from 'path'
 import { SERVER_INSTRUCTIONS, TOOL_DEFS } from './tool_defs'
+import type { CancellationToken } from 'vscode'
 import type { ToolHandler } from './tools'
 
 export const LOCK_DIR = path.join(os.homedir(), '.isabelle-vscode', 'agents')
@@ -41,6 +45,32 @@ type JsonRpcResponse =
   | { jsonrpc: '2.0'; id: string | number | null; result: unknown }
   | { jsonrpc: '2.0'; id: string | number | null; error: { code: number; message: string } }
 
+/** A CancellationToken without VS Code: the relay runs on plain Node and loads this module. */
+export class Cancellation {
+  private cancelled = false
+  private listeners: ((e: unknown) => unknown)[] = []
+  readonly token: CancellationToken
+
+  constructor() {
+    const self = this
+    this.token = {
+      get isCancellationRequested() { return self.cancelled },
+      onCancellationRequested: (listener: (e: unknown) => unknown) => {
+        if (self.cancelled) listener(undefined)
+        else self.listeners.push(listener)
+        return { dispose: () => { self.listeners = self.listeners.filter(l => l !== listener) } }
+      },
+    }
+  }
+
+  cancel(): void {
+    if (this.cancelled) return
+    this.cancelled = true
+    for (const l of this.listeners) l(undefined)
+    this.listeners = []
+  }
+}
+
 /**
  * Answers one JSON-RPC message, or undefined for a notification. Shared with the shim,
  * which answers `initialize` and `tools/list` itself while no window serves its folder.
@@ -49,6 +79,7 @@ export async function answer(
   message: JsonRpcRequest,
   handlers: Record<string, ToolHandler> | undefined,
   version: string,
+  token?: CancellationToken,
 ): Promise<JsonRpcResponse | undefined> {
   const id = message.id ?? null
   const ok = (result: unknown): JsonRpcResponse => ({ jsonrpc: '2.0', id, result })
@@ -78,7 +109,7 @@ export async function answer(
         return fail(-32602, `Unknown tool: ${String(name)}`)
       }
       if (!handler) return fail(-32603, `No handler for ${name}`)
-      const result = await handler(args)
+      const result = await handler(args, token)
       return ok({ content: [{ type: 'text', text: result.text }], isError: !!result.isError })
     }
     default:
@@ -89,6 +120,8 @@ export async function answer(
 export class McpHttpServer {
   private server: http.Server | undefined
   private lockFile: string | undefined
+  /** Tool calls in progress, by request id, for `notifications/cancelled`. */
+  private readonly running = new Map<string | number, Cancellation>()
   readonly token = crypto.randomBytes(24).toString('hex')
   url: string | undefined
 
@@ -146,9 +179,12 @@ export class McpHttpServer {
     try { message = JSON.parse(body) }
     catch { return send(400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }) }
 
+    /* The client gave up on the answer: whatever this connection asked stops. */
+    const closed = new Cancellation()
+    res.on('close', () => { if (!res.writableFinished) closed.cancel() })
     try {
       if (Array.isArray(message)) {
-        const answers = (await Promise.all(message.map(m => answer(m, this.handlers, this.version))))
+        const answers = (await Promise.all(message.map(m => this.answer(m, closed))))
           .filter(a => a !== undefined)
         return answers.length ? send(200, answers) : send(202)
       }
@@ -156,14 +192,38 @@ export class McpHttpServer {
         this.log(`agent tools: ${String(message.params?.name)} ` +
           JSON.stringify(message.params?.arguments ?? {}).slice(0, 200))
       }
-      const a = await answer(message, this.handlers, this.version)
+      const a = await this.answer(message, closed)
+      if (res.destroyed) return
       return a ? send(200, a) : send(202)
     } catch (err) {
       return send(500, { jsonrpc: '2.0', id: null, error: { code: -32603, message: String(err) } })
     }
   }
 
+  private async answer(message: JsonRpcRequest, closed: Cancellation)
+      : Promise<JsonRpcResponse | undefined> {
+    if (message.method === 'notifications/cancelled') {
+      const id = message.params?.requestId
+      if (typeof id === 'string' || typeof id === 'number') this.running.get(id)?.cancel()
+      return undefined
+    }
+    if (message.method !== 'tools/call' || message.id === undefined || message.id === null) {
+      return answer(message, this.handlers, this.version)
+    }
+    const id = message.id
+    const cancellation = new Cancellation()
+    const off = closed.token.onCancellationRequested(() => cancellation.cancel())
+    this.running.set(id, cancellation)
+    try { return await answer(message, this.handlers, this.version, cancellation.token) }
+    finally {
+      off.dispose()
+      if (this.running.get(id) === cancellation) this.running.delete(id)
+    }
+  }
+
   dispose(): void {
+    for (const c of this.running.values()) c.cancel()
+    this.running.clear()
     this.server?.close()
     this.server = undefined
     if (this.lockFile) {
