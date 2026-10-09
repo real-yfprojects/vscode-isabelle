@@ -128,6 +128,125 @@ async function run() {
     'a revealed symbol is shown as raw text, so motion inside it must be per character')
   pass('decision: a revealed symbol is navigated per character')
 
+  // ==================== where the keys are rebound ====================
+  // Bound everywhere, every Backspace went through the extension host while letters went
+  // straight into the editor, and a fast `abc<BS>d` came out as `abc`. The keys are now
+  // rebound only where they make a difference, which these context keys say.
+  const keys = () => vscode.commands.executeCommand('isabelle.atomicContext')
+  await setCaret(editor, 4, e)
+  assert.deepStrictEqual(await keys(), { left: true, right: false, words: true },
+    'after a rendered symbol: Backspace and Left are ours, Delete and Right are not')
+  await setCaret(editor, 4, s)
+  assert.deepStrictEqual(await keys(), { left: false, right: true, words: true })
+  await setCaret(editor, 4, s + 4)
+  assert.deepStrictEqual(await keys(), { left: false, right: false, words: true },
+    'a revealed symbol is walked per character, by the built-ins')
+  await setCaret(editor, 4, 2)
+  assert.deepStrictEqual(await keys(), { left: false, right: false, words: true },
+    'plain text on a line with symbols: only word motion is ours')
+  await setCaret(editor, 0, 3)
+  assert.deepStrictEqual(await keys(), { left: false, right: false, words: false },
+    'a line without \\, < or > words the same as the built-in, so nothing is ours')
+  pass('the rebound keys apply next to rendered symbols, and word motion on lines that differ')
+
+  // A key that lags behind the caret lets a native Backspace or Delete through, which
+  // takes one character off a rendered symbol; the rest goes after it.
+  const cut = await open('Cut.thy', [
+    'theory Cut', '  imports Main', 'begin', '',
+    'lemma r1: "\\<forall>x. x"',
+    'lemma r2: "A \\<and> B"',
+    'lemma r3: "x > 0"',
+    'lemma r4: "\\<forall>y. y"',
+    '', 'end', '',
+  ])
+  const cutText = l => cut.doc.lineAt(l).text
+  const deleteChar = (l, c) => cut.editor.edit(b => b.delete(new vscode.Range(l, c, l, c + 1)),
+    { undoStopBefore: true, undoStopAfter: false })
+
+  const fEnd = cutText(4).indexOf('\\<forall>') + '\\<forall>'.length
+  await setCaret(cut.editor, 4, fEnd)
+  await deleteChar(4, fEnd - 1)
+  await wait(400)
+  assert.strictEqual(cutText(4), 'lemma r1: "x. x"', 'Backspace at a symbol\'s end removes all of it')
+  pass('a symbol cut by a native Backspace is removed whole')
+  /* `undo` acts on the focused editor, and a test window running beside others often has
+     no focus: then nothing is undone at all, and the check is skipped rather than failed.
+     Anything undone must be the whole symbol, in one step. */
+  await vscode.commands.executeCommand('undo')
+  await wait(300)
+  console.log(`  after undo: ${JSON.stringify(cutText(4))}`)
+  if (cutText(4) === 'lemma r1: "x. x"') {
+    console.log('  SKIP: undo did not reach the editor (window not focused)')
+    await cut.editor.edit(b => b.replace(cut.doc.lineAt(4).range, 'lemma r1: "\\<forall>x. x"'))
+  } else {
+    assert.strictEqual(cutText(4), 'lemma r1: "\\<forall>x. x"', 'one undo brings the whole symbol back')
+    pass('one undo restores the whole symbol')
+  }
+
+  const aStart = cutText(5).indexOf('\\<and>')
+  await setCaret(cut.editor, 5, aStart)
+  await deleteChar(5, aStart)
+  await wait(400)
+  assert.strictEqual(cutText(5), 'lemma r2: "A  B"', 'Delete at a symbol\'s start removes all of it')
+  pass('a symbol cut by a native Delete is removed whole')
+
+  const gt = cutText(6).indexOf('>')
+  await setCaret(cut.editor, 6, gt + 1)
+  await deleteChar(6, gt)
+  await wait(400)
+  assert.strictEqual(cutText(6), 'lemma r3: "x  0"', 'a > that ends no symbol is just a character')
+  const inside = cutText(7).indexOf('\\<forall>') + 1
+  await setCaret(cut.editor, 7, inside)
+  await deleteChar(7, inside - 1)
+  await wait(400)
+  assert.strictEqual(cutText(7), 'lemma r4: "<forall>y. y"',
+    'inside a revealed symbol, a Backspace deletes one character as shown')
+  pass('deletions that cut no rendered symbol are left alone')
+
+  // The same lag lets a native arrow step one character into a rendered symbol; the caret
+  // moves on to its other edge. (A selection set here arrives like a native step: not a
+  // click, one character from where the caret was.)
+  const fStart = fEnd - '\\<forall>'.length
+  const caretAt = () => cut.editor.selection.active.character
+  await setCaret(cut.editor, 4, fEnd)
+  cut.editor.selection = new vscode.Selection(4, fEnd - 1, 4, fEnd - 1)
+  await wait(300)
+  assert.strictEqual(caretAt(), fStart, 'Left into a symbol from its end goes on to its start')
+  cut.editor.selection = new vscode.Selection(4, fStart + 1, 4, fStart + 1)
+  await wait(300)
+  assert.strictEqual(caretAt(), fEnd, 'Right into a symbol from its start goes on to its end')
+  cut.editor.selection = new vscode.Selection(4, fEnd, 4, fEnd - 1)
+  await wait(300)
+  assert.strictEqual(cut.doc.getText(cut.editor.selection), '\\<forall>',
+    'Shift+Left selects the whole symbol, keeping the anchor')
+  await setCaret(cut.editor, 4, fStart + 3)
+  cut.editor.selection = new vscode.Selection(4, fStart + 2, 4, fStart + 2)
+  await wait(300)
+  assert.strictEqual(caretAt(), fStart + 2, 'inside a revealed symbol the caret moves per character')
+  pass('a native arrow that steps into a rendered symbol is carried over it')
+
+  // Each decoration message to the window can hold up the extension host under prover
+  // load, so a type is sent only when it changed -- but always after an edit on a line
+  // with symbols, where the editor stretches a decoration over text typed at its edge.
+  const sent = async () => (await vscode.commands.executeCommand('isabelle.decorationRanges')).sent
+  const typeAt = async (l, c, text) => {
+    await cut.editor.edit(b => b.insert(new vscode.Position(l, c), text))
+    await wait(250)
+  }
+  await setCaret(cut.editor, 6, cutText(6).length)
+  let before = await sent()
+  await typeAt(6, cutText(6).length, 'a')
+  await typeAt(6, cutText(6).length, 'b')
+  assert.strictEqual(await sent(), before, 'typing on a line without symbols sends no decorations')
+  before = await sent()
+  await typeAt(4, fEnd, 'z')
+  assert.ok(await sent() > before, 'typing right after a symbol sends them again')
+  await cut.editor.edit(b => b.delete(new vscode.Range(4, fEnd, 4, fEnd + 1)))
+  before = await sent()
+  await typeAt(0, 0, '\n')
+  assert.ok(await sent() > before, 'a new line above the symbols moves them, and sends them again')
+  pass('symbol decorations are sent only when they change')
+
   // ==================== escapes with no glyph ====================
   // \<notasymbol> is not in etc/symbols, so it is never decorated. Navigation must match
   // what is displayed, or the text would be visible but unreachable by keyboard.

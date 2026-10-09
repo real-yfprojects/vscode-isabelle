@@ -10,6 +10,14 @@
  * editor.wordSeparators classifies single characters and cannot tell `\<alpha>`, which
  * belongs inside a name, from `\<open>`, which does not (see words.ts). Moves that cross
  * a line break are ours too; deletions that would join lines stay with the built-ins.
+ *
+ * A rebound key is only bound where it changes the result: next to a rendered symbol, and
+ * for word motion on lines with `\`, `<` or `>`. Context keys say where that is. Bound
+ * everywhere, every Backspace made a round trip through the extension host while letters
+ * went straight into the editor, so a Backspace typed before a letter often ran after it
+ * and deleted that letter instead. A key can lag behind the caret too: a native Backspace
+ * or Delete then cuts a symbol in half, and `repairCut` deletes the rest; a native arrow
+ * steps into one, and `repairStep` moves on to its other edge.
  */
 
 import * as vscode from 'vscode'
@@ -123,8 +131,14 @@ function singleEmptySelection(editor: vscode.TextEditor): vscode.Position | unde
   return sel.isEmpty ? sel.active : undefined
 }
 
+/* isabelle.renderSymbols, read when it changes rather than on every keystroke. */
+let symbolsRendered = true
+const readEnabled = () => {
+  symbolsRendered = vscode.workspace.getConfiguration('isabelle').get<boolean>('renderSymbols', true)
+}
+
 function enabled(): boolean {
-  return vscode.workspace.getConfiguration('isabelle').get<boolean>('renderSymbols', true)
+  return symbolsRendered
 }
 
 async function move(
@@ -166,10 +180,162 @@ async function remove(
   await editor.edit(b => b.delete(range))
 }
 
+/* Context keys of the keybindings in package.json: where a rebound key does anything. */
+const KEYS = {
+  left: 'isabelle.atomicLeft',
+  right: 'isabelle.atomicRight',
+  words: 'isabelle.atomicWords',
+} as const
+type Key = keyof typeof KEYS
+const keyState: Record<Key, boolean | undefined> = { left: undefined, right: undefined, words: undefined }
+
+/** The characters that words.ts separates but the Isabelle default wordSeparators do not. */
+const hasWordSymbols = (text: string) => /[\\<>]/.test(text)
+
+/** Can word motion from `pos` end up anywhere else than the built-in's? Also across a line break. */
+function wordsDiffer(doc: vscode.TextDocument, pos: vscode.Position): boolean {
+  const text = doc.lineAt(pos.line).text
+  if (hasWordSymbols(text)) return true
+  if (pos.character === 0 && pos.line > 0) return hasWordSymbols(doc.lineAt(pos.line - 1).text)
+  if (pos.character === text.length && pos.line < doc.lineCount - 1) {
+    return hasWordSymbols(doc.lineAt(pos.line + 1).text)
+  }
+  return false
+}
+
+/** Set the context keys for the caret of `editor`, sending only those that changed. */
+function updateKeys(editor: vscode.TextEditor | undefined): void {
+  const next: Record<Key, boolean> = { left: false, right: false, words: false }
+  if (editor && editor.document.languageId === 'isabelle' && enabled() &&
+      editor.selections.length === 1) {
+    const doc = editor.document
+    const pos = editor.selection.active
+    next.left = escapeBefore(doc, pos) !== undefined
+    next.right = escapeAfter(doc, pos) !== undefined
+    next.words = wordsDiffer(doc, pos)
+  }
+  for (const key of Object.keys(KEYS) as Key[]) {
+    if (keyState[key] === next[key]) continue
+    keyState[key] = next[key]
+    void vscode.commands.executeCommand('setContext', KEYS[key], next[key])
+  }
+}
+
+/** The caret's line as of the last event, to tell what a later deletion removed. */
+let snapshot: { uri: string; version: number; line: number; text: string; caret: number } | undefined
+
+function takeSnapshot(editor: vscode.TextEditor | undefined): void {
+  snapshot = undefined
+  if (!editor || editor.document.languageId !== 'isabelle') return
+  const pos = singleEmptySelection(editor)
+  if (!pos) return
+  const doc = editor.document
+  snapshot = {
+    uri: doc.uri.toString(), version: doc.version, line: pos.line,
+    text: doc.lineAt(pos.line).text, caret: pos.character,
+  }
+}
+
+/**
+ * A native Backspace or Delete that took one character off a rendered symbol, because
+ * the context key had not caught up with the caret yet: delete the rest of it, as the
+ * rebound key would have. Only a deletion of the symbol's last character with the caret
+ * at its end, or of its first with the caret at its start, qualifies, against the line as
+ * it was just before -- never undo or redo. The edit joins the deletion's undo step, and
+ * VS Code drops it if more typing has changed the document in the meantime.
+ */
+function repairCut(e: vscode.TextDocumentChangeEvent): void {
+  const snap = snapshot
+  if (!snap || e.reason !== undefined || e.contentChanges.length !== 1 || !enabled()) return
+  const change = e.contentChanges[0]
+  const doc = e.document
+  if (change.text !== '' || change.rangeLength !== 1 || change.range.start.line !== snap.line ||
+      doc.uri.toString() !== snap.uri || doc.version !== snap.version + 1) return
+  const at = change.range.start.character
+
+  SYMBOL_RE.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = SYMBOL_RE.exec(snap.text)) !== null) {
+    const start = m.index
+    const end = start + m[0].length
+    const backspace = snap.caret === end && at === end - 1
+    const del = snap.caret === start && at === start
+    if (!(backspace || del) || !table?.glyphOf(m[0])) continue
+    const rest = new vscode.Range(snap.line, start, snap.line, end - 1)
+    if (doc.getText(rest) !== (backspace ? m[0].slice(0, -1) : m[0].slice(1))) return
+    const editor = vscode.window.visibleTextEditors.find(ed => ed.document === doc)
+    void editor?.edit(b => b.delete(rest), { undoStopBefore: false, undoStopAfter: false })
+    return
+  }
+}
+
+/**
+ * The same for the arrows: a native Left or Right (or Shift+) that stepped from a rendered
+ * symbol's edge one character into it moves on to its other edge, as the rebound key
+ * would have. Only from the edge the caret was at before, with no edit in between, and
+ * not for a click, which may well mean to go inside.
+ */
+function repairStep(e: vscode.TextEditorSelectionChangeEvent): void {
+  const snap = snapshot
+  const editor = e.textEditor
+  const doc = editor.document
+  if (!snap || e.kind === vscode.TextEditorSelectionChangeKind.Mouse || !enabled() ||
+      e.selections.length !== 1 || doc.uri.toString() !== snap.uri || doc.version !== snap.version) return
+  const { anchor, active } = e.selections[0]
+  if (active.line !== snap.line || Math.abs(active.character - snap.caret) !== 1) return
+
+  SYMBOL_RE.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = SYMBOL_RE.exec(snap.text)) !== null) {
+    const start = m.index
+    const end = start + m[0].length
+    const left = snap.caret === end && active.character === end - 1
+    const right = snap.caret === start && active.character === start + 1
+    if (!(left || right) || !table?.glyphOf(m[0])) continue
+    const to = new vscode.Position(snap.line, left ? start : end)
+    editor.selection = new vscode.Selection(anchor.isEqual(active) ? to : anchor, to)
+    return
+  }
+}
+
 export function registerAtomicMotion(context: vscode.ExtensionContext, symbols: SymbolTable): void {
   table = symbols
-  const reg = (id: string, fn: () => Promise<void>) =>
+  readEnabled()
+  const reg =(id: string, fn: () => Promise<void>) =>
     context.subscriptions.push(vscode.commands.registerCommand(id, fn))
+
+  const follow = (editor: vscode.TextEditor | undefined) => {
+    updateKeys(editor)
+    takeSnapshot(editor)
+  }
+  context.subscriptions.push(
+    vscode.window.onDidChangeTextEditorSelection(e => {
+      if (e.textEditor !== vscode.window.activeTextEditor) return
+      repairStep(e)
+      follow(e.textEditor)
+    }),
+    vscode.window.onDidChangeActiveTextEditor(follow),
+    /* Delete leaves the caret where it is, so no selection event follows it, yet what
+       sits next to the caret has changed. Only then: after any other edit the selection
+       here is still the one from before it, and following that too made the keys flip
+       back and forth on every keystroke, one message to the window each. */
+    vscode.workspace.onDidChangeTextDocument(e => {
+      repairCut(e)
+      const editor = vscode.window.activeTextEditor
+      if (editor?.document === e.document && e.contentChanges.every(c =>
+          c.text === '' && c.range.start.isEqual(editor.selection.active))) {
+        follow(editor)
+      }
+    }),
+    vscode.workspace.onDidChangeConfiguration(e => {
+      if (!e.affectsConfiguration('isabelle.renderSymbols')) return
+      readEnabled()
+      follow(vscode.window.activeTextEditor)
+    }),
+    // Test hook: the context keys as last set.
+    vscode.commands.registerCommand('isabelle.atomicContext', () => ({ ...keyState })),
+  )
+  follow(vscode.window.activeTextEditor)
 
   // Test hook: report the decision (jump or delegate) without moving anything.
   // Asserting on a built-in's *effect* is unreliable when the test window is unfocused;

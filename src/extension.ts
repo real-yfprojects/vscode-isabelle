@@ -508,6 +508,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   sessionPicker = new SessionPicker(msg => output.appendLine(msg))
+  context.subscriptions.push(sessionPicker)
   heapWatch = new HeapWatch(() => sessionPicker?.scan() ?? [], log)
   heapWatch.register(context.subscriptions)
   context.subscriptions.push(heapWatch.onDidChange(files => status?.setStale(files)))
@@ -543,6 +544,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         sup: r.sup.length,
         bold: r.bold.length,
         glyphs: r.hidden.map(d => d.renderOptions?.before?.contentText).filter(Boolean).slice(0, 12),
+        sent: renderer.sent,
       }
     }),
     // Test hooks for the PIDE panels.
@@ -586,6 +588,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         cfg.get<string>('logic')?.trim() || 'HOL',
         cfg.get<boolean>('logicRequirements') === true)
     }),
+    // Test hook: how often the workspace has been scanned for ROOT files.
+    vscode.commands.registerCommand('isabelle.sessionScanCount', () => sessionPicker?.scans ?? 0),
     // Test hook: the picker's view of the workspace, without opening the quick pick.
     vscode.commands.registerCommand('isabelle.sessionState', () => {
       const sessions = sessionPicker?.scan() ?? []

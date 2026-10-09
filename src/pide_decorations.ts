@@ -19,6 +19,7 @@ import * as vscode from 'vscode'
 import { LanguageClient } from 'vscode-languageclient/node'
 import { colorOf } from './colors'
 import { stickyLines } from './viewport'
+import { onDidRebuildOutline } from './outline'
 import { themeColorsMarkup } from './semantic_tokens'
 
 /* Palette entries by what they colour: BACKGROUND are tints behind the text, mostly
@@ -152,6 +153,12 @@ export class PideDecorations implements vscode.Disposable {
       vscode.workspace.onDidCloseTextDocument(doc => {
         this.perDocument.delete(doc.uri.toString())
       }),
+      // The sticky lines come from a settled outline, which may have moved meanwhile.
+      onDidRebuildOutline(doc => {
+        for (const editor of vscode.window.visibleTextEditors) {
+          if (editor.document === doc) this.schedule(editor)
+        }
+      }),
     )
     scope.push(...this.disposables, this)
   }
@@ -222,18 +229,27 @@ export class PideDecorations implements vscode.Disposable {
        the theme, which is the whole bug being fixed. Backgrounds, underlines and ruler
        marks are unaffected -- no theme has an opinion about those. */
     const themed = themeColorsMarkup()
+    let applied = this.lastApplied.get(editorKey)
+    if (!applied) { applied = new Map(); this.lastApplied.set(editorKey, applied) }
     for (const [name, type] of this.types) {
       if (themed && name.startsWith('text_') && !name.startsWith('text_overview_')) {
-        if (this.lastApplied.get(editorKey)?.get(name) !== 'off') {
+        if (applied.get(name) !== 'off') {
           editor.setDecorations(type, [])
-          let applied = this.lastApplied.get(editorKey)
-          if (!applied) { applied = new Map(); this.lastApplied.set(editorKey, applied) }
           applied.set(name, 'off')
         }
         continue
       }
+      /* Most of the 40-odd types are empty in any given theory. Clearing them again on
+         every update was most of the messages this sent to the window: under prover load
+         each one can hold up the extension host, and with it every key bound there. */
       const entry = byType.get(name)
-      if (!entry || entry.items.length === 0) { editor.setDecorations(type, []); continue }
+      if (!entry || entry.items.length === 0) {
+        if (applied.get(name) !== '0') {
+          editor.setDecorations(type, [])
+          applied.set(name, '0')
+        }
+        continue
+      }
 
       let slice = span ? sliceFor(entry, span.first, span.last) : entry.items
       if (span && sticky.length > 0) {
@@ -245,8 +261,6 @@ export class PideDecorations implements vscode.Disposable {
       // Re-applying an identical slice still costs a round trip to the renderer.
       const shape = slice.length === 0 ? '0'
         : `${slice.length}:${slice[0].range.start.line}:${slice[slice.length - 1].range.end.line}:${sticky.join(',')}`
-      let applied = this.lastApplied.get(editorKey)
-      if (!applied) { applied = new Map(); this.lastApplied.set(editorKey, applied) }
       if (applied.get(name) === shape) continue
       applied.set(name, shape)
       editor.setDecorations(type, slice)

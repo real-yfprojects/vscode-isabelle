@@ -85,8 +85,40 @@ This documents tracks features and tasks that might already be tracked in other 
     since a webview view gets no find widget. Test: suite66 (matching, pure)
 - [ ] Improve Query panel
 - [ ] Lags and performance while typing
-  - [ ] Sometimes vscode reports that the window stops responding
+  - [ ] Sometimes vscode reports that the window stops responding -- not reproduced:
+    typing into a 9k-line theory and into a copy of `HOL-Library.Multiset` while it is
+    checked, the renderer had no task over 50 ms
   - [ ] while vscode does respond to cursor inputs, keyboard inputs are delayed and especially backspace is delayed and even reordered after other keyboard inputs
+    - [x] Backspace reordered: Backspace, Delete, the arrows and the word keys were
+      extension commands everywhere, so a Backspace ran after the letters typed behind
+      it (`abc⌫d` at 25 ms/key gave `abc` in 7-12 of 15 tries). Now rebound only next
+      to a rendered symbol and, for word motion, on lines with `\`, `<` or `>`
+      (context keys in `atomic.ts`); a symbol a native key cuts in half is deleted
+      whole. 0 of 15 after. Tests: suite4
+    - [x] the whole theory was re-parsed per keystroke for the sticky lines
+      (`settledOutline`, test: suite19), and a workspace without a ROOT file walked
+      per edit (test: suite69)
+    - [ ] letters themselves: not reproduced. Key-to-screen time measured with real
+      keystrokes: 16-19 ms median on a 9k-line theory (bare profile; no difference
+      without symbols, semantic tokens, PIDE markup, minimap or suggestions, nor at
+      top/end of file); 18-31 ms with the prover keeping 60-76% of all cores busy
+      (Multiset, whole-theory checking); 29-42 ms, max 113 ms with the full user
+      profile (90 extensions, Infoview open), where the renderer does about twice the
+      work (decorations, minimap decorations, bracket parsing). A large proof state
+      changes nothing (only 10 subgoals are printed). The extension host stalled up
+      to 256 ms typing at the top of the file with the full profile, which is what a
+      key bound to an extension command waits for
+    - [x] under prover load (HOL-Analysis from source), the extension's display work
+      caused most extension-host stalls (7-59 per typing round, up to 441 ms, against 1-3
+      with symbols, markup and semantic tokens off). The stalls sat in `postMessage` to
+      the window, and the extension sent ~10 messages per keystroke that changed
+      nothing: PIDE markup cleared empty types again on every update, symbol rendering
+      re-sent all five types, the context keys flipped twice per keystroke. Now each is
+      sent only when it changes (symbols: always after an edit on a line with symbols),
+      and the sticky outline is rebuilt once typing pauses. 0 such messages per round
+      after; 1-2 stalls of at most ~60 ms in most rounds. Tests: suite4
+    - [x] Left/Right stepped into a rendered symbol when the context key lagged
+      (found while measuring): carried on to its other edge (`repairStep`, suite4)
 - [x] Sledgehammer is slow and may stop when the file is edited -- jobs on the extended
     server (`vscode_sledgehammer.ML`, `VSCode_Sledgehammer`, `src/sledgehammer_jobs.ts`;
     docs/panels.md). It stopped because typing the next step edits the hammered command (a
@@ -100,6 +132,7 @@ This documents tracks features and tasks that might already be tracked in other 
     (pure), suite68, suite64
 
 ### Medium
+- [ ] profiling - optimizing verification/loading time of your project
 - [ ] code formatting / prettier extension
 - [ ] extension user docs s.t. copilot/claude can help you with usage questions
 - [ ] Look at these features: https://github.com/Arthur742Ramos/Isabelle-VSCode#-features and decide which we are missing.

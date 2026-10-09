@@ -220,8 +220,42 @@ export function outlineFor(doc: vscode.TextDocument): OutlineNode[] {
   return roots
 }
 
+/* How long typing must pause before a settled outline catches up. */
+const SETTLE_MS = 300
+const settling = new Map<string, NodeJS.Timeout>()
+const rebuilt = new vscode.EventEmitter<vscode.TextDocument>()
+/** A settled outline caught up with its document. */
+export const onDidRebuildOutline = rebuilt.event
+
+/**
+ * The outline as it was when typing last paused: rebuilt SETTLE_MS after the last call
+ * that found it behind, with onDidRebuildOutline after. For callers that run on every
+ * keystroke and can live with an outline a few keystrokes old -- the sticky lines, which
+ * the decorations ask for after each one. Through outlineFor, that re-parsed the whole
+ * theory per keystroke, the largest cost of this extension while typing in a big one;
+ * even every SETTLE_MS, a rebuild took 60 ms at a time under prover load.
+ */
+export function settledOutline(doc: vscode.TextDocument): OutlineNode[] {
+  const key = doc.uri.toString()
+  const hit = cache.get(key)
+  if (!hit) return outlineFor(doc)
+  if (hit.version !== doc.version) {
+    clearTimeout(settling.get(key))
+    settling.set(key, setTimeout(() => {
+      settling.delete(key)
+      if (doc.isClosed) return
+      outlineFor(doc)
+      rebuilt.fire(doc)
+    }, SETTLE_MS))
+  }
+  return hit.roots
+}
+
 export function forgetOutline(doc: vscode.TextDocument): void {
-  cache.delete(doc.uri.toString())
+  const key = doc.uri.toString()
+  cache.delete(key)
+  clearTimeout(settling.get(key))
+  settling.delete(key)
 }
 
 /** Outline nodes enclosing `line`, outermost first -- what sticky scroll shows. */
