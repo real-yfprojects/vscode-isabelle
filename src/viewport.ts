@@ -17,7 +17,7 @@
  */
 
 import * as vscode from 'vscode'
-import { enclosing, outlineFor } from './outline'
+import { enclosing, settledOutline } from './outline'
 
 function stickyScrollEnabled(): boolean {
   return vscode.workspace.getConfiguration('editor.stickyScroll').get<boolean>('enabled') ?? true
@@ -52,7 +52,8 @@ export function stickyLines(doc: vscode.TextDocument, firstVisible: number): num
 
   if (doc.languageId === 'isabelle') {
     // Sticky scroll shows the enclosing outline nodes that began above the viewport.
-    const lines = enclosing(outlineFor(doc), firstVisible)
+    // A settled outline: editing in the viewport does not move the nodes above it.
+    const lines = enclosing(settledOutline(doc), firstVisible)
       .map(node => node.line)
       .filter(line => line < firstVisible)
     // A theory with no structure at all still gets a header, from indentation.

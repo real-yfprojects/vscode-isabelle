@@ -11,6 +11,7 @@
 import * as vscode from 'vscode'
 import { SYMBOL_RE, SymbolTable } from './symbols'
 import { stickyLines } from './viewport'
+import { onDidRebuildOutline } from './outline'
 
 /** Control symbols that restyle the single character following them. */
 const SCRIPT_SINGLE: Record<string, 'sub' | 'sup' | 'bold'> = {
@@ -46,6 +47,21 @@ export class SymbolRenderer implements vscode.Disposable {
   private timer: NodeJS.Timeout | undefined
   private disposables: vscode.Disposable[] = []
   private enabled: boolean
+  /**
+   * Per editor, what each type was last set to and the lines that covers, so that a type
+   * is sent again only when it changed. Typing on a line without symbols changes none of
+   * them, yet all five went to the window after every keystroke; under prover load each
+   * message can hold up the extension host. An edit on one of those lines always sends
+   * them: the editor stretches a decoration over text typed at its edge, so what it shows
+   * may differ from what was sent even when the ranges computed again do not.
+   */
+  /** setDecorations calls so far, for a test. */
+  sent = 0
+  private applied = new WeakMap<vscode.TextEditor, {
+    sent: Partial<Record<keyof Ranges, string>>
+    lines: Set<number>
+    touched: boolean
+  }>()
 
   constructor(private readonly table: SymbolTable) {
     this.enabled = config<boolean>('renderSymbols', true)
@@ -53,6 +69,8 @@ export class SymbolRenderer implements vscode.Disposable {
   }
 
   private createTypes(): void {
+    // New types show nothing yet, whatever the old ones were sent.
+    this.applied = new WeakMap()
     /* The escape text is shrunk to nothing; the glyph is supplied by an ::after
        attachment, which needs its size restored explicitly since it would otherwise
        inherit the 0.001em from the range it is attached to.
@@ -112,7 +130,16 @@ export class SymbolRenderer implements vscode.Disposable {
       vscode.window.onDidChangeTextEditorSelection(e => schedule(e.textEditor)),
       vscode.workspace.onDidChangeTextDocument(e => {
         for (const editor of vscode.window.visibleTextEditors) {
-          if (editor.document === e.document) schedule(editor)
+          if (editor.document !== e.document) continue
+          const applied = this.applied.get(editor)
+          if (applied && e.contentChanges.some(c => touches(applied.lines, c.range))) applied.touched = true
+          schedule(editor)
+        }
+      }),
+      // The sticky lines come from a settled outline, which may have moved meanwhile.
+      onDidRebuildOutline(doc => {
+        for (const editor of vscode.window.visibleTextEditors) {
+          if (editor.document === doc) schedule(editor)
         }
       }),
       vscode.workspace.onDidChangeConfiguration(e => {
@@ -147,12 +174,30 @@ export class SymbolRenderer implements vscode.Disposable {
 
   private clearAll(): void {
     for (const editor of vscode.window.visibleTextEditors) {
-      editor.setDecorations(this.hide, [])
-      editor.setDecorations(this.link, [])
-      editor.setDecorations(this.sub, [])
-      editor.setDecorations(this.sup, [])
-      editor.setDecorations(this.bold, [])
+      this.apply(editor, { hidden: [], linked: [], sub: [], sup: [], bold: [] })
     }
+  }
+
+  /** Set the five types of `editor` to `r`, each only if it changed (see `applied`). */
+  private apply(editor: vscode.TextEditor, r: Ranges): void {
+    let applied = this.applied.get(editor)
+    const force = !applied || applied.touched
+    if (!applied) { applied = { sent: {}, lines: new Set(), touched: false }; this.applied.set(editor, applied) }
+    const set = (key: keyof Ranges, type: vscode.TextEditorDecorationType,
+                 list: vscode.Range[] | vscode.DecorationOptions[]) => {
+      const sig = signature(list)
+      if (!force && applied!.sent[key] === sig) return
+      applied!.sent[key] = sig
+      this.sent++
+      editor.setDecorations(type, list)
+    }
+    set('hidden', this.hide, r.hidden)
+    set('linked', this.link, r.linked)
+    set('sub', this.sub, r.sub)
+    set('sup', this.sup, r.sup)
+    set('bold', this.bold, r.bold)
+    applied.lines = linesOf(r)
+    applied.touched = false
   }
 
   /** Public for tests: what would be decorated in this editor right now. */
@@ -253,12 +298,7 @@ export class SymbolRenderer implements vscode.Disposable {
   private refresh(editor: vscode.TextEditor): void {
     if (!this.enabled) { this.clearAll(); return }
     if (editor.document.languageId !== 'isabelle') return
-    const r = this.computeRanges(editor)
-    editor.setDecorations(this.hide, r.hidden)
-    editor.setDecorations(this.link, r.linked)
-    editor.setDecorations(this.sub, r.sub)
-    editor.setDecorations(this.sup, r.sup)
-    editor.setDecorations(this.bold, r.bold)
+    this.apply(editor, this.computeRanges(editor))
   }
 
   private isLinked(doc: vscode.TextDocument, range: vscode.Range): boolean {
@@ -346,6 +386,35 @@ function mergeLines(spans: [number, number][]): [number, number][] {
     else out.push([start, end])
   }
   return out
+}
+
+/** What a decoration list sets, as text: the same text, nothing new to send. */
+function signature(list: vscode.Range[] | vscode.DecorationOptions[]): string {
+  let out = ''
+  for (const item of list) {
+    const r = item instanceof vscode.Range ? item : item.range
+    const glyph = item instanceof vscode.Range ? '' : item.renderOptions?.before?.contentText ?? ''
+    out += `${r.start.line}:${r.start.character}-${r.end.line}:${r.end.character}${glyph};`
+  }
+  return out
+}
+
+/** Every line some range of `r` is on. */
+function linesOf(r: Ranges): Set<number> {
+  const out = new Set<number>()
+  const add = (range: vscode.Range) => {
+    for (let line = range.start.line; line <= range.end.line; line++) out.add(line)
+  }
+  for (const o of r.hidden) add(o.range)
+  for (const o of r.linked) add(o.range)
+  for (const range of [...r.sub, ...r.sup, ...r.bold]) add(range)
+  return out
+}
+
+/** Does an edit of `range` reach one of `lines`? */
+function touches(lines: Set<number>, range: vscode.Range): boolean {
+  for (let line = range.start.line; line <= range.end.line; line++) if (lines.has(line)) return true
+  return false
 }
 
 function config<T>(key: string, fallback: T): T {

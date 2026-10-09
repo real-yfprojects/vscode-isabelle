@@ -123,6 +123,27 @@ async function run() {
     'with no outline nodes the indentation model still applies')
   pass('indentation remains the fallback when a document has no structure')
 
+  // The decorations ask for the sticky lines after every keystroke, and parsing the whole
+  // theory each time was the largest cost of typing into a big one. They now get an
+  // outline that catches up a moment later, and are told when it has.
+  const { onDidRebuildOutline } = require(path.join(__dirname, '..', 'out', 'outline.js'))
+  const moving = await vscode.workspace.openTextDocument({ content: structured, language: 'isabelle' })
+  assert.deepStrictEqual(stickyLines(moving, 12), [4, 8])
+  const edit = new vscode.WorkspaceEdit()
+  edit.insert(moving.uri, new vscode.Position(0, 0), '(* a *)\n(* b *)\n')
+  await vscode.workspace.applyEdit(edit)
+  const rebuilt = new Promise(resolve => {
+    const timer = setTimeout(() => { sub.dispose(); resolve(false) }, 3000)
+    const sub = onDidRebuildOutline(doc => {
+      if (doc !== moving) return
+      clearTimeout(timer); sub.dispose(); resolve(true)
+    })
+  })
+  console.log(`  sticky lines right after the edit: ${JSON.stringify(stickyLines(moving, 14))}`)
+  assert.ok(await rebuilt, 'the settled outline catches up and says so')
+  assert.deepStrictEqual(stickyLines(moving, 14), [6, 10], 'then the sticky lines follow the edit')
+  pass('sticky lines come from an outline that catches up after an edit, not per keystroke')
+
   console.log(`${passed} checks passed`)
   console.log('SUITE19_OK')
 }

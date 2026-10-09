@@ -70,18 +70,44 @@ export function workspaceRoots(): string[] {
 
 /* The status bar item that shows the session lives in status_bar.ts, which follows the
    settings this writes. */
-export class SessionPicker {
-  private sessions: Session[] = []
+export class SessionPicker implements vscode.Disposable {
+  /* The last scan, and the folders it covered; undefined once a ROOT file changed. */
+  private sessions: Session[] | undefined
+  private scannedRoots = ''
+  /** How many scans so far, for a test. */
+  scans = 0
   /* Files already warned about, so the prompt appears once per server run. */
   private warned = new Set<string>()
+  private readonly watcher = vscode.workspace.createFileSystemWatcher('**/ROOT')
 
-  constructor(private readonly log: (msg: string) => void) {}
+  constructor(private readonly log: (msg: string) => void) {
+    const forget = () => { this.sessions = undefined }
+    this.watcher.onDidCreate(forget)
+    this.watcher.onDidChange(forget)
+    this.watcher.onDidDelete(forget)
+  }
 
-  /** Re-scan ROOT files. Cheap enough to redo whenever it is asked for. */
+  dispose(): void { this.watcher.dispose() }
+
+  /** Re-scan ROOT files, for when it is asked for. */
   scan(): Session[] {
     const roots = workspaceRoots()
+    this.scans++
     this.sessions = readSessions(roots)
+    this.scannedRoots = roots.join('\n')
     this.log(`session scan: ${this.sessions.length} session(s) in ${roots.length} folder(s)`)
+    return this.sessions
+  }
+
+  /**
+   * The sessions of the last scan, while no ROOT file and no folder has changed. Checked
+   * on every edit, so it must not walk the workspace each time -- which it did whenever
+   * that found no session at all, an empty list having looked like no scan yet.
+   */
+  private cachedSessions(): Session[] {
+    if (this.sessions === undefined || this.scannedRoots !== workspaceRoots().join('\n')) {
+      return this.scan()
+    }
     return this.sessions
   }
 
@@ -102,7 +128,7 @@ export class SessionPicker {
     const requirements = cfg.get<boolean>('logicRequirements') === true
 
     const stale = stalenessWarning(
-      this.sessions.length > 0 ? this.sessions : this.scan(),
+      this.cachedSessions(),
       file, logic, requirements, this.editingSessions())
     if (stale === undefined) return
 
@@ -118,7 +144,7 @@ export class SessionPicker {
     const files = vscode.workspace.textDocuments
       .filter(d => d.languageId === 'isabelle' || d.fileName.endsWith('.thy'))
       .map(d => d.fileName)
-    return openSessions(this.sessions, files)
+    return openSessions(this.cachedSessions(), files)
   }
 
   async pick(): Promise<void> {
@@ -158,7 +184,7 @@ export class SessionPicker {
        registered component, listed in a ROOTS catalogue, or passed with -d. Register the
        chosen session's own directory so every session the picker offers actually starts. */
     const existing = cfg.get<string[]>('sessionDirs') ?? []
-    const dirs = sessionDirsFor(this.sessions, logic, existing)
+    const dirs = sessionDirsFor(this.cachedSessions(), logic, existing)
     if (dirs.length !== existing.length) {
       await cfg.update('sessionDirs', dirs, target)
     }

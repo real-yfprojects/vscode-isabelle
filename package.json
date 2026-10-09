@@ -397,68 +397,68 @@
       {
         "command": "isabelle.cursorLeft",
         "key": "left",
-        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols"
+        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols && isabelle.atomicLeft"
       },
       {
         "command": "isabelle.cursorRight",
         "key": "right",
-        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols"
+        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols && isabelle.atomicRight"
       },
       {
         "command": "isabelle.cursorLeftSelect",
         "key": "shift+left",
-        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols"
+        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols && isabelle.atomicLeft"
       },
       {
         "command": "isabelle.cursorRightSelect",
         "key": "shift+right",
-        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols"
+        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols && isabelle.atomicRight"
       },
       {
         "command": "isabelle.deleteLeft",
         "key": "backspace",
-        "when": "editorTextFocus && !editorReadonly && editorLangId == isabelle && config.isabelle.renderSymbols"
+        "when": "editorTextFocus && !editorReadonly && editorLangId == isabelle && config.isabelle.renderSymbols && isabelle.atomicLeft"
       },
       {
         "command": "isabelle.deleteRight",
         "key": "delete",
-        "when": "editorTextFocus && !editorReadonly && editorLangId == isabelle && config.isabelle.renderSymbols"
+        "when": "editorTextFocus && !editorReadonly && editorLangId == isabelle && config.isabelle.renderSymbols && isabelle.atomicRight"
       },
       {
         "command": "isabelle.cursorWordLeft",
         "key": "ctrl+left",
         "mac": "alt+left",
-        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols"
+        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols && isabelle.atomicWords"
       },
       {
         "command": "isabelle.cursorWordEndRight",
         "key": "ctrl+right",
         "mac": "alt+right",
-        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols"
+        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols && isabelle.atomicWords"
       },
       {
         "command": "isabelle.cursorWordLeftSelect",
         "key": "ctrl+shift+left",
         "mac": "alt+shift+left",
-        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols"
+        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols && isabelle.atomicWords"
       },
       {
         "command": "isabelle.cursorWordEndRightSelect",
         "key": "ctrl+shift+right",
         "mac": "alt+shift+right",
-        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols"
+        "when": "editorTextFocus && editorLangId == isabelle && config.isabelle.renderSymbols && isabelle.atomicWords"
       },
       {
         "command": "isabelle.deleteWordLeft",
         "key": "ctrl+backspace",
         "mac": "alt+backspace",
-        "when": "editorTextFocus && !editorReadonly && editorLangId == isabelle && config.isabelle.renderSymbols"
+        "when": "editorTextFocus && !editorReadonly && editorLangId == isabelle && config.isabelle.renderSymbols && isabelle.atomicWords"
       },
       {
         "command": "isabelle.deleteWordRight",
         "key": "ctrl+delete",
         "mac": "alt+delete",
-        "when": "editorTextFocus && !editorReadonly && editorLangId == isabelle && config.isabelle.renderSymbols"
+        "when": "editorTextFocus && !editorReadonly && editorLangId == isabelle && config.isabelle.renderSymbols && isabelle.atomicWords"
       }
     ],
     "configurationDefaults": {
