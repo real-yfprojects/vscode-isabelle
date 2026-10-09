@@ -37,6 +37,7 @@ import * as vscode from 'vscode'
 import { LanguageClient } from 'vscode-languageclient/node'
 import { isabelleCss, MARGIN_SCRIPT, openIsabelleLink, scriptNonce } from './webview'
 import { INFOVIEW_CSS, InfoSection, InfoviewMode, InfoviewModel, infoviewBody } from './infoview_view'
+import { FIND_BAR_HTML, FIND_CSS, FIND_SCRIPT } from './find_bar'
 
 export { infoviewBody } from './infoview_view'
 
@@ -61,6 +62,9 @@ export class Infoview implements vscode.WebviewViewProvider {
   private editorPanel: vscode.WebviewPanel | undefined
   private viewMargin: number | undefined
   private editorMargin: number | undefined
+  /* Hosts whose page has said it is ready, and one that is to open its find bar once it is. */
+  private readonly ready = new Set<'view' | 'editor'>()
+  private findPending: 'view' | 'editor' | undefined
 
   private client: LanguageClient | undefined
   private mode: InfoviewMode = 'waiting'
@@ -92,6 +96,7 @@ export class Infoview implements vscode.WebviewViewProvider {
       vscode.commands.registerCommand('isabelle.infoviewTogglePause', () => this.togglePause()),
       vscode.commands.registerCommand('isabelle.infoviewUnpinAll', () => this.unpinAll()),
       vscode.commands.registerCommand('isabelle.infoviewOpenInEditor', () => this.openInEditor()),
+      vscode.commands.registerCommand('isabelle.infoviewFind', () => this.find()),
       // Test hook.
       vscode.commands.registerCommand('isabelle.infoviewState', () => ({
         mode: this.mode,
@@ -253,6 +258,23 @@ export class Infoview implements vscode.WebviewViewProvider {
     for (const pin of [...this.pins]) if (pin.id !== undefined) this.backend?.unpin(pin.id)
   }
 
+  /* The editor tab when it is the one in front, else the view. The page opens the bar;
+     a page still loading opens it when it is ready. */
+  private async find(): Promise<void> {
+    let host: 'view' | 'editor' = 'editor'
+    if (this.editorPanel?.active) this.editorPanel.reveal(undefined, false)
+    else {
+      host = 'view'
+      await vscode.commands.executeCommand(`${Infoview.viewType}.focus`)
+    }
+    if (this.ready.has(host)) void this.webview(host)?.postMessage({ type: 'find' })
+    else this.findPending = host
+  }
+
+  private webview(host: 'view' | 'editor'): vscode.Webview | undefined {
+    return host === 'view' ? this.view?.webview : this.editorPanel?.webview
+  }
+
   private openInEditor(): void {
     if (this.editorPanel) { this.editorPanel.reveal(undefined, true); return }
     this.adoptEditorPanel(vscode.window.createWebviewPanel(Infoview.editorViewType, 'Isabelle Infoview',
@@ -270,15 +292,24 @@ export class Infoview implements vscode.WebviewViewProvider {
     panel.webview.onDidReceiveMessage((msg: WebviewMessage) => this.onMessage(msg, 'editor'))
     panel.onDidDispose(() => {
       this.editorPanel = undefined
+      this.ready.delete('editor')
       this.editorMargin = undefined
       this.marginChanged()
     })
+    this.ready.delete('editor')
     panel.webview.html = this.pageHtml(true)
   }
 
   private async onMessage(msg: WebviewMessage, host: 'view' | 'editor'): Promise<void> {
     switch (msg.command) {
-      case 'ready': this.post(host); break
+      case 'ready':
+        this.ready.add(host)
+        this.post(host)
+        if (this.findPending === host) {
+          this.findPending = undefined
+          void this.webview(host)?.postMessage({ type: 'find' })
+        }
+        break
       case 'resize':
         if (msg.margin) {
           if (host === 'view') this.viewMargin = msg.margin
@@ -327,11 +358,13 @@ export class Infoview implements vscode.WebviewViewProvider {
     this.view = view
     view.webview.options = { enableScripts: true }
     view.webview.onDidReceiveMessage((msg: WebviewMessage) => this.onMessage(msg, 'view'))
-    view.onDidDispose(() => { this.view = undefined; this.viewMargin = undefined })
+    view.onDidDispose(() => { this.view = undefined; this.viewMargin = undefined; this.ready.delete('view') })
+    this.ready.delete('view')
     view.webview.html = this.pageHtml(false)
   }
 
   private reload(): void {
+    this.ready.clear()
     if (this.view) this.view.webview.html = this.pageHtml(false)
     if (this.editorPanel) this.editorPanel.webview.html = this.pageHtml(true)
   }
@@ -359,7 +392,7 @@ export class Infoview implements vscode.WebviewViewProvider {
   }
 
   private post(host: 'view' | 'editor'): void {
-    const webview = host === 'view' ? this.view?.webview : this.editorPanel?.webview
+    const webview = this.webview(host)
     if (!webview) return
     void webview.postMessage({ type: 'body', html: infoviewBody(this.model()) })
   }
@@ -371,9 +404,10 @@ export class Infoview implements vscode.WebviewViewProvider {
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy"
       content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
-<style>${isabelleCss()}${INFOVIEW_CSS}
+<style>${isabelleCss()}${INFOVIEW_CSS}${FIND_CSS}
 ${inEditor ? 'body { background-color: var(--vscode-editor-background); }' : ''}</style>
 </head><body>
+${FIND_BAR_HTML}
 <div id="content">${infoviewBody(this.model())}</div>
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
@@ -414,6 +448,7 @@ ${inEditor ? 'body { background-color: var(--vscode-editor-background); }' : ''}
     }
   });
 ${MARGIN_SCRIPT}
+${FIND_SCRIPT}
   vscode.postMessage({ command: 'ready' });
 </script>
 </body></html>`
