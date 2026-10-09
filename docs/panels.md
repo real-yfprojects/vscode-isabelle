@@ -105,8 +105,24 @@ Each page is loaded once, and later bodies are posted into it. An update therefo
 keeps the scroll position and which blocks are collapsed; the other panels here lose
 both on every update, because they replace `webview.html`.
 
+**Find**, because a webview view gets no find widget from VS Code (only an editor-tab
+webview can ask for one), and `print_classes` or `print_theorems` output runs to pages.
+Ctrl+F in the view, or the search button in its title bar (`isabelle.infoviewFind`),
+opens a bar of its own (`find_bar.ts`): Enter / Shift+Enter and F3 step through the
+matches, Alt+C and Alt+R switch on case and regular expressions, Escape closes it. A space
+in a plain query matches any run of whitespace, since where Isabelle breaks a line depends
+on the panel's width. Matches are painted with the CSS Custom Highlight API, so the
+server's HTML is never rewritten and a match can run across the spans of a term. The bar
+watches the page and searches each new body again. It opens a collapsed block to show a
+match there, as the browser's own find does.
+
+The keys it handles have to stop at the document. VS Code's webview host forwards every
+keydown to the workbench from a listener on the inner window, so otherwise Ctrl+F and
+Escape would also act there.
+
 Tested by `suite44` (the page body, pure), `suite6` (the stock backend) and `suite45`
-(the extended one, including a pin that follows its command through an edit).
+(the extended one, including a pin that follows its command through an edit),
+and `suite66` (find's matching, pure).
 
 ## Simplifier trace
 

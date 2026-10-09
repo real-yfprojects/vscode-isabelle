@@ -91,6 +91,11 @@
         "icon": "$(link-external)"
       },
       {
+        "command": "isabelle.infoviewFind",
+        "title": "Isabelle: Find in Infoview",
+        "icon": "$(search)"
+      },
+      {
         "command": "isabelle.sledgehammer",
         "title": "Isabelle: Run Sledgehammer"
       },
@@ -716,9 +721,14 @@
           "group": "navigation"
         },
         {
+          "command": "isabelle.infoviewFind",
+          "when": "view == isabelle-infoview",
+          "group": "navigation@1"
+        },
+        {
           "command": "isabelle.infoviewOpenInEditor",
           "when": "view == isabelle-infoview",
-          "group": "navigation"
+          "group": "navigation@2"
         }
       ],
       "commandPalette": [
@@ -850,7 +860,7 @@
     "build": "tsc -p ./ && node ./scripts/server-jar.js",
     "watch": "tsc -watch -p ./",
     "dev": "node ./test/dev.js",
-    "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29 suite32 suite38 suite41 suite42 suite44 suite46 suite48 suite49 suite60 suite63",
+    "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29 suite32 suite38 suite41 suite42 suite44 suite46 suite48 suite49 suite60 suite63 suite66",
     "test": "node ./test/runTest.js",
     "package": "vsce package --out vscode-isabelle.vsix",
     "release": "node ./scripts/release.js"

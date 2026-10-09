@@ -80,7 +80,9 @@ This documents tracks features and tasks that might already be tracked in other 
     Copilot does; `claude mcp list` reads the `.mcp.json` the setup writes
   - [ ] Copilot: check the tools picker on a VS Code with `registerMcpServerDefinitionProvider`
   - [ ] a headless fallback for agents without a window (`isabelle server` kept alive)
-- [ ] search in isabelle output panel (e.g. for print_classes)
+- [x] search in isabelle output panel (e.g. for print_classes) -- a find bar in the
+    infoview (Ctrl+F, or the title bar's search button; `src/find_bar.ts`, docs/panels.md),
+    since a webview view gets no find widget. Test: suite66 (matching, pure)
 - [ ] Improve Query panel
 - [ ] Lags and performance while typing
   - [ ] Sometimes vscode reports that the window stops responding
