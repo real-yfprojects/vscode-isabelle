@@ -28,15 +28,16 @@ async function run() {
   const state = () => vscode.commands.executeCommand('isabelle.shorthandsState')
 
   /* Wait for the rewriter instead of sleeping a fixed time: it answers a keystroke with an
-     edit of its own, a round trip that takes much longer on a CI machine shared with a
-     prover. Typing on before it lands makes VS Code drop the edit as stale, so a sleep
+     edit of its own, and so does the comment closer, a round trip that takes much longer
+     on a CI machine shared with a prover. Typing on before it lands makes VS Code drop the edit as stale, so a sleep
      that is too short both misses the expansion and loses it for good. Settled means no
      edit in flight and the document unchanged across two polls. */
   async function settle() {
     const deadline = Date.now() + 10_000
     let version = -1
     for (;;) {
-      if ((await state()).rewritesInFlight === 0 && doc.version === version) return
+      const s = await state()
+      if (s.rewritesInFlight === 0 && s.commentEditsInFlight === 0 && doc.version === version) return
       if (Date.now() > deadline) throw new Error('the shorthand rewriter did not settle within 10 s')
       version = doc.version
       await wait(25)
@@ -47,11 +48,13 @@ async function run() {
      whichever editor has focus, and this copy of the document hears of the change by a
      message of its own, so neither the command returning nor a quiet moment says the
      character is in. On Windows CI a line once read `x\` after typing `x\_1`. A keystroke
-     that never arrives means focus was elsewhere: say where, refocus, and type it again. */
+     that never arrives means focus was elsewhere: say where, refocus, and type it again.
+     `\b` is Backspace. */
   async function keystroke(ch) {
     for (let tries = 0; tries < 2; tries++) {
       const before = doc.version
-      await vscode.commands.executeCommand('type', { text: ch })
+      if (ch === '\b') await vscode.commands.executeCommand('deleteLeft')
+      else await vscode.commands.executeCommand('type', { text: ch })
       for (const deadline = Date.now() + 5_000; doc.version === before && Date.now() < deadline;) {
         await wait(25)
       }
@@ -123,13 +126,35 @@ async function run() {
   pass('pairs: \\[[ and \\<> leave the caret inside')
 
   // ---------- typing a comment, and Enter after a proof method ----------
-  /* `(*` used to be an auto-closing pair of its own. VS Code never types over a closer of
-     two characters, so the `*)` a person types to end the comment landed in front of the
-     one it had inserted: `(* x *)*)`, an outer syntax error on the next command. Now
-     only the `(` closes, and the typed `)` goes over that. */
+  /* `(*` closes itself, but not as an auto-closing pair: VS Code never types over a closer
+     of two characters, so the `*)` a person types to end the comment landed in front of
+     the one it had inserted, `(* x *)*)`. The extension grows the comment out of the `()`
+     VS Code closes instead, and takes its own `*)` away when one is typed in front of it. */
+  r = await type('(*')
+  assert.strictEqual(r.line, '(**)', '(* closes itself')
+  assert.strictEqual(r.caret, 2, 'the caret sits inside the comment')
   r = await type('(* x *)')
   assert.strictEqual(r.line, '(* x *)', 'nothing auto-inserted is left after a typed comment')
-  pass('typing (* x *) leaves exactly the comment')
+  assert.strictEqual(r.caret, 7)
+  r = await type('(* a (* b *) c *)')
+  assert.strictEqual(r.line, '(* a (* b *) c *)', 'nested comments close one by one')
+  r = await type('(*\b')
+  assert.strictEqual(r.line, '()', 'Backspace on the star gives back the ()')
+  assert.strictEqual(r.caret, 1)
+  pass('(* closes with *), and typing *) goes over it')
+
+  // A `*)` that was there before stays: only the closers put in are typed over.
+  await editor.edit(b => b.replace(doc.lineAt(LINE).range, '(* x *)'))
+  editor.selection = new vscode.Selection(LINE, 5, LINE, 5)
+  for (const ch of '*)') { await keystroke(ch); await settle() }
+  assert.strictEqual(doc.lineAt(LINE).text, '(* x *)*)', 'a closer typed by hand is no closer of ours')
+
+  // In a string `(*)` is HOL's multiplication, not a comment.
+  await editor.edit(b => b.replace(doc.lineAt(LINE).range, '"a  b"'))
+  editor.selection = new vscode.Selection(LINE, 3, LINE, 3)
+  for (const ch of '(*') { await keystroke(ch); await settle() }
+  assert.strictEqual(doc.lineAt(LINE).text, '"a (*) b"', 'no closer inside a string')
+  pass('closers typed by hand and (* inside a string are left alone')
 
   /* Isabelle files get suggestions on every word, so the list is open after `by simp`.
      With VS Code's default, Enter then accepts `simp` -- a no-op -- instead of breaking

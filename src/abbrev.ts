@@ -9,6 +9,7 @@
 import * as vscode from 'vscode'
 import { SymbolEntry, SymbolTable, SYMBOL_RE } from './symbols'
 import { autoClosers, Expansion, Shorthands, typedKey } from './shorthands'
+import { commentEditsInFlight } from './comment_close'
 
 /** Characters that may continue a symbol name, so typing one is no terminator. */
 const NAME_CHAR_RE = /[A-Za-z0-9_^']/
@@ -65,6 +66,7 @@ export function registerAbbreviations(
     vscode.commands.registerCommand('isabelle.shorthandsState', () => ({
       rewritesInFlight,
       rewritesRejected,
+      commentEditsInFlight: commentEditsInFlight(),
       keys: shorthands.entries().map(([k]) => k),
     })),
     vscode.workspace.onDidChangeConfiguration(e => {

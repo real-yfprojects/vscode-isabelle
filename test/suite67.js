@@ -1,6 +1,7 @@
 // Pure checks for Sledgehammer jobs (src/sledgehammer_text.ts, src/theory_lexer.ts): the
 // `sorry`s of a text, where a job's place is after an edit, the parameters of a run, the
-// edit that puts a proof in, and what counts as a falsification.
+// edit that puts a proof in, and what counts as a falsification. Also where a `(*` starts
+// no comment, for the comment closer (src/comment_close.ts).
 //
 // What is held down: a `sorry` in a comment, a string or a cartouche is none; typing the
 // next step after a job's place leaves it where it is, and typing before it moves it along;
@@ -9,7 +10,7 @@
 const assert = require('assert')
 const path = require('path')
 
-const { scanWords } = require(path.join(__dirname, '..', 'out', 'theory_lexer.js'))
+const { scanWords, inLiteral } = require(path.join(__dirname, '..', 'out', 'theory_lexer.js'))
 const { findSorries, shiftAnchor, serverParams, isFalsification, proofEdit } =
   require(path.join(__dirname, '..', 'out', 'sledgehammer_text.js'))
 
@@ -49,6 +50,15 @@ async function run() {
   assert.deepStrictEqual(findSorries(THEORY, from).map(s => lineOf(s.offset)), [showLine + 1],
     'within a range')
   pass('sorrys within a range')
+
+  const literalAt = (text, marker) => inLiteral(text.replace(marker, ''), text.indexOf(marker))
+  assert.ok(literalAt('lemma "|(*) 2 x = 2 * x"', '|'), 'in a string')
+  assert.ok(literalAt('text \\<open>a |(*\\<close>', '|'), 'in a cartouche')
+  assert.ok(literalAt('text ‹a ‹b› |(*›', '|'), 'in a nested cartouche, after the inner one')
+  assert.ok(!literalAt('lemma "x" |(*', '|'), 'after a closed string')
+  assert.ok(!literalAt('(* a "b *) |(*', '|'), 'after a comment holding a quote')
+  assert.ok(!literalAt('(* a |(*', '|'), 'in a comment, where comments nest')
+  pass('a (* in a string or a cartouche starts no comment')
 
   // --- anchors ------------------------------------------------------------------------------
   const anchor = { start: 10, end: 15 }

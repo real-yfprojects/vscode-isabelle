@@ -11,6 +11,7 @@ import { caretPerspective, checkingExtent } from './status_items'
 import { SymbolTable } from './symbols'
 import { SymbolRenderer } from './decorations'
 import { AbbrevStore, dropDuplicateSymbols, registerAbbreviations } from './abbrev'
+import { registerCommentClosing } from './comment_close'
 import { registerNormalizer } from './normalize'
 import { registerAtomicMotion } from './atomic'
 import { PideDecorations } from './pide_decorations'
@@ -485,6 +486,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   renderer.register(context)
   registerAbbreviations(context, table, ISABELLE_SELECTOR, abbrevs,
     () => client?.state === State.Running, log)
+  registerCommentClosing(context)
   registerNormalizer(context, table, log)
   registerAtomicMotion(context, table)
   new SymbolsPanel(table).register(context.subscriptions)

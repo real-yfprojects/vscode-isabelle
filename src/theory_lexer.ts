@@ -1,6 +1,7 @@
 /* The words of theory text outside every comment, string and cartouche, by a scan of the
  * text alone -- no prover, no vscode import, so that plain node can test what is built on
- * it (suite67). The outline reads the commands among them, Sledgehammer the `sorry`s.
+ * it (suite67). The outline reads the commands among them, Sledgehammer the `sorry`s, and
+ * the comment closer whether a `(*` it is about to close starts a comment at all.
  */
 
 export interface Word {
@@ -17,6 +18,20 @@ export interface Word {
  */
 export function scanWords(text: string): Word[] {
   const out: Word[] = []
+  scan(text, text.length, out)
+  return out
+}
+
+/**
+ * Whether `offset` lies inside a string, a cartouche or a verbatim block: there a `(*` is
+ * text, like HOL's `(*)` in `"(*) 2 x"`, and starts no comment.
+ */
+export function inLiteral(text: string, offset: number): boolean {
+  return scan(text, offset).literal
+}
+
+/** Scan up to `end`, collecting the words into `out`; the state the scan stopped in. */
+function scan(text: string, end: number, out?: Word[]): { literal: boolean } {
   let comment = 0
   let cartouche = 0
   let verbatim = false
@@ -26,7 +41,7 @@ export function scanWords(text: string): Word[] {
 
   const at = (s: string, i: number) => text.startsWith(s, i)
 
-  for (let i = 0; i < text.length;) {
+  for (let i = 0; i < end;) {
     const c = text[i]
 
     if (c === '\n') { line++; i++; atLineStart = true; continue }
@@ -77,7 +92,7 @@ export function scanWords(text: string): Word[] {
     if (m) {
       // Only the leading identifier is a command, as before: `ML_file`, not `foo.bar`.
       const word = atLineStart ? /^[A-Za-z_][A-Za-z0-9_']*/.exec(m[0])![0] : m[0]
-      out.push({ offset: i, line, word, atLineStart })
+      out?.push({ offset: i, line, word, atLineStart })
       i += m[0].length
       atLineStart = false
       continue
@@ -85,5 +100,5 @@ export function scanWords(text: string): Word[] {
     atLineStart = false
     i++
   }
-  return out
+  return { literal: quote !== undefined || verbatim || cartouche > 0 }
 }
