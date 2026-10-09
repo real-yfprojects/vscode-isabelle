@@ -114,7 +114,9 @@ export const TOOL_DEFS: ToolDef[] = [
     description:
       'Run Sledgehammer on the goal at a line, or on your own `goal`, and return the ' +
       'one-line proofs it finds, each checked again before it is returned. It runs below ' +
-      'the checking of the theory, so it does not hold up the user.',
+      'the checking of the theory, so it does not hold up the user, and it goes on while ' +
+      'the theory is edited: several calls may run at once. It also looks for a ' +
+      'falsification: if it reports one, the goal is false as stated -- fix it instead.',
     inputSchema: {
       type: 'object',
       properties: {

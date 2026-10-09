@@ -241,6 +241,45 @@ async function run() {
     console.log('NOTE: Sledgehammer found nothing that checks here (provers missing?)')
   }
 
+  /* A job of its own (vscode_sledgehammer.ML): editing the command it runs on, which ended
+     the old query, leaves it running. The lemma's statement is written differently a moment
+     into the run -- a new command for the prover, with the same goal. */
+  const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file))
+  const appLine = at('lemma app') - 1
+  const restate = async (from, to) => {
+    const col = doc.lineAt(appLine).text.indexOf(from)
+    const we = new vscode.WorkspaceEdit()
+    we.replace(doc.uri, new vscode.Range(appLine, col, appLine, col + from.length), to)
+    assert.ok(await vscode.workspace.applyEdit(we))
+  }
+  const editedRun = call('isabelle_sledgehammer', { file, line: at('lemma app'), timeout_s: 20 })
+  await wait(1500)
+  await restate('length ys + length xs"', 'length ys + length (xs)"')
+  const edited = await editedRun
+  await restate('length ys + length (xs)"', 'length ys + length xs"')
+  assert.ok(!edited.isError, 'the run should not end with the edit')
+  assert.ok(!/changed at this position/.test(edited.text))
+  if (/that check:/.test(edited.text)) pass('isabelle_sledgehammer goes on while its command is edited')
+  else console.log('NOTE: no proof that checks after the edit (provers missing?)')
+
+  /* A call the agent cancels cancels its job: the two calls after it, at once, run side by
+     side rather than one of them waiting for the cancelled run's slot until its timeout. */
+  const hard = '(x::nat) ^ 3 + y ^ 3 \\<noteq> z ^ 3 \\<or> x * y * z = 0'
+  const cancelledAt = Date.now()
+  const cancelled = await vscode.commands.executeCommand('isabelle.agentCall', 'isabelle_sledgehammer',
+    { file, line: at('lemma app'), goal: hard, timeout_s: 40 }, 4000)
+  assert.ok(cancelled.isError && /Cancelled/.test(cancelled.text), 'the call should be cancelled')
+  assert.ok(Date.now() - cancelledAt < 10000, 'at once')
+  const twoAt = Date.now()
+  const [one, two] = await Promise.all([
+    call('isabelle_sledgehammer', { file, line: at('lemma rr'), timeout_s: 15 }),
+    call('isabelle_sledgehammer', { file, line: at('lemma app'), timeout_s: 15 }),
+  ])
+  const both = (Date.now() - twoAt) / 1000
+  assert.ok(!one.isError && !two.isError, 'both calls should answer')
+  assert.ok(both < 30, `side by side, and no slot held by the cancelled run (${both.toFixed(1)} s)`)
+  pass(`a cancelled call frees its slot, and two calls run at once (${both.toFixed(1)} s)`)
+
   // --- the endpoint, as Copilot or the relay reach it ---
   const endpoint = await vscode.commands.executeCommand('isabelle.agentEndpoint')
   assert.ok(endpoint.url && endpoint.token, 'the endpoint runs while the setting is on')

@@ -11,6 +11,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as vscode from 'vscode'
 import { LanguageClient, ParameterStructures, RequestType, State } from 'vscode-languageclient/node'
+import { isFalsification } from '../sledgehammer_text'
 import { SymbolTable } from '../symbols'
 import { goalStatement, proofsOf, unicodeLines } from './text'
 
@@ -433,14 +434,28 @@ export class AgentTools {
     const goal = goalStatement(this.encode(str(args, 'goal') ?? ''))
     const timeout_s = Math.round(num(args, 'timeout_s') ?? 30)
     await this.load(client, uri, token)
-    const reply = await client.sendRequest(AgentSledgehammer, {
-      textDocument: { uri: this.asUri(client, uri) }, position, goal, timeout_s,
-      deadline_ms: 240000 + timeout_s * 3000,
-    }, token)
+    /* A job of the extended server, which goes on while the theory is edited; the server
+       does not stop a request on $/cancelRequest, so a cancelled call cancels its job. */
+    const job_id = `agent-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    const off = token?.onCancellationRequested(() =>
+      void client.sendNotification('PIDE/sledgehammer_job_cancel', { id: job_id }))
+    let reply: SledgehammerReply
+    try {
+      reply = await client.sendRequest(AgentSledgehammer, {
+        textDocument: { uri: this.asUri(client, uri) }, position, goal, timeout_s, job_id,
+        deadline_ms: 240000 + timeout_s * 3000,
+      }, token)
+    } finally { off?.dispose() }
     if (reply.error) throw new ToolError(reply.error)
     const messages = reply.messages ?? []
     const proofs = [...new Set(messages.flatMap(proofsOf))]
     if (!proofs.length) {
+      const falsified = messages.filter(m => isFalsification(m))
+      if (falsified.length) {
+        return ['Sledgehammer falsified the goal: it contradicts known facts, so it is ' +
+          'probably false as stated. Fix the statement rather than hammering it again.',
+          ...messages.map(m => indent(m))].join('\n')
+      }
       return ['Sledgehammer found no proof.', ...messages.map(m => indent(m))].join('\n')
     }
     const replay = await this.requestTry(client, uri, position,

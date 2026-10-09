@@ -87,7 +87,11 @@ a summary of it instead:
 
 The tools never edit the theory. Candidates run in threads of their own on the state of the
 document, and their output goes to the agent, not to your infoview. Sledgehammer runs at a
-lower priority than the checking of your edits, as with the Sledgehammer panel.
+lower priority than the checking of your edits, as with the Sledgehammer panel, and as a
+job of its own: it goes on while you or the agent edit the theory, and calls on different
+goals run side by side, sharing the panel's limit (`isabelle.sledgehammer.maxParallel`).
+It stops at its first proof, and it also looks for a falsification, which tells the agent
+that the goal is false as stated.
 
 ## Security
 

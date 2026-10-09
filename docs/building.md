@@ -28,6 +28,8 @@ main                                       (all of the above, merged)
      merged: vscode-completion-preview    (the same for the item completion shows;
                                            on vscode-hover-info, whose query it asks)
      merged: vscode-agent                 (tools for AI agents; docs/agents.md)
+     merged: vscode-sledgehammer-jobs     (Sledgehammer runs that outlive edits;
+                                           docs/panels.md)
 ```
 
 The feature branches exist to be proposed upstream one at a time, so they stay separate

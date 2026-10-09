@@ -100,6 +100,34 @@
         "title": "Isabelle: Run Sledgehammer"
       },
       {
+        "command": "isabelle.sledgehammerSorries",
+        "title": "Isabelle: Sledgehammer All sorrys"
+      },
+      {
+        "command": "isabelle.sledgehammerClearCache",
+        "title": "Isabelle: Clear Sledgehammer Cache"
+      },
+      {
+        "command": "isabelle.sledgehammerSorry",
+        "title": "Isabelle: Sledgehammer This sorry"
+      },
+      {
+        "command": "isabelle.sledgehammerApply",
+        "title": "Isabelle: Put In Sledgehammer Proof"
+      },
+      {
+        "command": "isabelle.sledgehammerCancelJob",
+        "title": "Isabelle: Cancel Sledgehammer Run"
+      },
+      {
+        "command": "isabelle.sledgehammerRetry",
+        "title": "Isabelle: Retry Sledgehammer Run"
+      },
+      {
+        "command": "isabelle.sledgehammerDismiss",
+        "title": "Isabelle: Dismiss Sledgehammer Run"
+      },
+      {
         "command": "isabelle.include-word",
         "title": "Include word"
       },
@@ -585,6 +613,38 @@
           "default": [],
           "description": "Extra session directories (isabelle vscode_server -d)."
         },
+        "isabelle.sledgehammer.maxParallel": {
+          "type": "integer",
+          "default": 2,
+          "minimum": 1,
+          "markdownDescription": "How many Sledgehammer runs go at once; more wait their turn. Each run keeps several external provers busy, so more than the cores can carry makes every run slower. Needs `#isabelle.extendedServer#`, like the settings below: without it there is one run at a time, and it ends when its command is edited."
+        },
+        "isabelle.sledgehammer.stopAtFirstProof": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "End a Sledgehammer run at its first proof (`max_proofs = 1`), instead of looking for up to four, so that the provers go to the next run. The panel's checkbox overrides this for the window."
+        },
+        "isabelle.sledgehammer.timeout": {
+          "type": "number",
+          "default": 30,
+          "minimum": 1,
+          "description": "Seconds each Sledgehammer run may take. The panel's field overrides this for the window."
+        },
+        "isabelle.sledgehammer.falsify": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Let Sledgehammer also look for a *falsification* (`falsify = smart`): facts that the goal contradicts. A step that is false then says so early, instead of running into the timeout with no proof. The panel's checkbox overrides this for the window."
+        },
+        "isabelle.sledgehammer.cache": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Keep the answers of the external provers (Sledgehammer's `cache_dir`, in the extension's storage), so that a goal hammered again, after an edit above it or a restart, is answered without running them. **Isabelle: Clear Sledgehammer Cache** empties it."
+        },
+        "isabelle.sledgehammer.autoSorry": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Run Sledgehammer on every `sorry` in view that has had no run yet, a moment after typing stops. Each one then gets a CodeLens with the proof found. Off by default: it keeps the provers busy. **Isabelle: Sledgehammer All sorrys** does the same for one lemma on request."
+        },
         "isabelle.simplifierTrace": {
           "type": "boolean",
           "default": false,
@@ -737,6 +797,30 @@
           "when": "false"
         },
         {
+          "command": "isabelle.sledgehammerSorries",
+          "when": "editorLangId == isabelle && config.isabelle.extendedServer"
+        },
+        {
+          "command": "isabelle.sledgehammerSorry",
+          "when": "false"
+        },
+        {
+          "command": "isabelle.sledgehammerApply",
+          "when": "false"
+        },
+        {
+          "command": "isabelle.sledgehammerCancelJob",
+          "when": "false"
+        },
+        {
+          "command": "isabelle.sledgehammerRetry",
+          "when": "false"
+        },
+        {
+          "command": "isabelle.sledgehammerDismiss",
+          "when": "false"
+        },
+        {
           "command": "isabelle.theoriesRefresh",
           "when": "config.isabelle.theoriesPanel || config.isabelle.extendedServer"
         },
@@ -860,7 +944,7 @@
     "build": "tsc -p ./ && node ./scripts/server-jar.js",
     "watch": "tsc -watch -p ./",
     "dev": "node ./test/dev.js",
-    "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29 suite32 suite38 suite41 suite42 suite44 suite46 suite48 suite49 suite60 suite63 suite66",
+    "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29 suite32 suite38 suite41 suite42 suite44 suite46 suite48 suite49 suite60 suite63 suite66 suite67",
     "test": "node ./test/runTest.js",
     "package": "vsce package --out vscode-isabelle.vsix",
     "release": "node ./scripts/release.js"
