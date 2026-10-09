@@ -124,6 +124,62 @@ Tested by `suite44` (the page body, pure), `suite6` (the stock backend) and `sui
 (the extended one, including a pin that follows its command through an edit),
 and `suite66` (find's matching, pure).
 
+## Sledgehammer
+
+The stock panel drives HOL's query operation `sledgehammer`: a PIDE overlay, which is a
+print function on one `Command`. That made the usual loop of writing a step, hammering it,
+and writing the next one strictly serial, for two reasons:
+
+- **Typing the next step ended the run.** `Outer_Syntax.parse_spans`
+  (`outer_syntax.scala`) appends a token that is neither a command keyword nor ignored to
+  the span *before* it. So the `h` of a `have` typed on the line below changes the
+  hammered command's text, PIDE replaces the `Command`, and `Query_Operation` reports it
+  `removed`. An edit anywhere above re-executes the command, which restarts the run from
+  the beginning.
+- **One run at a time.** `apply_query` removes the previous overlay.
+
+On the extended server, each run is a **job** (`vscode_sledgehammer.ML`,
+`VSCode_Sledgehammer`, `src/sledgehammer_jobs.ts`):
+
+- The job's print function only takes the proof state. The run is forked in a group of
+  its own, `Future.new_group NONE`. With `group = NONE` it would be a
+  `worker_subgroup` of the print's execution, and cancelled with it.
+- Its messages cannot be results of the command, which may be gone by then. They go out
+  as protocol messages (`function = vscode_sledgehammer_job`), which a
+  `Session.Protocol_Handler` turns into `PIDE/sledgehammer_job_update`. Cancel is a
+  protocol command that cancels the group.
+- The server runs at most `isabelle.sledgehammer.maxParallel` jobs at once and queues
+  the rest. A job holds its slot from its start query to its end. A job whose command
+  was replaced before the prover reached it is looked for again at the same position.
+- The server forgets where a job came from. The client follows each job's place through
+  the edits (`shiftAnchor`). A job on a `sorry` ends when that `sorry` is edited away.
+  A proof goes in place of the job's `sorry`, or of a `sorry`/`oops` right after its
+  command, or else on a line of its own after the command.
+- A `sorry` with no run going and no proof waiting offers *Sledgehammer this sorry* in
+  its light bulb, and *Sledgehammer all N sorrys of this lemma* when there are more. The
+  scan for `sorry`s is cached per document version, since the light bulb asks at every
+  move of the caret.
+- The agent tool `isabelle_sledgehammer` runs on the same jobs, and so shares their limit.
+
+The parameters are passed generically, as `name = value` pairs to `default_params`, plus a
+fact override as inside `sledgehammer (...)` and a subgoal. The panel sets these:
+
+- `max_proofs = 1`, and a cancel at the first sendback (*stop at first proof*)
+- `falsify = smart`, so that a false step says so early instead of timing out
+- `cache_dir` in the extension's storage, so that a goal hammered again needs no prover
+  runs
+- the three-way `isar_proofs`, the subgoal, `abduce` and `induction_rules = instantiate`
+
+A falsification shows only in the message text ("falsified by these facts", "Derived
+"False""), so `isFalsification` reads it there.
+
+Tested by `suite67` (anchors, `sorry`s, parameters, the proof's edit; pure), `suite68`
+(the jobs against the extended server: the next step typed under a running job, two at
+once, Cancel, falsification, *Sledgehammer All sorrys* with the proofs put in, the fact
+override, the subgoal and the cache) and `suite64` (the agent's calls during an edit, two
+at once, a cancelled one). `suite53` still checks that edits are checked while a run goes
+on.
+
 ## Simplifier trace
 
 The one jEdit dockable that is a *conversation* rather than a view. With

@@ -1,4 +1,5 @@
 import * as cp from 'child_process'
+import * as fs from 'fs'
 import * as path from 'path'
 import * as vscode from 'vscode'
 import { CloseAction, ErrorAction, ErrorHandler, LanguageClient, LanguageClientOptions,
@@ -16,6 +17,7 @@ import { PideDecorations } from './pide_decorations'
 import { Infoview } from './infoview'
 import { SymbolsPanel } from './symbols_panel'
 import { SledgehammerPanel } from './sledgehammer_panel'
+import { SledgehammerJobs, supportsJobs } from './sledgehammer_jobs'
 import { registerSpellChecker } from './spell_checker'
 import { DocumentationPanel } from './doc_panel'
 import { PreviewPanels } from './preview_panel'
@@ -315,7 +317,11 @@ async function startClient(): Promise<void> {
   registerSemanticTokens(clientScope, ISABELLE_SELECTOR, pide)
   infoview?.bind(client,
     vscode.workspace.getConfiguration('isabelle').get<boolean>('extendedServer', false), clientScope)
-  sledgehammer = new SledgehammerPanel(client, log)
+  const jobs = supportsJobs(client)
+    ? new SledgehammerJobs(client, log, text => table?.encode(text) ?? text, sledgehammerCache)
+    : undefined
+  jobs?.register(clientScope, ISABELLE_SELECTOR)
+  sledgehammer = new SledgehammerPanel(client, log, jobs)
   sledgehammer.register(clientScope)
   docPanel = new DocumentationPanel(client, log)
   docPanel.register(clientScope)
@@ -363,6 +369,20 @@ async function startClient(): Promise<void> {
  * turning that on shows them all; each keeps its own setting for a server patched by
  * other means.
  */
+/**
+ * Where Sledgehammer keeps the answers of the external provers (its cache_dir), so that a
+ * goal hammered again is answered without running them; undefined when that is off.
+ */
+function sledgehammerCache(): string | undefined {
+  if (!globalStoragePath ||
+      !vscode.workspace.getConfiguration('isabelle.sledgehammer').get<boolean>('cache', true)) {
+    return undefined
+  }
+  const dir = path.join(globalStoragePath, 'sledgehammer-cache')
+  try { fs.mkdirSync(dir, { recursive: true }) } catch { return undefined }
+  return dir
+}
+
 function panelEnabled(setting: string): boolean {
   const cfg = vscode.workspace.getConfiguration('isabelle')
   return cfg.get<boolean>(setting, false) || cfg.get<boolean>('extendedServer', false)
@@ -586,7 +606,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       provers: sledgehammer.proverList,
       status: sledgehammer.lastStatus,
       output: sledgehammer.lastOutput,
+      jobs: sledgehammer.jobs && [...sledgehammer.jobs.jobs.values()].map(j => ({ ...j })),
+      options: sledgehammer.jobs?.options,
     })),
+    // Test hooks: the panel's controls, and where the prover cache is.
+    vscode.commands.registerCommand('isabelle.sledgehammerTestOptions', (options: object) => {
+      if (sledgehammer?.jobs) sledgehammer.jobs.options = { ...sledgehammer.jobs.options, ...options }
+    }),
+    vscode.commands.registerCommand('isabelle.sledgehammerCacheDir', () => sledgehammerCache()),
+    vscode.commands.registerCommand('isabelle.sledgehammerClearCache', async () => {
+      const dir = path.join(globalStoragePath, 'sledgehammer-cache')
+      await fs.promises.rm(dir, { recursive: true, force: true })
+      void vscode.window.showInformationMessage('The Sledgehammer cache is empty.')
+    }),
     /* Editing a theory that sits inside the heap image checks the file but changes
        nothing above it, and looks entirely normal while doing so. This is the only
        place that signal comes from. */

@@ -16,6 +16,7 @@
  */
 
 import * as vscode from 'vscode'
+import { scanWords } from './theory_lexer'
 
 /** Heading commands, outermost first; the index is the nesting level. */
 const HEADINGS = [
@@ -99,71 +100,14 @@ export type OutlineNode = {
  * cartouche. Returned as [line, command] pairs.
  */
 export function scanCommands(text: string): { line: number; command: string; rest: string }[] {
-  const out: { line: number; command: string; rest: string }[] = []
-  let comment = 0
-  let cartouche = 0
-  let verbatim = false
-  let quote: '"' | '`' | undefined
-  let line = 0
-  let atLineStart = true
-
-  const at = (s: string, i: number) => text.startsWith(s, i)
-
-  for (let i = 0; i < text.length;) {
-    const c = text[i]
-
-    if (c === '\n') { line++; i++; atLineStart = true; continue }
-
-    if (quote) {
-      if (c === '\\') { i += 2; continue }
-      if (c === quote) quote = undefined
-      i++
-      continue
+  return scanWords(text).filter(w => w.atLineStart).map(w => {
+    const nl = text.indexOf('\n', w.offset)
+    return {
+      line: w.line,
+      command: w.word,
+      rest: text.slice(w.offset + w.word.length, nl < 0 ? text.length : nl),
     }
-    if (verbatim) {
-      if (at('*}', i)) { verbatim = false; i += 2; continue }
-      i++
-      continue
-    }
-    if (comment > 0) {
-      if (at('(*', i)) { comment++; i += 2; continue }
-      if (at('*)', i)) { comment--; i += 2; continue }
-      i++
-      continue
-    }
-    if (cartouche > 0) {
-      // Nested cartouches are legal and common in document text.
-      if (at('\\<open>', i)) { cartouche++; i += 7; continue }
-      if (at('\\<close>', i)) { cartouche--; i += 8; continue }
-      if (c === '‹') { cartouche++; i++; continue }
-      if (c === '›') { cartouche--; i++; continue }
-      i++
-      continue
-    }
-
-    if (at('(*', i)) { comment = 1; i += 2; atLineStart = false; continue }
-    if (at('{*', i)) { verbatim = true; i += 2; atLineStart = false; continue }
-    if (at('\\<open>', i)) { cartouche = 1; i += 7; atLineStart = false; continue }
-    if (c === '‹') { cartouche = 1; i++; atLineStart = false; continue }
-    if (c === '"' || c === '`') { quote = c as '"' | '`'; i++; atLineStart = false; continue }
-
-    if (c === ' ' || c === '\t' || c === '\r') { i++; continue }
-
-    if (atLineStart) {
-      const m = /^[A-Za-z_][A-Za-z0-9_']*/.exec(text.slice(i, i + 64))
-      if (m) {
-        const nl = text.indexOf('\n', i)
-        out.push({
-          line,
-          command: m[0],
-          rest: text.slice(i + m[0].length, nl < 0 ? text.length : nl),
-        })
-      }
-    }
-    atLineStart = false
-    i++
-  }
-  return out
+  })
 }
 
 /** The declared name after a command keyword, if there is one. */

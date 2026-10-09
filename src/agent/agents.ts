@@ -62,9 +62,14 @@ export class Agents {
       }),
       vscode.workspace.onDidChangeWorkspaceFolders(() => this.server?.updateFolders(folders())),
       vscode.commands.registerCommand('isabelle.setUpAgents', () => this.setUp()),
-      // Test hook: call a tool as an agent would, without a transport.
+      // Test hook: call a tool as an agent would, without a transport; cancelled after
+      // cancelAfterMs if given, as an agent cancels a call.
       vscode.commands.registerCommand('isabelle.agentCall',
-        (name: string, args: Record<string, unknown>) => this.tools.handlers[name]?.(args ?? {})),
+        (name: string, args: Record<string, unknown>, cancelAfterMs?: number) => {
+          const source = cancelAfterMs === undefined ? undefined : new vscode.CancellationTokenSource()
+          if (source) setTimeout(() => source.cancel(), cancelAfterMs)
+          return this.tools.handlers[name]?.(args ?? {}, source?.token)
+        }),
       // Test hook: the setup without its pick list.
       vscode.commands.registerCommand('isabelle.agentSetUpFiles',
         (root: string, ids: string[]) => this.writeFiles(root, ids)),

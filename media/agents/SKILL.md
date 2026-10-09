@@ -29,7 +29,9 @@ you copy from their output can go into the file as it is.
    `by (induct xs) auto`, `apply (cases x)`, a whole `proof ... qed` block. Nothing is
    written to the file. Only write a proof that came back `proved`.
 4. If nothing works, `isabelle_sledgehammer` on the same line; it returns one-line proofs
-   that it has checked.
+   that it has checked. If it says the goal is *falsified*, the step is false as stated:
+   fix the statement instead of hammering it again. Calls on different goals may run at
+   once, and a call goes on while the file is edited.
 5. Plan bigger proofs with your own goals: test an intermediate step or a helper lemma
    with `goal` on `isabelle_try` or `isabelle_sledgehammer` before writing it. Inside a
    proof the goal sees the proof's fixed variables and assumptions.

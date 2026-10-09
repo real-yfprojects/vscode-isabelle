@@ -21,7 +21,7 @@ in your `.thy` files.
 - *Writing*: renders math glyphs from ASCII sources; symbol shorthands, Isar and inner syntax (e.g. HOL) completion, with the statement of a fact and the type of a constant or variable as you pick one†;
   Isar and inner syntax highlighting (with semantic colours†); types and messages on hover, and what a name stands for† (the statement of a fact, the type of a variable, the term of `?thesis`), linked to its definition†; auto-indentation†; normalise any accidental actual Unicode characters to ASCII
 - *Checking*: continuous live PIDE verification; goals and messages at the cursor in one infoview, with pinned goals (that follow your edits†); cache session management
-- *Proving*: sledgehammer, find theorems† and simplifier trace† panels, overview over checked theories and timing†
+- *Proving*: sledgehammer (runs that go on while you edit, several at once, and a proof for every `sorry` of a lemma†), find theorems† and simplifier trace† panels, overview over checked theories and timing†
 - *Navigating*: outline, breadcrumbs, indexed code symbols, code folding, go to definition, find references† (across theories, by identity rather than name, also in theories not yet checked), Graph View† for theory, class, locale and code dependencies
 - *AI agents*†: Claude Code, Copilot and other MCP clients check theories, read goals, try proofs and run Sledgehammer with the prover of your window
 - *Misc*: preview, documentation panel, cygwin terminal
@@ -66,8 +66,12 @@ extension comes with an extended version of the server that adds them. It gives 
   typing, set `editor.formatOnType` to off for Isabelle.
 - colours for the rest of a checked term: constants, type names, classes, operators
   and numerals each get their own theme colour, not only the variables
-- checking that keeps up while Sledgehammer runs: without the extended server, a proof
-  you edit meanwhile is checked only when Sledgehammer is done
+- Sledgehammer that keeps up with you: a run goes on while you type the next step (the
+  stock server ends it as soon as you touch its command), several run at once, and
+  **Isabelle: Sledgehammer All sorrys** (or the light bulb on a `sorry`) hammers every
+  `sorry` of a lemma, each result a click away above its `sorry`. A run stops at its first proof, says early when a step is
+  false (a *falsification*), and reuses the provers' earlier answers. Proofs you edit
+  meanwhile are checked at once, not after the run
 - tools for AI agents (step 6)
 
 To turn it on, open the Settings (`Ctrl+,`, or `Cmd+,` on macOS), search for

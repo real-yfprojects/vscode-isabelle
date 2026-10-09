@@ -87,7 +87,17 @@ This documents tracks features and tasks that might already be tracked in other 
 - [ ] Lags and performance while typing
   - [ ] Sometimes vscode reports that the window stops responding
   - [ ] while vscode does respond to cursor inputs, keyboard inputs are delayed and especially backspace is delayed and even reordered after other keyboard inputs
-- [ ] Sledgehammer is slow and may stop when the file is edited
+- [x] Sledgehammer is slow and may stop when the file is edited -- jobs on the extended
+    server (`vscode_sledgehammer.ML`, `VSCode_Sledgehammer`, `src/sledgehammer_jobs.ts`;
+    docs/panels.md). It stopped because typing the next step edits the hammered command (a
+    word that is not yet a keyword joins the span before it) and the run was a print of that
+    command. A job only takes the proof state and runs in a root group of its own, results as
+    protocol messages; several at once (`isabelle.sledgehammer.maxParallel`), positions
+    followed by the client, CodeLens and quick fix per result, **Sledgehammer All sorrys**
+    (also from the light bulb of a `sorry`),
+    optional `autoSorry`. Faster: `max_proofs = 1` and cancel at the first proof,
+    `falsify = smart`, `cache_dir`. The agent tool runs on the same jobs. Tests: suite67
+    (pure), suite68, suite64
 
 ### Medium
 - [ ] code formatting / prettier extension
@@ -148,6 +158,11 @@ This documents tracks features and tasks that might already be tracked in other 
     through to `sledgehammer_prover_minimize.ML`. That is also why *they* get it for free
     -- the Headless backend never goes through the query operation
     (`backend/.../SledgehammerWithPideHandler.scala`)
+    - groundwork done: a Sledgehammer job takes any parameters, a fact override and a
+      subgoal (`PIDE/sledgehammer_job_start`), so this needs no server change any more. What
+      is left is client-side: read the facts of the method call at the cursor, run a job with
+      `only:` those facts, the method as the prover (`provers = metis`) and `minimize`, and
+      replace the call with the proof found
   - [ ] **syntactic LSP capabilities before the session is up** -- first filed as "copy
     their offline tier", which conflated two different things. *Zero-install* (no Isabelle
     on the machine) can never be served by the server, since `isabelle vscode_server` is a
@@ -281,8 +296,9 @@ This documents tracks features and tasks that might already be tracked in other 
     the edit saved first
 - [ ] isabelle output panel doesn't always update when cursor is moved/files are edited
 - [ ] File rename / move support (updates theory name and references)
-- [ ] sledgehammer expose smart mode properly
-- [ ] better sledgehammer progress display
+- [x] sledgehammer expose smart mode properly -- Isar proofs off/smart/on in the panel (jobs)
+- [x] better sledgehammer progress display -- the panel lists each job with where it runs,
+    its state and running time; a CodeLens above its command or `sorry` too
 
 ### Manual (human) work
 - [ ] Test query
