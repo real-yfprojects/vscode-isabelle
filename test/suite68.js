@@ -62,8 +62,9 @@ const LINES = [
   '  apply (rule conjI)',
   '  sorry',
   '',
-  // Last: as a fact, a false lemma proves anything after it.
-  'lemma wrong: "(x::nat) < 0"',
+  // Last: as a fact, a false lemma proves anything after it. It contradicts c_def, which
+  // shares its constant: the facts a run takes up include the one it is false against.
+  'lemma wrong: "c = 4"',
   '  sorry',
   '',
   'end',
@@ -216,7 +217,7 @@ async function run() {
   })
   console.log(`  wrong: ${falsified && falsified.status}, falsified: ${falsified && falsified.falsified}` +
     `, messages: ${JSON.stringify((falsified && falsified.messages || []).map(m => m.replace(/<[^>]*>/g, '')).slice(-3))}`)
-  assert.ok(falsified && falsified.falsified, 'x < 0 should be falsified')
+  assert.ok(falsified && falsified.falsified, 'c = 4 should be falsified')
   pass('a false goal is reported as falsified')
   await setOptions({ facts: '' })
 

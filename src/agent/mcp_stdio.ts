@@ -29,8 +29,16 @@ function alive(pid: number): boolean {
   catch (err) { return (err as NodeJS.ErrnoException).code === 'EPERM' }
 }
 
-function normal(p: string): string {
+/** Symlinks resolved where the path exists: the shell's directory is the real one, while a
+    window may name its folder through a link (macOS: /var is /private/var, and so is every
+    temporary folder). */
+function real(p: string): string {
   const r = path.resolve(p)
+  try { return fs.realpathSync.native(r) } catch { return r }
+}
+
+function normal(p: string): string {
+  const r = real(p)
   return process.platform === 'win32' ? r.toLowerCase() : r
 }
 
