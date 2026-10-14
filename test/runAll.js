@@ -146,6 +146,10 @@ async function main() {
     // VS Code's own "Error: Error mutex already exists" opens every log and says nothing.
     const first = lines.findIndex(l => /FAIL|AssertionError|Error:|expected|actual|timed out/.test(l) &&
       !/mutex already exists/.test(l))
+    // And the suite's own PASS and progress lines before it: what it printed just before the
+    // assertion (a status, a message) is often the whole diagnosis, and a CI log has no more.
+    const own = lines.slice(0, first >= 0 ? first : 0).filter(l => /^\s*(PASS|\.\.\.|[a-z][\w ]*: )/.test(l))
+    if (own.length) console.log('before it:\n' + own.slice(-12).join('\n') + '\n')
     console.log(first >= 0 ? lines.slice(first, first + 15).join('\n') : f.out.slice(-1500))
   }
 
