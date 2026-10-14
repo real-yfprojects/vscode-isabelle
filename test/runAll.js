@@ -53,9 +53,21 @@ const PURE = new Set(['suite25', 'suite27', 'suite28', 'suite29', 'suite31', 'su
 const NO_PROVER = new Set(['suite4', 'suite16', 'suite19', 'suite21', 'suite26', 'suite35',
                            'suite40', 'suite43', 'suite50', 'suite69'])
 
+/**
+ * Suites that must act before the extension activates: set the settings read at
+ * activation (the extended server, the Theories panel), or check that nothing has
+ * activated it yet. activationEvents has workspaceContains:**\/*.thy, so a workspace with a
+ * theory in it activates the extension on startup, before the suite's first line. These
+ * get a workspace without theories; each writes the one it needs, after activating.
+ */
+const NO_THY_AT_START = new Set(['suite17', 'suite50', 'suite54'])
+
 function copyWorkspace(name) {
   const dest = fs.mkdtempSync(path.join(os.tmpdir(), `isa-ws-${name}-`))
-  fs.cpSync(path.join(__dirname, 'workspace'), dest, { recursive: true })
+  fs.cpSync(path.join(__dirname, 'workspace'), dest, {
+    recursive: true,
+    filter: src => !(NO_THY_AT_START.has(name) && src.endsWith('.thy')),
+  })
   if (NO_PROVER.has(name)) {
     // Workspace settings rather than an env var, so nothing in the extension has to know
     // it is under test -- this is the same switch a user would flip.
