@@ -324,7 +324,7 @@ async function run() {
   const viaRelay = await relay.call('tools/call',
     { name: 'isabelle_check', arguments: { file: 'Agent_Tools.thy' } })
   console.log('--- via the relay:\n' + viaRelay.result.content[0].text)
-  assert.ok(!viaRelay.result.isError)
+  assert.ok(!viaRelay.result.isError, 'the relay answered with an error: ' + viaRelay.result.content[0].text)
   assert.match(viaRelay.result.content[0].text, /1 error\b/)
   relay.close()
   pass(`the relay that .mcp.json starts (${path.basename(entry.command)}) reaches this window's prover`)

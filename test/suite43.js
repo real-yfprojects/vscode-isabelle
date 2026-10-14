@@ -109,12 +109,21 @@ async function run() {
   pass('taking the edit back clears it')
 
   // --- the list -------------------------------------------------------------------------
-  await editor.edit(e => e.insert(new vscode.Position(3, 0), '(* again *)\n'))
-  await doc.save()
-  s = await until('the saved edit counting as modified', 15, async () => {
-    const h = await heapState()
-    return h.stale.length > 0 && h.stale[0].change === 'modified' ? h : undefined
-  })
+  /* A file watcher can miss a save that follows a revert on a slow runner (Windows CI),
+     and then nothing says the file changed: save again, which is a new event, rather than
+     wait out the one that did not come. */
+  for (let attempt = 1; !s || s.stale.length === 0 || s.stale[0].change !== 'modified'; attempt++) {
+    await editor.edit(e => e.insert(new vscode.Position(3, 0), `(* again ${attempt} *)\n`))
+    await doc.save()
+    try {
+      s = await until('the saved edit counting as modified', 10, async () => {
+        const h = await heapState()
+        return h.stale.length > 0 && h.stale[0].change === 'modified' ? h : undefined
+      })
+    } catch (err) {
+      if (attempt >= 3) throw err
+    }
+  }
   await vscode.commands.executeCommand('workbench.action.closeAllEditors')
   await vscode.commands.executeCommand('isabelle.showStaleFiles', s.stale[0].file)
   const opened = vscode.window.activeTextEditor

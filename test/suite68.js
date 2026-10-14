@@ -195,6 +195,9 @@ async function run() {
   const hammerThis = bulb.find(a => a.title === 'Sledgehammer this sorry')
   assert.ok(hammerThis, `a sorry offers a run: ${JSON.stringify(bulb.map(a => a.title))}`)
   assert.ok(!bulb.some(a => /^Sledgehammer all/.test(a.title)), 'not for all: the lemma has one')
+  // `two` is false and not proved either: as a fact it proves anything, and a prover that is
+  // quick with it (vampire, where there is one) ends the run before the falsification says so.
+  await setOptions({ facts: 'del: two' })
   t0 = Date.now()
   await vscode.commands.executeCommand(hammerThis.command.command, ...hammerThis.command.arguments)
   const falsify = await newJob(t0 - 1)
@@ -215,6 +218,7 @@ async function run() {
     `, messages: ${JSON.stringify((falsified && falsified.messages || []).map(m => m.replace(/<[^>]*>/g, '')).slice(-3))}`)
   assert.ok(falsified && falsified.falsified, 'x < 0 should be falsified')
   pass('a false goal is reported as falsified')
+  await setOptions({ facts: '' })
 
   // --- 5. all the sorrys of a lemma, put in ---------------------------------------------------
   const THREE = at('lemma three')
