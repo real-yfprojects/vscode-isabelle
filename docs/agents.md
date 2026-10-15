@@ -43,11 +43,52 @@ to that notation.
 
 | Tool | What it does |
 |---|---|
-| `isabelle_check` | Checks a theory and returns its errors and warnings. Each error comes with the goal the failing command worked on. Also reports the counts of `sorry` and `oops`, and lines with literal Unicode. The theory doesn't have to be open in an editor. |
+| `isabelle_check` | Checks a theory and returns its errors and warnings. Each error comes with the goal the failing command worked on. Also reports the counts of `sorry` and `oops`, and lines with literal Unicode. The theory doesn't have to be open in an editor. It waits for the prover; with `wait: false` it answers at once with how far the prover is ([long checks](#long-checks)). |
 | `isabelle_state` | The goals at a line, the goals of the enclosing proof levels, and the messages there, as the infoview shows them. |
 | `isabelle_try` | Tries up to 12 proof candidates at once on the goal at a line, without editing the file. Candidates can be `by ...`, `apply ...`, a `proof ... qed` block, or `thm`, `term`, `value` and `find_theorems`. Each candidate reports `proved`, `goals_left`, `no_subgoals`, `error`, `timeout` or `output`. |
 | `isabelle_sledgehammer` | Runs Sledgehammer and returns the proofs it found, after checking each one again. |
 | `isabelle_find_theorems` | `find_theorems` in the context of a line. |
+
+### Long checks
+
+`isabelle_check` waits until the theory is checked, or until `timeout_s` passes (300 s by
+default). It then answers, with the messages so far if the prover isn't done, and with where
+the prover is:
+
+```
+Slow.thy: still being checked (14%) when the timeout passed in 300.1 s: 0 errors, 0 warnings, 0 sorry.
+Messages so far are below; call isabelle_check again to wait longer.
+Running now:
+  line 57: by (simp add: loopy_def)
+Waiting for the prover: 41 commands (not started, or their proofs still being checked), the first at line 70: lemma bar: ...
+```
+
+The same command on the next call means that it is slow or stuck, as a simplifier loop is.
+Nothing interrupts it: the prover goes on until the command ends or the agent edits it,
+which makes the prover drop that run. `isabelle_try` on its goal, with a timeout, shows
+the rule cycle of a loop.
+
+Some theories never finish in PIDE's sense, and the check doesn't wait for them:
+
+- **A theory without an `end`** stays at 99%, because only an `end` consolidates a theory.
+  That includes a draft, a theory whose `end` closes a `context` or `locale ... begin`
+  instead, and one whose `end` sits inside an unclosed comment or text. The check calls it
+  checked as soon as its commands are, and adds that the theory has no end.
+- **A theory whose start fails**, with a theory name that isn't the file's or an import that
+  can't be found, never runs the rest of the file and stays at a low percentage. The check
+  answers `not checked`, says how many commands never started, and gives the error, as soon
+  as it sees that no command runs and none will (about 6 s for an import).
+- **Proofs, and diagnostic commands like `ML_val`, still running in the background** also
+  show as 99%: the prover has gone past them, so no command is left waiting. The report
+  then lists the running commands.
+
+An agent that has other work doesn't have to wait. `wait: false` answers at once with the
+percentage, the messages so far and the running commands, or with the result if the theory
+is checked already, and the agent asks again later. The other tools work meanwhile, on the
+commands that are checked. The relay that Claude Code starts passes calls on as they come,
+so a call made during a check isn't held up behind it. Claude Code also moves a tool call
+that has run for two minutes to a background task by itself and tells the agent when it
+ends; `CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS` sets that time in milliseconds.
 
 ### Goals of the agent's own
 

@@ -113,6 +113,13 @@ async function run() {
   }
   pass('tools/list lists the five tools, each with a schema covering its required arguments')
 
+  const check = list.result.tools.find(t => t.name === 'isabelle_check')
+  assert.strictEqual(check.inputSchema.properties.wait.type, 'boolean')
+  assert.ok(!check.inputSchema.required.includes('wait'), 'waiting is the default')
+  assert.match(check.description, /wait: false/)
+  assert.match(init.result.instructions, /wait: false/, 'the agent is told when it connects')
+  pass('isabelle_check offers wait, which an agent is told about')
+
   assert.strictEqual(await answer({ jsonrpc: '2.0', method: 'notifications/initialized' }, {}, '1'), undefined)
   const unknown = await answer({ jsonrpc: '2.0', id: 4, method: 'resources/list' }, {}, '1')
   assert.strictEqual(unknown.error.code, -32601)
@@ -220,21 +227,33 @@ async function run() {
   assert.deepStrictEqual(calls[calls.length - 1], ['isabelle_state', { file: 'B.thy', line: 3 }])
   pass('the relay passes initialize, tools/list and tool calls to the window')
 
+  /* A long call does not hold up the others: the agent reads a proof state, or starts a second
+     long call, while a check runs, as it does when its client moves the check to the
+     background. */
   const long = r.send('tools/call', { name: 'isabelle_check', arguments: { wait: 'relayed' } })
   let answered = false
   long.answer.then(() => { answered = true }, () => { /* never answered: right */ })
-  const queued = r.send('tools/call', { name: 'isabelle_check', arguments: { wait: 'queued' } })
-  queued.answer.then(() => { answered = true }, () => {})
   assert.ok(await until(() => calls.some(c => c[1].wait === 'relayed')), 'the call reaches the window')
-  r.notify('notifications/cancelled', { requestId: queued.id })
+  const during = await r.call('tools/call', { name: 'isabelle_state', arguments: { file: 'C.thy' } })
+  assert.strictEqual(during.result.content[0].text, 'isabelle_state on C.thy',
+    'a call is answered while a long one is under way')
+  const second = r.send('tools/call', { name: 'isabelle_check', arguments: { wait: 'second' } })
+  second.answer.then(() => { answered = true }, () => {})
+  assert.ok(await until(() => calls.some(c => c[1].wait === 'second')),
+    'a second long call reaches the window at once, not when the first is done')
+  assert.ok(!answered, 'the long calls are still waiting')
+  pass('the relay passes on a call while another is under way')
+
+  r.notify('notifications/cancelled', { requestId: second.id })
+  assert.ok(await until(() => stopped.includes('second')), 'the window stops the call')
+  assert.ok(!stopped.includes('relayed'), 'a cancellation of one call leaves the other running')
   r.notify('notifications/cancelled', { requestId: long.id, reason: 'user' })
   assert.ok(await until(() => stopped.includes('relayed')), 'the window stops the call')
-  const after = await r.call('tools/call', { name: 'isabelle_state', arguments: { file: 'C.thy' } })
-  assert.strictEqual(after.result.content[0].text, 'isabelle_state on C.thy', 'the queue goes on')
-  assert.ok(!calls.some(c => c[1].wait === 'queued'), 'a cancelled call in the queue never starts')
+  const after = await r.call('tools/call', { name: 'isabelle_state', arguments: { file: 'D.thy' } })
+  assert.strictEqual(after.result.content[0].text, 'isabelle_state on D.thy', 'the relay goes on')
   assert.ok(!answered, 'a cancelled call gets no answer')
   r.close()
-  pass('the relay cancels a call the agent cancels, under way or still queued')
+  pass('the relay cancels the call the agent cancels, and only that one')
 
   const lost = relay({ ...env, ISABELLE_VSCODE_WORKSPACE: os.tmpdir() })
   const lInit = await lost.call('initialize', { protocolVersion: '2025-06-18' })

@@ -35,6 +35,9 @@ interface ReportMessage {
   goal?: string
 }
 
+/** A command by where it is: 0-based line, name and first line of its text. */
+interface Place { line: number; command: string; source: string }
+
 interface Report {
   error?: string
   outdated?: boolean
@@ -45,6 +48,13 @@ interface Report {
   ok?: boolean
   failed_commands?: number
   unprocessed_commands?: number
+  /** Where the prover is in a theory not yet done (servers that know it): the commands it
+      runs, at most five of them, and how many run; those that wait for their turn, and
+      the first of them. Counted without blanks and comments. */
+  running?: Place[]
+  running_commands?: number
+  waiting_commands?: number
+  first_waiting?: Place
   sorry?: number
   oops?: number
   messages?: ReportMessage[]
@@ -100,8 +110,15 @@ const AgentSledgehammer = byName<object, SledgehammerReply>('PIDE/agent_sledgeha
 const POLL_MS = 300
 const MAX_TEXT = 30000
 const START_WAIT_MS = 90000
+/** How long a theory may stand still, a command failed and none running, before a check
+    gives up waiting for it. */
+const STALL_MS = 6000
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+/** What a check that did not wait tells the agent to do next. */
+const AGAIN = 'Call isabelle_check again: with wait false for how far it is by then, or ' +
+  'without it to wait for the result.'
 
 class ToolError extends Error {}
 
@@ -258,30 +275,104 @@ export class AgentTools {
       : Promise<string> {
     const client = await this.client(token)
     const uri = this.resolve(args)
-    const timeout = (num(args, 'timeout_s') ?? 300) * 1000
+    /* `wait: false` asks how far the prover is, and answers at once: the agent goes on with
+       something else and asks again, or has the client move the call to the background. */
+    const wait = args.wait !== false
+    const timeout = wait ? (num(args, 'timeout_s') ?? 300) * 1000 : 0
     const start = Date.now()
     let status = await this.status(client, uri)
+    let stalled = false
+    let percentage = status.percentage
+    let moved = Date.now()
+    let probed = 0
     while (status.status === 'pending' && Date.now() - start < timeout &&
         !token?.isCancellationRequested) {
       await sleep(POLL_MS)
       status = await this.status(client, uri)
+      if (status.percentage !== percentage) {
+        percentage = status.percentage
+        moved = Date.now()
+      } else if (Date.now() - moved >= STALL_MS && Date.now() - probed >= 2000) {
+        probed = Date.now()
+        if (await this.goesNoFurther(client, uri)) { stalled = true; break }
+      }
     }
     let report = await client.sendRequest(AgentReport, { uri: this.asUri(client, uri) })
     for (let i = 0; i < 20 && report.outdated; i++) {
       await sleep(POLL_MS)
       report = await client.sendRequest(AgentReport, { uri: this.asUri(client, uri) })
     }
-    if (report.error) throw new ToolError(report.error)
-    return this.formatReport(uri, status, report, Date.now() - start)
+    if (report.error) {
+      /* Right after the theory was asked for, the prover may not have it yet. */
+      if (!wait && status.status === 'pending') {
+        return `${path.basename(uri.fsPath)}: being checked (${status.percentage}% done); the ` +
+          'prover has not reached its commands yet. ' + AGAIN
+      }
+      throw new ToolError(report.error)
+    }
+    return this.formatReport(uri, status, report, Date.now() - start, wait, stalled)
   }
 
-  private formatReport(uri: vscode.Uri, status: TheoryStatus, r: Report, ms: number): string {
+  /** Whether the prover has stopped before the end of a theory without finishing it: a
+      command failed, none runs, and others wait, as when an import cannot be found. Such a
+      theory stays at its percentage for good, and no timeout would end the wait. */
+  private async goesNoFurther(client: LanguageClient, uri: vscode.Uri): Promise<boolean> {
+    const r = await client.sendRequest(AgentReport, { uri: this.asUri(client, uri) })
+    return !r.error && !r.outdated && (r.failed_commands ?? 0) > 0 &&
+      r.running_commands === 0 && (r.waiting_commands ?? 0) > 0
+  }
+
+  /** Where the prover is in a theory that is not done: what it runs, and what waits. */
+  private formatProgress(r: Report, wait: boolean): string[] {
+    if (!r.running) return []   // a server that does not tell
+    const at = (p: Place) => `line ${p.line + 1}: ${p.source}`
+    const out: string[] = []
+    const waiting = r.waiting_commands ?? 0
+    if (r.running.length) {
+      out.push('Running now:', ...r.running.map(p => '  ' + at(p)))
+      const more = (r.running_commands ?? 0) - r.running.length
+      if (more > 0) out.push(`  ... and ${more} more`)
+    } else if (waiting > 0) {
+      out.push('No command is running at the moment.')
+    }
+    if (waiting > 0) {
+      out.push(`Waiting for the prover: ${waiting} command${waiting === 1 ? '' : 's'} (not ` +
+        'started, or their proofs still being checked)' +
+        (r.first_waiting ? `, the first at ${at(r.first_waiting)}` : '') + '.')
+    }
+    if (!r.running.length && waiting === 0) {
+      /* Node_Status counts a theory as 99% done until it is consolidated. */
+      out.push('Every command is processed; the theory is not consolidated yet, which the ' +
+        'prover does after its last command.')
+    } else if (!r.running.length && (r.failed_commands ?? 0) > 0) {
+      out.push('A command has failed and none runs: if this is the same on the next call, the ' +
+        'prover goes no further with this theory, as when an import cannot be found.')
+    }
+    if (wait && r.running.length) {
+      out.push('If the same command is still running when you ask again, it is slow or stuck, ' +
+        'as a simplifier loop or a heavy automatic method is. isabelle_try on its goal, with a ' +
+        'timeout, shows the rule cycle of a loop; editing the command makes the prover drop ' +
+        'its run.')
+    }
+    return out
+  }
+
+  private formatReport(uri: vscode.Uri, status: TheoryStatus, r: Report, ms: number,
+      wait: boolean, stalled: boolean): string {
     const messages = r.messages ?? []
     const errors = messages.filter(m => m.severity === 'error')
     const warnings = messages.filter(m => m.severity !== 'error')
     const name = path.basename(uri.fsPath)
+    const pending = status.status === 'pending' && !stalled
+    /* Commands that never ran, because the theory's start failed -- a name that is not the
+       file's, an import that cannot be found -- and the prover goes no further. */
+    const unrun = r.waiting_commands ?? 0
+    const notRun = !pending && status.status !== 'checked' && unrun > 0 &&
+      (r.running_commands ?? 0) === 0
     const state =
-      status.status === 'pending' ? `still being checked (${status.percentage}%) when the timeout passed` :
+      notRun ? 'not checked' :
+      pending && wait ? `still being checked (${status.percentage}%) when the timeout passed` :
+      pending ? `being checked (${status.percentage}% done)` :
       status.status === 'failed' || errors.length ? 'checked, with errors' : 'checked'
     const counts = [
       `${errors.length} error${errors.length === 1 ? '' : 's'}`,
@@ -289,9 +380,18 @@ export class AgentTools {
       `${r.sorry ?? 0} sorry`,
       ...(r.oops ? [`${r.oops} oops`] : []),
     ].join(', ')
-    const out = [`${name}: ${state} in ${(ms / 1000).toFixed(1)} s: ${counts}.`]
-    if (status.status === 'pending') {
-      out.push('Messages so far are below; call isabelle_check again to wait longer.')
+    const took = pending && !wait ? '' : ` in ${(ms / 1000).toFixed(1)} s`
+    const out = [`${name}: ${state}${took}: ${counts}.`]
+    if (notRun) {
+      const first = r.first_waiting
+      out.push(`The prover did not run the theory: ${unrun} command${unrun === 1 ? '' : 's'} ` +
+        'never started' + (first ? `, the first at line ${first.line + 1}: ${first.source}` : '') +
+        ', because a command at its start failed. The errors below say why, usually a theory ' +
+        'name that is not the file\'s, or an import that cannot be found.')
+    } else if (pending) {
+      out.push(wait ? 'Messages so far are below; call isabelle_check again to wait longer.'
+        : 'Messages so far are below. ' + AGAIN)
+      out.push(...this.formatProgress(r, wait))
     } else if (r.finalized === false) {
       out.push('The theory has no end: its commands are checked, but isabelle build rejects it ' +
         'as it stands.')
