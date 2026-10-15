@@ -12,8 +12,8 @@
  * ISABELLE_VSCODE_WORKSPACE picks the window by a folder other than the current directory.
  *
  * `notifications/cancelled` is not passed on: the relay aborts the request it names, which
- * the window takes as the cancellation, or drops it while it waits in the queue. Request
- * ids are only unique per client, and the window serves several.
+ * the window takes as the cancellation. Request ids are only unique per client, and the
+ * window serves several.
  */
 import * as fs from 'fs'
 import * as http from 'http'
@@ -153,13 +153,13 @@ export function main(): void {
   const dir = process.env.ISABELLE_VSCODE_WORKSPACE || process.cwd()
   const write = (s: string) => process.stdout.write(s.replace(/\n/g, ' ') + '\n')
   const rl = readline.createInterface({ input: process.stdin, terminal: false })
-  /* Answered in the order asked, one at a time: MCP allows concurrency, but the prover
-     works on one window, and order keeps a log readable. Tool calls can be long, so
-     pings are not held up behind them. */
-  let queue = Promise.resolve()
+  /* Every message goes on as it comes, tool calls too, and is answered when the window
+     answers it: a check can run for minutes, and the agent meanwhile reads a proof state or
+     tries candidates, or has its client move the call to the background. The window serves
+     such calls side by side, as it does for a client that connects to it directly. */
+  const inflight = new Set<Promise<void>>()
   rl.on('line', line => {
     if (!line.trim()) return
-    let quick = false
     try {
       const message = JSON.parse(line)
       if (message.method === 'notifications/cancelled') {
@@ -170,15 +170,16 @@ export function main(): void {
         }
         return
       }
-      quick = message.method !== 'tools/call'
-      if (!quick && (typeof message.id === 'string' || typeof message.id === 'number')) {
+      if (message.method === 'tools/call' &&
+          (typeof message.id === 'string' || typeof message.id === 'number')) {
         pending.add(message.id)
       }
     } catch { /* relay reports it */ }
-    if (quick) void relay(line, dir, write)
-    else queue = queue.then(() => relay(line, dir, write))
+    const done = relay(line, dir, write)
+    inflight.add(done)
+    void done.finally(() => inflight.delete(done))
   })
-  rl.on('close', () => { void queue.then(() => process.exit(0)) })
+  rl.on('close', () => { void Promise.allSettled([...inflight]).then(() => process.exit(0)) })
 }
 
 if (require.main === module) main()

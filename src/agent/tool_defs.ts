@@ -41,13 +41,23 @@ export const TOOL_DEFS: ToolDef[] = [
       'session image loaded and rechecks only what changed (seconds, not minutes). Waits ' +
       'until the theory is checked or the timeout passes, then returns its errors and ' +
       'warnings with 1-based lines, the goal each failing command worked on, and the counts ' +
-      'of sorry and oops. Call it after every edit of a .thy file. Never run `isabelle ' +
-      'build` or `process_theories` instead.',
+      'of sorry and oops. A theory still being checked at the timeout comes back with the ' +
+      'commands the prover is running: the same one on the next call is slow or stuck. With ' +
+      '`wait: false` it answers at once with how far the prover is, so that you can do ' +
+      'other work and ask again later; isabelle_state, isabelle_try and the other tools ' +
+      'work meanwhile, on the commands already checked. Call it after every edit of a ' +
+      '.thy file. Never run `isabelle build` or `process_theories` instead.',
     inputSchema: {
       type: 'object',
       properties: {
         file,
         timeout_s: { type: 'integer', minimum: 1, description: 'How long to wait. Default 300.' },
+        wait: {
+          type: 'boolean',
+          description: 'Default true. false: do not wait for the prover; answer at once with ' +
+            'its progress (percentage, the messages so far, the commands it runs), or with ' +
+            'the result if the theory is checked already. Ignores timeout_s.',
+        },
       },
       required: ['file'],
     },
@@ -154,7 +164,9 @@ export const SERVER_INSTRUCTIONS =
   'isabelle_sledgehammer, and write only a proof that came back `proved`. Test an ' +
   'intermediate step or a helper lemma with `goal` before writing it. Look up facts with ' +
   'isabelle_try ["thm name"] or isabelle_find_theorems instead of guessing names. A ' +
-  'simplifier loop shows as a timeout with its rule cycle: drop that rule with `simp del:`.'
+  'simplifier loop shows as a timeout with its rule cycle: drop that rule with `simp del:`. ' +
+  'A long check need not hold you up: isabelle_check with `wait: false` returns the ' +
+  'progress at once, and the other tools work while the prover goes on.'
 
 /** The answer of a tool when no VS Code window serves this folder. */
 export const NO_WINDOW =

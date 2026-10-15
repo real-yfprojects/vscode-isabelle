@@ -65,6 +65,12 @@ const LINES = [
 /** 1-based, as an agent counts. */
 const at = prefix => LINES.findIndex(l => l.startsWith(prefix)) + 1
 
+/** A theory whose second command takes the prover `seconds` to run, as a loop would, then
+    ends. The sleep is on line 5, the lemma after it on line 7. */
+const slowTheory = (name, seconds) => [`theory ${name}`, '  imports Main', 'begin', '',
+  `ML \\<open>OS.Process.sleep (Time.fromSeconds ${seconds})\\<close>`, '',
+  'lemma "rev (rev xs) = xs"', '  by simp', '', 'end', ''].join('\n')
+
 /** Starts an MCP stdio server as Claude Code does, and returns a call function. */
 function stdioServer(command, args, cwd, env) {
   const clean = Object.fromEntries(Object.entries(process.env)
@@ -173,6 +179,62 @@ async function run() {
   assert.strictEqual(vscode.window.activeTextEditor?.document, opened.document)
   await vscode.commands.executeCommand('workbench.action.closeActiveEditor')
   pass('opening the checked theory in an editor does not check it again')
+
+  // --- check: a command that takes long is named, and a check need not wait for it ---
+  const slow = path.join(ws, 'Agent_Slow.thy')
+  fs.writeFileSync(slow, slowTheory('Agent_Slow', 30), 'utf8')
+  const started = await timed({ file: 'Agent_Slow.thy', wait: false })
+  assert.ok(!started.result.isError, 'asking for a theory nobody loaded is no error')
+  assert.match(started.result.text, /being checked \(\d+% done\)/)
+  assert.ok(started.seconds < 5, `wait false answers at once (${started.seconds} s)`)
+  const early = await timed({ file: 'Agent_Slow.thy', timeout_s: 8 })
+  assert.match(early.result.text, /still being checked \(\d+%\) when the timeout passed/)
+  assert.match(early.result.text, /Running now:\n\s+line 5: ML \\<open>/, 'the slow command is named')
+  assert.match(early.result.text, /Waiting for the prover: \d+ commands? \(.*\), the first at line 7: lemma/)
+  assert.match(early.result.text, /same command is still running/)
+  assert.ok(early.seconds >= 7 && early.seconds < 20, `it waits for the timeout (${early.seconds} s)`)
+  const peek = await timed({ file: 'Agent_Slow.thy', wait: false })
+  assert.match(peek.result.text.split('\n')[0], /^Agent_Slow\.thy: being checked \(\d+% done\): 0 errors/)
+  assert.match(peek.result.text, /Running now:\n\s+line 5: ML \\<open>/)
+  assert.ok(!/same command is still running/.test(peek.result.text), 'no verdict on a command that just runs')
+  assert.ok(peek.seconds < 3, `a check that does not wait answers at once (${peek.seconds} s)`)
+  /* What the report advises: editing the command that runs ends its run, so the check
+     ends with the edit and not after the 30 s, of which about 20 are left. */
+  const slowDoc = await vscode.workspace.openTextDocument(vscode.Uri.file(slow))
+  const shorten = new vscode.WorkspaceEdit()
+  shorten.replace(slowDoc.uri, slowDoc.lineAt(4).range,
+    'ML \\<open>OS.Process.sleep (Time.fromSeconds 1)\\<close>')
+  assert.ok(await vscode.workspace.applyEdit(shorten))
+  const slowDone = await timed({ file: 'Agent_Slow.thy', timeout_s: 120 })
+  assert.match(slowDone.result.text, /Agent_Slow\.thy: checked in/)
+  assert.ok(!/Running now/.test(slowDone.result.text))
+  assert.ok(slowDone.seconds < 12, `the edit ended the run (${slowDone.seconds} s)`)
+  await slowDoc.save()
+  const after = await timed({ file: 'Agent_Slow.thy', wait: false })
+  assert.match(after.result.text, /Agent_Slow\.thy: checked in/, 'a checked theory is the result, whatever wait says')
+  pass('a check at its timeout names the command that runs; wait false answers with the progress at once')
+
+  /* A theory whose start fails never runs the rest of it, and stays below 100% for good: the
+     check says so, instead of waiting out its timeout and calling the theory unfinished. */
+  const badName = path.join(ws, 'Agent_BadName.thy')
+  fs.writeFileSync(badName, ['theory Other', '  imports Main', 'begin', 'lemma "True" by simp', 'end', ''].join('\n'), 'utf8')
+  const named = await timed({ file: 'Agent_BadName.thy', timeout_s: 120 })
+  assert.match(named.result.text, /Agent_BadName\.thy: not checked in/)
+  assert.match(named.result.text, /did not run the theory: \d+ commands? never started/)
+  assert.match(named.result.text, /Bad theory name "Other"/)
+  assert.ok(!/has no end|its commands are checked/.test(named.result.text), 'its commands were not checked')
+  const badImport = path.join(ws, 'Agent_BadImport.thy')
+  fs.writeFileSync(badImport, ['theory Agent_BadImport', '  imports Main Nonexistent_Theory', 'begin',
+    'lemma "True" by simp', 'end', ''].join('\n'), 'utf8')
+  const imported = await timed({ file: 'Agent_BadImport.thy', timeout_s: 120 })
+  assert.match(imported.result.text, /Agent_BadImport\.thy: not checked in/)
+  assert.match(imported.result.text, /did not run the theory/)
+  assert.match(imported.result.text, /Bad theory import "[\w.]*Nonexistent_Theory"/)
+  assert.ok(imported.seconds < 45, `it does not wait for its timeout (${imported.seconds} s)`)
+  const glimpse = await timed({ file: 'Agent_BadImport.thy', wait: false })
+  assert.match(glimpse.result.text, /being checked \(\d+% done\)/)
+  assert.match(glimpse.result.text, /A command has failed and none runs/, 'the hint for the next call')
+  pass('a theory whose start fails is reported as not checked, without waiting out the timeout')
 
   // --- state ---
   const state = await call('isabelle_state', { file, line: at('   apply simp') })
@@ -326,8 +388,25 @@ async function run() {
   console.log('--- via the relay:\n' + viaRelay.result.content[0].text)
   assert.ok(!viaRelay.result.isError, 'the relay answered with an error: ' + viaRelay.result.content[0].text)
   assert.match(viaRelay.result.content[0].text, /1 error\b/)
-  relay.close()
   pass(`the relay that .mcp.json starts (${path.basename(entry.command)}) reaches this window's prover`)
+
+  /* The agent goes on while a check runs: through the relay, a call made while another is
+     under way is answered at once, not after it. */
+  const slow2 = path.join(ws, 'Agent_Slow2.thy')
+  fs.writeFileSync(slow2, slowTheory('Agent_Slow2', 20), 'utf8')
+  const longCheck = relay.call('tools/call',
+    { name: 'isabelle_check', arguments: { file: 'Agent_Slow2.thy', timeout_s: 120 } })
+  await wait(2000)
+  const meanwhileAt = Date.now()
+  const meanwhile = await relay.call('tools/call',
+    { name: 'isabelle_state', arguments: { file, line: at('  done') } })
+  const meanwhileSeconds = (Date.now() - meanwhileAt) / 1000
+  assert.match(meanwhile.result.content[0].text, /done/)
+  assert.ok(meanwhileSeconds < 10, `answered while the check runs (${meanwhileSeconds.toFixed(1)} s)`)
+  const longDone = await longCheck
+  assert.match(longDone.result.content[0].text, /Agent_Slow2\.thy: checked in/)
+  relay.close()
+  pass(`through the relay, a call is answered while a check runs (${meanwhileSeconds.toFixed(1)} s)`)
   fs.rmSync(mcpFile, { force: true })
   fs.rmSync(path.join(ws, '.github'), { recursive: true, force: true })
 
@@ -341,6 +420,10 @@ async function run() {
   await target_.reset(target)
   fs.rmSync(file, { force: true })
   fs.rmSync(draft, { force: true })
+  fs.rmSync(slow, { force: true })
+  fs.rmSync(slow2, { force: true })
+  fs.rmSync(badName, { force: true })
+  fs.rmSync(badImport, { force: true })
 
   console.log(`\n${passed} checks passed`)
   console.log('SUITE64_OK')
