@@ -49,7 +49,7 @@ export interface TypeRanges {
  * The visible slice of a sorted range list. Filtering is O(n) per type per scroll event,
  * which on 51000 ranges across 40 types is the dominant cost; this is O(log n + k).
  */
-function sliceFor(entry: TypeRanges, first: number, last: number): vscode.DecorationOptions[] {
+export function sliceFor(entry: TypeRanges, first: number, last: number): vscode.DecorationOptions[] {
   const { items, maxHeight } = entry
   const from = first - maxHeight
   let lo = 0, hi = items.length

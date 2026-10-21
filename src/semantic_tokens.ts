@@ -19,7 +19,7 @@
  */
 
 import * as vscode from 'vscode'
-import { PideDecorations } from './pide_decorations'
+import { PideDecorations, sliceFor } from './pide_decorations'
 
 type TokenSpec = { type: string; modifiers?: string[] }
 
@@ -113,19 +113,30 @@ export type RawToken = {
  * token that starts first wins, and among tokens starting together the shorter one does,
  * being the more specific markup. On an exact tie Isabelle's own `text_*` colours win
  * over the `semantic_*` categories, which are meant to fill gaps only.
+ *
+ * With `lines`, only tokens on those lines (inclusive) are built. An entry with a
+ * `maxHeight` is taken to be sorted by start line, as `PideDecorations` keeps it, and is
+ * searched rather than walked.
  */
 export function buildTokens(
-  byType: ReadonlyMap<string, { items: { range: vscode.Range }[] }>,
+  byType: ReadonlyMap<string, { items: { range: vscode.Range }[]; maxHeight?: number }>,
   lineLength: (line: number) => number,
+  lines?: { first: number; last: number },
 ): RawToken[] {
+  const first = lines?.first ?? 0
+  const last = lines?.last ?? Number.MAX_SAFE_INTEGER
   const raw: (RawToken & { rank: number })[] = []
   for (const [key, entry] of byType) {
     const rank = SOURCES.findIndex(s => key.startsWith(s.prefix))
     if (rank < 0) continue
     const mapped = SOURCES[rank].map[key.slice(SOURCES[rank].prefix.length)]
     if (!mapped) continue
-    for (const { range } of entry.items) {
-      for (let line = range.start.line; line <= range.end.line; line++) {
+    const items = lines && entry.maxHeight !== undefined
+      ? sliceFor({ items: entry.items, maxHeight: entry.maxHeight }, first, last)
+      : entry.items
+    for (const { range } of items) {
+      const to = Math.min(range.end.line, last)
+      for (let line = Math.max(range.start.line, first); line <= to; line++) {
         const char = line === range.start.line ? range.start.character : 0
         const end = line === range.end.line ? range.end.character : lineLength(line)
         if (end > char) {
@@ -150,7 +161,16 @@ export function buildTokens(
   return out
 }
 
-class PideSemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
+/**
+ * Tokens for the range VS Code asks for, which is what the editor shows plus a viewport
+ * above and below; it asks again on scrolling. The server's markup covers the whole
+ * theory, and building, encoding and sending all of it again on every update the prover
+ * pushes cost time in proportion to the file, not to the screen.
+ *
+ * Only a range provider is registered, on purpose: next to a whole-document provider VS
+ * Code uses a range provider only until the first whole-document result arrives.
+ */
+class PideSemanticTokensProvider implements vscode.DocumentRangeSemanticTokensProvider {
   private readonly changed = new vscode.EventEmitter<void>()
   readonly onDidChangeSemanticTokens = this.changed.event
 
@@ -158,13 +178,14 @@ class PideSemanticTokensProvider implements vscode.DocumentSemanticTokensProvide
 
   fire(): void { this.changed.fire() }
 
-  provideDocumentSemanticTokens(doc: vscode.TextDocument): vscode.SemanticTokens {
+  provideDocumentRangeSemanticTokens(doc: vscode.TextDocument, range: vscode.Range): vscode.SemanticTokens {
     const builder = new vscode.SemanticTokensBuilder(LEGEND)
     const byType = this.pide.rangesFor(doc.uri)
     if (byType) {
       const lineLength = (line: number) =>
         line < doc.lineCount ? doc.lineAt(line).text.length : 0
-      for (const token of buildTokens(byType, lineLength)) {
+      const lines = { first: range.start.line, last: range.end.line }
+      for (const token of buildTokens(byType, lineLength, lines)) {
         builder.push(token.line, token.char, token.length, TOKEN_TYPES.indexOf(token.type),
           token.modifiers.reduce((bits, m) => bits | (1 << TOKEN_MODIFIERS.indexOf(m)), 0))
       }
@@ -186,7 +207,7 @@ export function registerSemanticTokens(
 ): void {
   const provider = new PideSemanticTokensProvider(pide)
   scope.push(
-    vscode.languages.registerDocumentSemanticTokensProvider(selector, provider, LEGEND),
+    vscode.languages.registerDocumentRangeSemanticTokensProvider(selector, provider, LEGEND),
     // The server pushes markup as it checks, so tokens have to be invalidated with it.
     pide.onDidUpdate(() => provider.fire()),
   )

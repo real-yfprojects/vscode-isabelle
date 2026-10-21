@@ -55,6 +55,25 @@ async function run() {
   console.log(`semantic tokens: ${tokens.data.length / 5}`)
   pass('by default the theme colours checked text, through semantic tokens')
 
+  // The editor asks for its viewport, and gets the tokens of those lines only. The markup
+  // above may have come from the header alone, so wait for the lemma to be checked.
+  const rangeTokens = range => vscode.commands.executeCommand(
+    'vscode.provideDocumentRangeSemanticTokens', doc.uri, range)
+  const lemma = await until('the lemma to be checked', 120, async () => {
+    const t = await rangeTokens(new vscode.Range(4, 0, 4, 100))
+    return t && t.data.length > 0 ? t : undefined
+  })
+  assert.ok(lemma, 'the lemma line should have tokens')
+  let line = 0
+  for (let i = 0; i < lemma.data.length; i += 5) {
+    line += lemma.data[i]
+    assert.strictEqual(line, 4, `a token outside the requested range, on line ${line}`)
+  }
+  const whole = await rangeTokens(new vscode.Range(0, 0, doc.lineCount, 0))
+  assert.ok(lemma.data.length < whole.data.length,
+    `fewer tokens for one line (${lemma.data.length / 5}) than for the theory (${whole.data.length / 5})`)
+  pass('semantic tokens are built for the requested range only')
+
   // The palette is still available for anyone who prefers Isabelle's own colours.
   const cfg = vscode.workspace.getConfiguration('isabelle')
   await cfg.update('markupColors', 'isabelle', vscode.ConfigurationTarget.Global)
