@@ -91,7 +91,9 @@ palette winning.
 Semantic tokens are the mechanism built for this. `src/semantic_tokens.ts` serves the
 `text_*` categories as tokens the editor colours from the theme, and the `text_*`
 decorations are then *not* applied -- the two are mutually exclusive by construction,
-since a decoration would override the theme again.
+since a decoration would override the theme again. Tokens are built only for the lines
+the editor asks for, its viewport and one viewport above and below, so a line scrolled
+into view can show the grammar's colours for a moment before its tokens arrive.
 
 Themes do not know Isabelle's categories, so each custom token type is declared in
 `package.json` with a `superType` and a `semanticTokenScopes` mapping to ordinary

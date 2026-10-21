@@ -128,6 +128,29 @@ async function run() {
   assert.deepStrictEqual(positions, [[1, 0], [1, 8], [3, 2], [5, 0]], JSON.stringify(positions))
   pass('tokens come out in document order across categories')
 
+  // Only the lines VS Code asks for: the editor requests the viewport, not the theory.
+  // A range that starts above the span and ends inside it is cut at the span's first line,
+  // one that starts inside and ends below at its last.
+  const wide = new Map([
+    ['text_inner_quoted', { items: [R(0, 2, 3, 4), R(8, 1, 12, 2)] }],
+    ['text_free', { items: [R(1, 0, 1, 3), R(6, 0, 6, 1), R(20, 0, 20, 5)] }],
+  ])
+  const cut = buildTokens(wide, () => 10, { first: 2, last: 9 })
+  assert.deepStrictEqual(cut.map(t => [t.line, t.char, t.length]),
+    [[2, 0, 10], [3, 0, 4], [6, 0, 1], [8, 1, 9], [9, 0, 10]], JSON.stringify(cut))
+  // Sorted lists with their tallest range, as PideDecorations keeps them, are searched
+  // rather than walked, and must find the same tokens, including a tall range that
+  // starts far above the span.
+  const sorted = new Map([...wide].map(([k, { items }]) => {
+    const s = [...items].sort((a, b) => a.range.start.line - b.range.start.line)
+    return [k, { items: s, maxHeight: Math.max(...s.map(i => i.range.end.line - i.range.start.line)) }]
+  }))
+  assert.deepStrictEqual(buildTokens(sorted, () => 10, { first: 2, last: 9 }), cut)
+  assert.deepStrictEqual(buildTokens(sorted, () => 10, { first: 21, last: 30 }), [])
+  assert.deepStrictEqual(buildTokens(sorted, () => 10), buildTokens(wide, () => 10),
+    'without a span, the whole document')
+  pass('a line span yields only the tokens on those lines, searched or walked alike')
+
   // The extended server's semantic_* categories: what text colours leave plain in a term.
   const semantic = buildTokens(new Map([
     ['semantic_constant', { items: [R(0, 0, 0, 3)] }],

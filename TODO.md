@@ -71,6 +71,13 @@ This documents tracks features and tasks that might already be tracked in other 
 
 
 ### High
+- [x] Improve performance: semantic tokens only for the visible range -- a range provider
+    instead of the whole-document one (`src/semantic_tokens.ts`); VS Code asks for the
+    viewport plus one viewport above and below, again on scrolling. Next to a document
+    provider it would be dropped after the first full result, so there is none. The
+    markup is searched, not walked (`sliceFor`). Building tokens per markup update: 37 ms
+    for 54k ranges over 9k lines, 0.85 ms for the span asked for. A sticky-scroll line
+    far above the viewport may show the grammar's colours only. Tests: suite21 (pure), suite23
 - [x] LLM integration into vscode copilot or claude -- MCP tools served by the extension
     (`src/agent/`, docs/agents.md), on the extended server's `PIDE/agent_*` requests
     (`vscode_agent.scala`, `vscode_agent.ML`, mirror branch `vscode-agent`). Tests: suite63
