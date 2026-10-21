@@ -18,12 +18,12 @@ in your `.thy` files.
 
 ## Features
 
-- *Writing*: renders math glyphs from ASCII sources; symbol shorthands, Isar and inner syntax (e.g. HOL) completion, with the statement of a fact and the type of a constant or variable as you pick one†;
-  Isar and inner syntax highlighting (with semantic colours†); types and messages on hover, and what a name stands for† (the statement of a fact, the type of a variable, the term of `?thesis`), linked to its definition†; auto-indentation†; normalise any accidental actual Unicode characters to ASCII
+- *Writing*: renders math glyphs from ASCII sources; symbol shorthands, Isar and inner syntax (e.g. HOL) completion;
+  Isar and inner syntax highlighting†; types/defs on hover; auto-indentation†; normalise any accidental actual Unicode characters to ASCII
 - *Checking*: continuous live PIDE verification; goals and messages at the cursor in one infoview, with pinned goals (that follow your edits†); cache session management
 - *Proving*: sledgehammer (runs that go on while you edit, several at once, and a proof for every `sorry` of a lemma†), find theorems† and simplifier trace† panels, overview over checked theories and timing†
-- *Navigating*: outline, breadcrumbs, indexed code symbols, code folding, go to definition, find references† (across theories, by identity rather than name, also in theories not yet checked), Graph View† for theory, class, locale and code dependencies
-- *AI agents*†: Claude Code, Copilot and other MCP clients check theories, read goals, try proofs and run Sledgehammer with the prover of your window
+- *Navigating*: outline, breadcrumbs, indexed code symbols, code folding, go to definition, semantic find references†, Graph View† for theory, class, locale and code dependencies
+- *LLMs*†: mcp server for claude code and copilot to check theories, read goals, try proofs and run Sledgehammer with the prover of your window
 - *Misc*: preview, documentation panel, cygwin terminal
 
 † = these features need a patch to the Isabelle LSP. See [step 2](#2-turn-on-the-extended-server-optional-recommended).
