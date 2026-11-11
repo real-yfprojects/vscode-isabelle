@@ -255,7 +255,7 @@
           {
             "id": "isabelle",
             "title": "Connect Isabelle2025-2",
-            "description": "The extension runs your Isabelle2025-2 distribution; the VSCodium bundled with it is not needed. It is found automatically in the usual places.\n[Check Isabelle](command:isabelle.checkInstallation)\n[Download Isabelle](https://isabelle.in.tum.de/)",
+            "description": "The extension runs your Isabelle2025-2 distribution; the VSCodium bundled with it is not needed. It is found automatically in the usual places.\n[Check Isabelle](command:isabelle.checkInstallation)\n[Download Isabelle2025-2](https://isabelle.in.tum.de/website-Isabelle2025-2/)",
             "media": {
               "markdown": "media/walkthrough/isabelle.md"
             },
