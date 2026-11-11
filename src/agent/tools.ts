@@ -138,13 +138,20 @@ function goesNoFurther(r: Report): boolean {
     r.running_commands === 0 && (r.waiting_commands ?? 0) > 0
 }
 
-/** Whether a command has failed but its error is not in the report yet. The failure (a
-    command's status) and its error (a result) reach the server separately, and on a fast
-    machine a theory whose start fails is reported within 0.3 s, between the two. */
-function errorToCome(r: Report): boolean {
-  return !r.error && !r.outdated && (r.failed_commands ?? 0) > 0 &&
+/** Whether the theory has failed but the error that says why is not in the report yet.
+    A bad theory header fails the theory at once: the server finds the error parsing the
+    header, before the prover has run anything, and the error's text is the prover's,
+    reported when it gets to the header. Likewise a command's failure (its status) and its
+    error (a result) reach the server separately. On the macOS runner a check of a theory
+    with a bad name answered within 0.3 s, in between. */
+function errorToCome(r: Report, status: TheoryStatus): boolean {
+  return !r.error && !r.outdated &&
+    (status.status === 'failed' || (r.failed_commands ?? 0) > 0) &&
     !(r.messages ?? []).some(m => m.severity === 'error')
 }
+
+/** How long a check waits for the error of a failed theory to reach the report. */
+const ERROR_WAIT_MS = 10000
 
 /** The commands a theory runs, as one string to compare with the next look: empty when
     none runs, or the report cannot tell. */
@@ -367,7 +374,13 @@ export class AgentTools {
       }
     }
     let report = await client.sendRequest(AgentReport, { uri: this.asUri(client, uri) })
-    for (let i = 0; i < 20 && (report.outdated || errorToCome(report)); i++) {
+    for (let i = 0; i < 20 && report.outdated; i++) {
+      await sleep(POLL_MS)
+      report = await client.sendRequest(AgentReport, { uri: this.asUri(client, uri) })
+    }
+    const errorBy = Date.now() + ERROR_WAIT_MS
+    while (Date.now() < errorBy && (report.outdated || errorToCome(report, status)) &&
+        !token?.isCancellationRequested) {
       await sleep(POLL_MS)
       report = await client.sendRequest(AgentReport, { uri: this.asUri(client, uri) })
     }
