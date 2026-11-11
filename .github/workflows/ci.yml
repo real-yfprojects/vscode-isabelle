@@ -29,19 +29,18 @@ env:
   # The version itself lives in the matrix bundle names below -- the env context is not
   # available in strategy.matrix, so it cannot be factored out to here.
   #
-  # NOT https://isabelle.in.tum.de/dist. That host answers every bundle with a 301 to
-  # *http* on this one, and curl will not follow an https->http downgrade -- it writes the
-  # 372-byte redirect body and then stalls, which is what the first run of this job did.
-  # Permitting the downgrade does not help either: plain http on that host does not serve.
-  # https straight to the redirect target does, so go there directly.
+  # The website archive of the release, not the download hosts. Those serve only the
+  # *current* release: since Isabelle2026, Cambridge answers Isabelle2025-2 with 404,
+  # and https://isabelle.in.tum.de/dist redirects to an http host that does not answer
+  # (curl would not follow the https->http downgrade anyway). The archive at
+  # website-<release>/dist keeps every superseded release's bundles over https, and none
+  # of the mirrors keeps one, so there is no second host to try.
   #
-  # Tried in order. The TUM host alone is a single point of failure: it once stopped
-  # answering altogether, and the Windows job ran out of retries on it. Cambridge is
-  # the mirror the Isabelle download page lists, serves the same bundles, and ignores
-  # the token query.
+  # Still a list, tried in order, so a second host is one line if the archive moves or
+  # gains a mirror. The cache in front of every download means a dead host only fails
+  # the jobs whose cache was evicted (GitHub drops a cache unused for 7 days).
   ISABELLE_MIRRORS: >-
-    https://dist.isabelle.cit.tum.de/dist
-    https://www.cl.cam.ac.uk/research/hvg/Isabelle/dist
+    https://isabelle.in.tum.de/website-Isabelle2025-2/dist
 
 jobs:
   build:

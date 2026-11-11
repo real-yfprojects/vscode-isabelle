@@ -36,8 +36,9 @@ and a tutorial theory to try things on. **Isabelle: Get Started** opens it again
 ### Requirements
 
 - VS Code 1.85 or newer
-- [Isabelle2025-2](https://isabelle.in.tum.de/). You only need the distribution itself,
-  not the VSCodium that comes with it.
+- [Isabelle2025-2](https://isabelle.in.tum.de/website-Isabelle2025-2/), not yet Isabelle2026,
+  the current release. You only need the distribution itself, not the VSCodium that comes
+  with it.
 
 ### 1. Install the extension
 
