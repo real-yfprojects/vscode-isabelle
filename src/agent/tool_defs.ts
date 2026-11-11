@@ -45,7 +45,9 @@ export const TOOL_DEFS: ToolDef[] = [
       'until the theory is checked or the timeout passes, then returns its errors and ' +
       'warnings with 1-based lines, the goal each failing command worked on, and the counts ' +
       'of sorry and oops. A theory still being checked at the timeout comes back with the ' +
-      'commands the prover is running: the same one on the next call is slow or stuck. With ' +
+      'commands the prover is running: the same one on the next call is slow or stuck. It ' +
+      'also comes back as soon as the same commands have run for 30 s with nothing else ' +
+      'moving, since a proof method that does not end runs until it is edited. With ' +
       '`wait: false` it answers at once with how far the prover is, so that you can do ' +
       'other work and ask again later; isabelle_state, isabelle_try and the other tools ' +
       'work meanwhile, on the commands already checked. Call it after every edit of a ' +
@@ -54,7 +56,7 @@ export const TOOL_DEFS: ToolDef[] = [
       type: 'object',
       properties: {
         path: thyPath,
-        timeout_s: { type: 'integer', minimum: 1, description: 'How long to wait. Default 300.' },
+        timeout_s: { type: 'integer', minimum: 1, description: 'How long to wait at most. Default 120.' },
         wait: {
           type: 'boolean',
           description: 'Default true. false: do not wait for the prover; answer at once with ' +

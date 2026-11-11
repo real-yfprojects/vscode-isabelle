@@ -240,6 +240,36 @@ async function run() {
   assert.match(glimpse.result.text, /A command has failed and none runs/, 'the hint for the next call')
   pass('a theory whose start fails is reported as not checked, without waiting out the timeout')
 
+  /* A proof method that does not end -- here a tactic that sleeps past the test -- runs
+     until its command is edited, and the theory stays at 99%: the check answers once the
+     same command has run for 30 s with nothing else moving, not at its timeout. */
+  const stuckFile = path.join(ws, 'Agent_Stuck.thy')
+  fs.writeFileSync(stuckFile, ['theory Agent_Stuck', '  imports Main', 'begin', '',
+    'lemma "True"',
+    '  by (tactic \\<open>fn st => (OS.Process.sleep (Time.fromSeconds 300); all_tac st)\\<close>)',
+    '', 'lemma "rev (rev xs) = xs"', '  by simp', '', 'end', ''].join('\n'), 'utf8')
+  const stuck = await timed({ path: 'Agent_Stuck.thy', timeout_s: 110 })
+  assert.match(stuck.result.text, /^Agent_Stuck\.thy: no progress for \d+ s \(\d+% done\)/)
+  assert.match(stuck.result.text, /probably stuck/)
+  assert.match(stuck.result.text, /Running now:\n\s+line 6: by \(tactic/, 'the stuck command is named')
+  assert.ok(!/same command is still running/.test(stuck.result.text), 'no second verdict')
+  assert.ok(stuck.seconds >= 30 && stuck.seconds < 80, `it answers before its timeout (${stuck.seconds} s)`)
+  const stuckAt = Date.now()
+  const stuckState = await call('isabelle_state', { path: 'Agent_Stuck.thy', line: 6 })
+  const stuckStateSeconds = (Date.now() - stuckAt) / 1000
+  assert.match(stuckState.text, /\[running\]/)
+  assert.match(stuckState.text, /still running this command/)
+  assert.ok(stuckStateSeconds < 25, `state does not wait for a command that runs on (${stuckStateSeconds} s)`)
+  /* As the report advises: the edit ends the run. */
+  const stuckDoc = await vscode.workspace.openTextDocument(vscode.Uri.file(stuckFile))
+  const unstick = new vscode.WorkspaceEdit()
+  unstick.replace(stuckDoc.uri, stuckDoc.lineAt(5).range, '  by simp')
+  assert.ok(await vscode.workspace.applyEdit(unstick))
+  await stuckDoc.save()
+  const unstuck = await timed({ path: 'Agent_Stuck.thy', timeout_s: 120 })
+  assert.match(unstuck.result.text, /Agent_Stuck\.thy: checked in/)
+  pass(`a command that runs on is named after ${stuck.seconds.toFixed(0)} s, not at the timeout; state answers in ${stuckStateSeconds.toFixed(0)} s`)
+
   // --- state ---
   const state = await call('isabelle_state', { path: file, line: at('   apply simp') })
   assert.match(state.text, /apply simp/)
@@ -438,6 +468,7 @@ async function run() {
   fs.rmSync(slow2, { force: true })
   fs.rmSync(badName, { force: true })
   fs.rmSync(badImport, { force: true })
+  fs.rmSync(stuckFile, { force: true })
 
   console.log(`\n${passed} checks passed`)
   console.log('SUITE64_OK')

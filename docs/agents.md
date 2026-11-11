@@ -51,12 +51,12 @@ to that notation.
 
 ### Long checks
 
-`isabelle_check` waits until the theory is checked, or until `timeout_s` passes (300 s by
+`isabelle_check` waits until the theory is checked, or until `timeout_s` passes (120 s by
 default). It then answers, with the messages so far if the prover isn't done, and with where
 the prover is:
 
 ```
-Slow.thy: still being checked (14%) when the timeout passed in 300.1 s: 0 errors, 0 warnings, 0 sorry.
+Slow.thy: still being checked (14%) when the timeout passed in 120.1 s: 0 errors, 0 warnings, 0 sorry.
 Messages so far are below; call isabelle_check again to wait longer.
 Running now:
   line 57: by (simp add: loopy_def)
@@ -67,6 +67,13 @@ The same command on the next call means that it is slow or stuck, as a simplifie
 Nothing interrupts it: the prover goes on until the command ends or the agent edits it,
 which makes the prover drop that run. `isabelle_try` on its goal, with a timeout, shows
 the rule cycle of a loop.
+
+Isabelle gives a proof method no time limit, so a `metis`, `auto` or `smt` that doesn't end
+runs for good, and the theory never gets past 99%. The check doesn't wait out its timeout
+for that: once the same commands have run for 30 s and nothing else has moved, it answers
+with `no progress`, names them, and says to edit them or put `sorry` there. A proof that is
+only slow costs one more call. `isabelle_state` on such a line waits 10 s for the command,
+then answers with what it has, marked `[running]`.
 
 Some theories never finish in PIDE's sense, and the check doesn't wait for them:
 
