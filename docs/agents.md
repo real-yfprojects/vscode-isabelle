@@ -134,6 +134,22 @@ goals run side by side, sharing the panel's limit (`isabelle.sledgehammer.maxPar
 It stops at its first proof, and it also looks for a falsification, which tells the agent
 that the goal is false as stated.
 
+### While a tool runs
+
+The tools report what they're doing as MCP progress notifications. Clients that show
+them display a line with the running call:
+
+- `isabelle_check`: the percentage and the command the prover runs, for example
+  `checking Foo.thy, running line 57: by (simp add: loopy_def) (42%)`.
+- `isabelle_state`: whether the prover has reached the line yet.
+- `isabelle_try`, `isabelle_sledgehammer` and `isabelle_find_theorems`: what they try or
+  search, at which line, and the seconds taken so far.
+
+Claude Code in a terminal shows this line under the running call. The Claude Code panel
+in VS Code shows no progress for any tool, but labels a running call with its `path`
+argument, so agents are asked to pass the theory's path relative to the workspace. The
+panel shortens the label to 40 characters.
+
 ## Security
 
 The endpoint listens on `127.0.0.1` only, and every request has to carry the window's

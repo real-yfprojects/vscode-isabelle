@@ -12,6 +12,11 @@
  *
  * A tool call is cancelled when its connection closes before the answer (the relay aborts
  * it so), or when `notifications/cancelled` names it.
+ *
+ * A call whose client asked for progress (a progress token in `_meta`) and reads server-sent
+ * events gets its `notifications/progress` as it runs, on the same response, which turns
+ * into an event stream with the first of them; the answer is the last event. A call that
+ * reports nothing is answered with plain JSON.
  */
 import * as crypto from 'crypto'
 import * as fs from 'fs'
@@ -20,7 +25,7 @@ import * as os from 'os'
 import * as path from 'path'
 import { SERVER_INSTRUCTIONS, TOOL_DEFS } from './tool_defs'
 import type { CancellationToken } from 'vscode'
-import type { ToolHandler } from './tools'
+import type { Progress, ToolHandler } from './tools'
 
 export const LOCK_DIR = path.join(os.homedir(), '.isabelle-vscode', 'agents')
 
@@ -44,6 +49,36 @@ interface JsonRpcRequest {
 type JsonRpcResponse =
   | { jsonrpc: '2.0'; id: string | number | null; result: unknown }
   | { jsonrpc: '2.0'; id: string | number | null; error: { code: number; message: string } }
+
+interface JsonRpcNotification { jsonrpc: '2.0'; method: string; params: Record<string, unknown> }
+
+/** A message to the client while its request runs. */
+export type Notify = (message: JsonRpcNotification) => void
+
+/**
+ * What a tool reports, as `notifications/progress` to a client that asked for them with a
+ * progress token, and only when it changed. MCP wants the value to grow with each one: out
+ * of 100 when the tool knows how far it is, nudged up when only the text changed; a count
+ * when it does not know.
+ */
+export function progressReporter(meta: unknown, notify: Notify | undefined): Progress | undefined {
+  const progressToken = (meta as { progressToken?: unknown } | undefined)?.progressToken
+  if (!notify || (typeof progressToken !== 'string' && typeof progressToken !== 'number')) {
+    return undefined
+  }
+  let value = 0
+  let last: string | undefined
+  return (message, percentage) => {
+    const key = `${percentage ?? ''}|${message}`
+    if (key === last) return
+    last = key
+    value = percentage === undefined ? Math.floor(value) + 1
+      : Math.round(Math.max(percentage, value + 0.001) * 1000) / 1000
+    notify({ jsonrpc: '2.0', method: 'notifications/progress', params: {
+      progressToken, progress: value, ...(percentage === undefined ? {} : { total: 100 }), message,
+    } })
+  }
+}
 
 /** A CancellationToken without VS Code: the relay runs on plain Node and loads this module. */
 export class Cancellation {
@@ -80,6 +115,7 @@ export async function answer(
   handlers: Record<string, ToolHandler> | undefined,
   version: string,
   token?: CancellationToken,
+  notify?: Notify,
 ): Promise<JsonRpcResponse | undefined> {
   const id = message.id ?? null
   const ok = (result: unknown): JsonRpcResponse => ({ jsonrpc: '2.0', id, result })
@@ -109,7 +145,7 @@ export async function answer(
         return fail(-32602, `Unknown tool: ${String(name)}`)
       }
       if (!handler) return fail(-32603, `No handler for ${name}`)
-      const result = await handler(args, token)
+      const result = await handler(args, token, progressReporter(message.params?._meta, notify))
       return ok({ content: [{ type: 'text', text: result.text }], isError: !!result.isError })
     }
     default:
@@ -163,7 +199,26 @@ export class McpHttpServer {
   }
 
   private async handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    /* Whether the client reads an event stream. The relay of earlier versions said so in its
+       Accept header too, but read one JSON reply, and a Claude Code session keeps that relay
+       across a reload of the window: it is the one client that sends no User-Agent. */
+    const streams = String(req.headers.accept ?? '').includes('text/event-stream') &&
+      !!(req.headers['user-agent'] || req.headers['mcp-protocol-version'])
+    let streaming = false
+    const event: Notify = message => {
+      if (res.writableEnded || res.destroyed) return   // a late report of a cancelled call
+      if (!streaming) {
+        streaming = true
+        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
+      }
+      res.write(`event: message\ndata: ${JSON.stringify(message)}\n\n`)
+    }
     const send = (status: number, body?: unknown) => {
+      if (streaming) {
+        if (body !== undefined) event(body as JsonRpcNotification)
+        res.end()
+        return
+      }
       res.writeHead(status, body === undefined ? {} : { 'Content-Type': 'application/json' })
       res.end(body === undefined ? undefined : JSON.stringify(body))
     }
@@ -192,7 +247,7 @@ export class McpHttpServer {
         this.log(`agent tools: ${String(message.params?.name)} ` +
           JSON.stringify(message.params?.arguments ?? {}).slice(0, 200))
       }
-      const a = await this.answer(message, closed)
+      const a = await this.answer(message, closed, streams ? event : undefined)
       if (res.destroyed) return
       return a ? send(200, a) : send(202)
     } catch (err) {
@@ -200,7 +255,7 @@ export class McpHttpServer {
     }
   }
 
-  private async answer(message: JsonRpcRequest, closed: Cancellation)
+  private async answer(message: JsonRpcRequest, closed: Cancellation, notify?: Notify)
       : Promise<JsonRpcResponse | undefined> {
     if (message.method === 'notifications/cancelled') {
       const id = message.params?.requestId
@@ -214,7 +269,7 @@ export class McpHttpServer {
     const cancellation = new Cancellation()
     const off = closed.token.onCancellationRequested(() => cancellation.cancel())
     this.running.set(id, cancellation)
-    try { return await answer(message, this.handlers, this.version, cancellation.token) }
+    try { return await answer(message, this.handlers, this.version, cancellation.token, notify) }
     finally {
       off.dispose()
       if (this.running.get(id) === cancellation) this.running.delete(id)

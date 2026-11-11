@@ -20,8 +20,12 @@ export interface ToolResult {
   isError?: boolean
 }
 
-export type ToolHandler = (args: Record<string, unknown>, token?: vscode.CancellationToken)
-  => Promise<ToolResult>
+/** What a tool tells while it runs, which the client shows with the running call: a short
+    line, and how far it is in percent when it knows. */
+export type Progress = (message: string, percentage?: number) => void
+
+export type ToolHandler = (args: Record<string, unknown>, token?: vscode.CancellationToken,
+  progress?: Progress) => Promise<ToolResult>
 
 interface TheoryStatus { uri: string; status: 'pending' | 'checked' | 'failed'; percentage: number }
 
@@ -148,6 +152,12 @@ function truncate(text: string): string {
   return text.length <= MAX_TEXT ? text : text.slice(0, MAX_TEXT) + '\n[... truncated]'
 }
 
+/** The first line of a text, cut to `max` characters. */
+function shorten(text: string, max: number): string {
+  const line = text.split('\n')[0].trim()
+  return line.length <= max ? line : line.slice(0, max - 1) + '…'
+}
+
 function indent(text: string, by = '    '): string {
   return text.split('\n').map(l => by + l).join('\n')
 }
@@ -161,11 +171,26 @@ export class AgentTools {
   ) {}
 
   readonly handlers: Record<string, ToolHandler> = {
-    isabelle_check: (a, t) => this.run(() => this.check(a, t), t),
-    isabelle_state: (a, t) => this.run(() => this.state(a, t), t),
-    isabelle_try: (a, t) => this.run(() => this.tryCandidates(a, t), t),
-    isabelle_sledgehammer: (a, t) => this.run(() => this.sledgehammer(a, t), t),
-    isabelle_find_theorems: (a, t) => this.run(() => this.findTheorems(a, t), t),
+    isabelle_check: (a, t, p) => this.run(() => this.check(a, t, p), t),
+    isabelle_state: (a, t, p) => this.run(() => this.state(a, t, p), t),
+    isabelle_try: (a, t, p) => this.run(() => this.tryCandidates(a, t, p), t),
+    isabelle_sledgehammer: (a, t, p) => this.run(() => this.sledgehammer(a, t, p), t),
+    isabelle_find_theorems: (a, t, p) => this.run(() => this.findTheorems(a, t, p), t),
+  }
+
+  /** `work`, while `what` is reported with the seconds it has taken, every second: for a
+      single request to the server, which tells nothing until it answers. */
+  private async ticking<T>(progress: Progress | undefined, what: string, work: () => Promise<T>)
+      : Promise<T> {
+    if (!progress) return work()
+    const start = Date.now()
+    const tick = () => {
+      const s = Math.round((Date.now() - start) / 1000)
+      progress(s ? `${what} (${s} s)` : what)
+    }
+    tick()
+    const timer = setInterval(tick, 1000)
+    try { return await work() } finally { clearInterval(timer) }
   }
 
   /** Answers at once when the call is cancelled: a request to the server may not stop. */
@@ -183,7 +208,8 @@ export class AgentTools {
     finally { off?.dispose() }
   }
 
-  private async client(token?: vscode.CancellationToken): Promise<LanguageClient> {
+  private async client(token?: vscode.CancellationToken, progress?: Progress)
+      : Promise<LanguageClient> {
     if (!this.getClient()) {
       void this.startServer().catch(() => { /* reported in the window */ })
     }
@@ -191,6 +217,7 @@ export class AgentTools {
     let client = this.getClient()
     while ((!client || client.state !== State.Running) && Date.now() < deadline &&
         !token?.isCancellationRequested) {
+      progress?.('waiting for the Isabelle server to start')
       await sleep(500)
       client = this.getClient()
     }
@@ -210,10 +237,11 @@ export class AgentTools {
     return this.getTable()?.encode(text) ?? text
   }
 
-  /** The theory file: absolute, or relative to one of the workspace folders. */
+  /** The theory file: absolute, or relative to one of the workspace folders. `file` is what
+      the argument was called before, which a client may still have from its tool list. */
   private resolve(args: Record<string, unknown>): vscode.Uri {
-    const name = str(args, 'file')
-    if (!name) throw new ToolError('No file given.')
+    const name = str(args, 'path') ?? str(args, 'file')
+    if (!name) throw new ToolError('No path given.')
     const candidates = path.isAbsolute(name) ? [name]
       : (vscode.workspace.workspaceFolders ?? []).map(f => path.join(f.uri.fsPath, name))
     const found = candidates.find(p => fs.existsSync(p))
@@ -271,9 +299,9 @@ export class AgentTools {
 
   /* isabelle_check */
 
-  private async check(args: Record<string, unknown>, token?: vscode.CancellationToken)
-      : Promise<string> {
-    const client = await this.client(token)
+  private async check(args: Record<string, unknown>, token?: vscode.CancellationToken,
+      progress?: Progress): Promise<string> {
+    const client = await this.client(token, progress)
     const uri = this.resolve(args)
     /* `wait: false` asks how far the prover is, and answers at once: the agent goes on with
        something else and asks again, or has the client move the call to the background. */
@@ -285,8 +313,10 @@ export class AgentTools {
     let percentage = status.percentage
     let moved = Date.now()
     let probed = 0
+    const tell = this.checkProgress(client, uri, wait ? progress : undefined)
     while (status.status === 'pending' && Date.now() - start < timeout &&
         !token?.isCancellationRequested) {
+      await tell(status)
       await sleep(POLL_MS)
       status = await this.status(client, uri)
       if (status.percentage !== percentage) {
@@ -320,6 +350,25 @@ export class AgentTools {
     const r = await client.sendRequest(AgentReport, { uri: this.asUri(client, uri) })
     return !r.error && !r.outdated && (r.failed_commands ?? 0) > 0 &&
       r.running_commands === 0 && (r.waiting_commands ?? 0) > 0
+  }
+
+  /** Reports how far a check is, with the command the prover runs, looked up now and then:
+      the report that tells it carries the theory's messages too. */
+  private checkProgress(client: LanguageClient, uri: vscode.Uri, progress?: Progress)
+      : (status: TheoryStatus) => Promise<void> {
+    if (!progress) return async () => {}
+    const name = path.basename(uri.fsPath)
+    let looked = 0
+    let at = ''
+    return async status => {
+      if (Date.now() - looked >= 1500) {
+        looked = Date.now()
+        const r = await client.sendRequest(AgentReport, { uri: this.asUri(client, uri) })
+        const p = r.error || r.outdated ? undefined : r.running?.[0]
+        at = p ? `, running line ${p.line + 1}: ${shorten(p.source, 50)}` : ''
+      }
+      progress(`checking ${name}${at}`, status.percentage)
+    }
   }
 
   /** Where the prover is in a theory that is not done: what it runs, and what waits. */
@@ -418,9 +467,9 @@ export class AgentTools {
 
   /* isabelle_state */
 
-  private async state(args: Record<string, unknown>, token?: vscode.CancellationToken)
-      : Promise<string> {
-    const client = await this.client(token)
+  private async state(args: Record<string, unknown>, token?: vscode.CancellationToken,
+      progress?: Progress): Promise<string> {
+    const client = await this.client(token, progress)
     const uri = this.resolve(args)
     const position = this.position(uri, args)
     await this.load(client, uri, token)
@@ -432,6 +481,8 @@ export class AgentTools {
       if (reply.error) throw new ToolError(reply.error)
       const done = !reply.outdated && (reply.status === 'finished' || reply.status === 'failed')
       if (done || Date.now() > deadline || token?.isCancellationRequested) break
+      progress?.(`waiting for line ${(reply.line ?? position.line) + 1}: ` +
+        (reply.status === 'running' ? 'the prover runs it' : 'the prover has not reached it'))
       await sleep(POLL_MS)
     }
     const out = [`line ${(reply.line ?? 0) + 1}: ${reply.source ?? ''}  [${reply.status}]`]
@@ -471,22 +522,28 @@ export class AgentTools {
     return reply
   }
 
-  private async tryCandidates(args: Record<string, unknown>, token?: vscode.CancellationToken)
-      : Promise<string> {
-    const client = await this.client(token)
+  private async tryCandidates(args: Record<string, unknown>, token?: vscode.CancellationToken,
+      progress?: Progress): Promise<string> {
+    const client = await this.client(token, progress)
     const uri = this.resolve(args)
     const candidates = strings(args, 'candidates').map(c => this.encode(c)).filter(c => c.trim())
     if (!candidates.length) throw new ToolError('No candidates given.')
     if (candidates.length > 12) throw new ToolError('At most 12 candidates at once.')
-    const reply = await this.requestTry(client, uri, this.position(uri, args), {
+    const position = this.position(uri, args)
+    const timeout_ms = Math.round((num(args, 'timeout_s') ?? 10) * 1000)
+    const what = candidates.length === 1
+      ? `trying ${shorten(candidates[0], 40)} at line ${position.line + 1}`
+      : `trying ${candidates.length} candidates at line ${position.line + 1}, ` +
+        `${timeout_ms / 1000} s each`
+    const reply = await this.ticking(progress, what, () => this.requestTry(client, uri, position, {
       goal: goalStatement(this.encode(str(args, 'goal') ?? '')),
       candidates,
-      timeout_ms: Math.round((num(args, 'timeout_s') ?? 10) * 1000),
+      timeout_ms,
       stats: args.simp_stats === true,
       watch_rules: strings(args, 'watch_rules'),
       watch_patterns: strings(args, 'watch_patterns').map(p => this.encode(p)),
       watch_limit: num(args, 'watch_limit') ?? 20,
-    }, token)
+    }, token))
     return this.formatTry(reply,
       strings(args, 'watch_rules').length + strings(args, 'watch_patterns').length > 0)
   }
@@ -526,9 +583,9 @@ export class AgentTools {
 
   /* isabelle_sledgehammer */
 
-  private async sledgehammer(args: Record<string, unknown>, token?: vscode.CancellationToken)
-      : Promise<string> {
-    const client = await this.client(token)
+  private async sledgehammer(args: Record<string, unknown>, token?: vscode.CancellationToken,
+      progress?: Progress): Promise<string> {
+    const client = await this.client(token, progress)
     const uri = this.resolve(args)
     const position = this.position(uri, args)
     const goal = goalStatement(this.encode(str(args, 'goal') ?? ''))
@@ -541,10 +598,12 @@ export class AgentTools {
       void client.sendNotification('PIDE/sledgehammer_job_cancel', { id: job_id }))
     let reply: SledgehammerReply
     try {
-      reply = await client.sendRequest(AgentSledgehammer, {
-        textDocument: { uri: this.asUri(client, uri) }, position, goal, timeout_s, job_id,
-        deadline_ms: 240000 + timeout_s * 3000,
-      }, token)
+      reply = await this.ticking(progress,
+        `Sledgehammer at line ${position.line + 1}, timeout ${timeout_s} s`,
+        () => client.sendRequest(AgentSledgehammer, {
+          textDocument: { uri: this.asUri(client, uri) }, position, goal, timeout_s, job_id,
+          deadline_ms: 240000 + timeout_s * 3000,
+        }, token))
     } finally { off?.dispose() }
     if (reply.error) throw new ToolError(reply.error)
     const messages = reply.messages ?? []
@@ -558,8 +617,11 @@ export class AgentTools {
       }
       return ['Sledgehammer found no proof.', ...messages.map(m => indent(m))].join('\n')
     }
-    const replay = await this.requestTry(client, uri, position,
-      { goal, candidates: proofs.slice(0, 12), timeout_ms: 10000 }, token)
+    const replayed = proofs.slice(0, 12)
+    const replay = await this.ticking(progress,
+      `checking the ${replayed.length} proof${replayed.length === 1 ? '' : 's'} Sledgehammer found`,
+      () => this.requestTry(client, uri, position,
+        { goal, candidates: replayed, timeout_ms: 10000 }, token))
     const good = (replay.candidates ?? []).filter(c => c.outcome === 'proved')
     const out = good.length
       ? ['Proofs that Sledgehammer found and that check:', ...good.map(c => `  ${c.text}  (${c.time_ms} ms)`)]
@@ -573,17 +635,19 @@ export class AgentTools {
 
   /* isabelle_find_theorems */
 
-  private async findTheorems(args: Record<string, unknown>, token?: vscode.CancellationToken)
-      : Promise<string> {
-    const client = await this.client(token)
+  private async findTheorems(args: Record<string, unknown>, token?: vscode.CancellationToken,
+      progress?: Progress): Promise<string> {
+    const client = await this.client(token, progress)
     const uri = this.resolve(args)
     const query = str(args, 'query')
     if (!query) throw new ToolError('No query given.')
     const limit = Math.max(1, Math.round(num(args, 'limit') ?? 40))
     const position = this.position(uri, args, 'end')
-    const reply = await this.requestTry(client, uri, position,
-      { goal: '', candidates: [`find_theorems (${limit}) ${this.encode(query)}`], timeout_ms: 30000 },
-      token)
+    const reply = await this.ticking(progress,
+      `searching the facts at line ${position.line + 1} of ${path.basename(uri.fsPath)}`,
+      () => this.requestTry(client, uri, position,
+        { goal: '', candidates: [`find_theorems (${limit}) ${this.encode(query)}`], timeout_ms: 30000 },
+        token))
     const c = reply.candidates?.[0]
     if (!c) throw new ToolError('No answer.')
     if (c.outcome === 'error' || c.outcome === 'timeout') {
