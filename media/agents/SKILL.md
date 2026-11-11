@@ -24,7 +24,9 @@ you copy from their output can go into the file as it is.
 1. After editing a `.thy` file, run `isabelle_check` on it. Read every error; the goal
    each failing command worked on comes with it. A check that is still running at its
    timeout names the commands the prover runs: the same one on the next call is slow or
-   stuck, so test its goal with `isabelle_try` and a timeout, or edit it. When there is
+   stuck, so test its goal with `isabelle_try` and a timeout, or edit it. A check that
+   reports `no progress` found commands that ran 30 s with nothing else moving: usually a
+   `metis`, `auto` or `smt` that never ends, which runs until you edit it. When there is
    other work to do, `isabelle_check` with `wait: false` answers at once with the
    progress; ask again later. The other tools work on the commands already checked.
 2. At an error, `isabelle_state` shows the goals at that line and the goals of the
