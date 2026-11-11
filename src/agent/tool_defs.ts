@@ -11,9 +11,12 @@ export interface ToolDef {
   inputSchema: object
 }
 
-const file = {
+/* `path`, not `file`: Claude Code's panel labels a running MCP call with its `path` (among
+   a few names like it), and with nothing for a `file`. The handlers still read `file`. */
+const thyPath = {
   type: 'string',
-  description: 'The theory file (.thy): an absolute path, or one relative to a workspace folder.',
+  description: 'The theory file (.thy), relative to a workspace folder or absolute. Prefer ' +
+    'the relative path: the user\'s client shows it while the call runs.',
 }
 const line = {
   type: 'integer', minimum: 1,
@@ -50,7 +53,7 @@ export const TOOL_DEFS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        file,
+        path: thyPath,
         timeout_s: { type: 'integer', minimum: 1, description: 'How long to wait. Default 300.' },
         wait: {
           type: 'boolean',
@@ -59,7 +62,7 @@ export const TOOL_DEFS: ToolDef[] = [
             'the result if the theory is checked already. Ignores timeout_s.',
         },
       },
-      required: ['file'],
+      required: ['path'],
     },
   },
   {
@@ -70,8 +73,8 @@ export const TOOL_DEFS: ToolDef[] = [
       'messages, as the infoview shows them.',
     inputSchema: {
       type: 'object',
-      properties: { file, line, column },
-      required: ['file', 'line'],
+      properties: { path: thyPath, line, column },
+      required: ['path', 'line'],
     },
   },
   {
@@ -90,7 +93,7 @@ export const TOOL_DEFS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        file, line, column, goal,
+        path: thyPath, line, column, goal,
         candidates: {
           type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 12,
           description: 'Isar texts to try, each on its own.',
@@ -116,7 +119,7 @@ export const TOOL_DEFS: ToolDef[] = [
         },
         watch_limit: { type: 'integer', minimum: 1, description: 'Steps recorded. Default 20.' },
       },
-      required: ['file', 'line', 'candidates'],
+      required: ['path', 'line', 'candidates'],
     },
   },
   {
@@ -130,10 +133,10 @@ export const TOOL_DEFS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        file, line, column, goal,
+        path: thyPath, line, column, goal,
         timeout_s: { type: 'integer', minimum: 1, description: 'Default 30.' },
       },
-      required: ['file', 'line'],
+      required: ['path', 'line'],
     },
   },
   {
@@ -146,11 +149,11 @@ export const TOOL_DEFS: ToolDef[] = [
       type: 'object',
       properties: {
         query: { type: 'string', description: 'The find_theorems criteria.' },
-        file,
+        path: thyPath,
         line: { ...line, description: '1-based line whose context to search. Default: the end of the theory.' },
         limit: { type: 'integer', minimum: 1, description: 'Default 40.' },
       },
-      required: ['query', 'file'],
+      required: ['query', 'path'],
     },
   },
 ]

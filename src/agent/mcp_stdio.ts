@@ -11,6 +11,9 @@
  *
  * ISABELLE_VSCODE_WORKSPACE picks the window by a folder other than the current directory.
  *
+ * The progress a tool call reports comes as server-sent events and goes on to the agent as
+ * it comes, before the answer: Claude Code shows it with the running call.
+ *
  * `notifications/cancelled` is not passed on: the relay aborts the request it names, which
  * the window takes as the cancellation. Request ids are only unique per client, and the
  * window serves several.
@@ -86,7 +89,27 @@ const pending = new Set<Id>()
 const cancelled = new Set<Id>()
 const aborts = new Map<Id, () => void>()
 
-function post(lock: Lock, body: string, id?: Id): Promise<string> {
+/** The data of each complete server-sent event in `buffer`, and what is left of it. */
+export function sseEvents(buffer: string): { events: string[]; rest: string } {
+  const events: string[] = []
+  let rest = buffer.replace(/\r\n?/g, '\n')
+  let i
+  while ((i = rest.indexOf('\n\n')) >= 0) {
+    const data = rest.slice(0, i).split('\n').filter(l => l.startsWith('data:'))
+      .map(l => l.slice(5).replace(/^ /, '')).join('\n')
+    rest = rest.slice(i + 2)
+    if (data.trim()) events.push(data)
+  }
+  return { events, rest }
+}
+
+/**
+ * Sends a message to the window and passes each message of the answer on: one JSON reply,
+ * or an event stream, whose progress notifications are passed on as they come.
+ */
+function post(lock: Lock, body: string, id: Id | undefined, onMessage: (json: string) => void)
+    : Promise<void> {
+  const gone = (err: Error) => id !== undefined && cancelled.has(id) ? new Cancelled() : err
   return new Promise((resolve, reject) => {
     const req = http.request(lock.url, {
       method: 'POST',
@@ -94,17 +117,31 @@ function post(lock: Lock, body: string, id?: Id): Promise<string> {
         'Content-Type': 'application/json',
         'Accept': 'application/json, text/event-stream',
         'Authorization': `Bearer ${lock.token}`,
+        /* The window streams progress only to a relay that says who it is: one of an
+           earlier version said nothing, and could not read a stream. */
+        'User-Agent': 'isabelle-vscode-relay',
       },
     }, res => {
+      const stream = String(res.headers['content-type'] ?? '').startsWith('text/event-stream')
       let data = ''
       res.setEncoding('utf8')
-      res.on('data', c => { data += c })
-      res.on('end', () => {
-        if (res.statusCode === 401) reject(new Error('unauthorized'))
-        else resolve(data)
+      res.on('data', c => {
+        data += c
+        if (!stream) return
+        const { events, rest } = sseEvents(data)
+        data = rest
+        if (!(id !== undefined && cancelled.has(id))) events.forEach(onMessage)
       })
+      res.on('end', () => {
+        if (res.statusCode === 401) return reject(new Error('unauthorized'))
+        if (stream) sseEvents(data + '\n\n').events.forEach(onMessage)
+        else if (data.trim()) onMessage(data.trim())
+        resolve()
+      })
+      /* A stream cut off before its end: aborted by the agent, or the window went away. */
+      res.on('close', () => { if (!res.complete) reject(gone(new Error('connection closed'))) })
     })
-    req.on('error', err => reject(id !== undefined && cancelled.has(id) ? new Cancelled() : err))
+    req.on('error', err => reject(gone(err)))
     if (id !== undefined) aborts.set(id, () => req.destroy())
     req.end(body)
   })
@@ -124,8 +161,7 @@ async function relay(line: string, dir: string, write: (s: string) => void): Pro
       const lock = findLock(dir)
       if (!lock) break
       try {
-        const reply = await post(lock, line, id)
-        if (reply.trim()) write(reply.trim())
+        await post(lock, line, id, write)
         return
       } catch (err) {
         if (err instanceof Cancelled) return   // the agent wants no answer

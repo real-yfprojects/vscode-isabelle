@@ -77,6 +77,7 @@ function stdioServer(command, args, cwd, env) {
     .filter(([k]) => !k.startsWith('ELECTRON_') && !k.startsWith('VSCODE_')))
   const child = spawn(command, args, { cwd, env: { ...clean, ...env }, stdio: ['pipe', 'pipe', 'pipe'] })
   const waiting = new Map()
+  const notes = []
   let buffer = ''
   let stderr = ''
   child.stderr.on('data', c => { stderr += c })
@@ -89,6 +90,7 @@ function stdioServer(command, args, cwd, env) {
       buffer = buffer.slice(i + 1)
       if (!line.trim()) continue
       const msg = JSON.parse(line)
+      if (msg.id === undefined) { notes.push(msg); continue }
       waiting.get(msg.id)?.(msg)
       waiting.delete(msg.id)
     }
@@ -100,7 +102,8 @@ function stdioServer(command, args, cwd, env) {
     waiting.set(id, msg => { clearTimeout(timer); resolve(msg) })
     child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
   })
-  return { call, close: () => child.stdin.end() }
+  /** The notifications it sent, progress among them. */
+  return { call, notes, close: () => child.stdin.end() }
 }
 
 async function run() {
@@ -140,6 +143,7 @@ async function run() {
   }
 
   // --- check: by relative path, never opened ---
+  // `file`, as the argument was called before: a client may still have the old tool list
   const checked = await call('isabelle_check', { file: 'Agent_Tools.thy', timeout_s: 240 })
   assert.ok(!checked.isError, 'check should answer')
   assert.match(checked.text, /checked, with errors/)
@@ -162,18 +166,18 @@ async function run() {
     const result = await call('isabelle_check', args)
     return { result, seconds: (Date.now() - started) / 1000 }
   }
-  const first = await timed({ file: 'Agent_Draft.thy', timeout_s: 120 })
+  const first = await timed({ path: 'Agent_Draft.thy', timeout_s: 120 })
   assert.match(first.result.text, /Agent_Draft\.thy: checked in/)
   assert.match(first.result.text, /has no end/)
   assert.ok(first.seconds >= 6, 'the first check waits for the theory')
-  const again = await timed({ file: 'Agent_Draft.thy', timeout_s: 120 })
+  const again = await timed({ path: 'Agent_Draft.thy', timeout_s: 120 })
   assert.match(again.result.text, /checked in/)
   assert.ok(again.seconds < 2, `a checked theory is not checked again (${again.seconds} s)`)
   pass('a theory without end is checked once its commands are, and says it has no end')
 
   const opened = await vscode.window.showTextDocument(vscode.Uri.file(draft))
   await wait(1000)
-  const inEditor = await timed({ file: draft, timeout_s: 120 })
+  const inEditor = await timed({ path: draft, timeout_s: 120 })
   assert.match(inEditor.result.text, /checked in/)
   assert.ok(inEditor.seconds < 2, `opening a checked theory does not check it again (${inEditor.seconds} s)`)
   assert.strictEqual(vscode.window.activeTextEditor?.document, opened.document)
@@ -183,17 +187,17 @@ async function run() {
   // --- check: a command that takes long is named, and a check need not wait for it ---
   const slow = path.join(ws, 'Agent_Slow.thy')
   fs.writeFileSync(slow, slowTheory('Agent_Slow', 30), 'utf8')
-  const started = await timed({ file: 'Agent_Slow.thy', wait: false })
+  const started = await timed({ path: 'Agent_Slow.thy', wait: false })
   assert.ok(!started.result.isError, 'asking for a theory nobody loaded is no error')
   assert.match(started.result.text, /being checked \(\d+% done\)/)
   assert.ok(started.seconds < 5, `wait false answers at once (${started.seconds} s)`)
-  const early = await timed({ file: 'Agent_Slow.thy', timeout_s: 8 })
+  const early = await timed({ path: 'Agent_Slow.thy', timeout_s: 8 })
   assert.match(early.result.text, /still being checked \(\d+%\) when the timeout passed/)
   assert.match(early.result.text, /Running now:\n\s+line 5: ML \\<open>/, 'the slow command is named')
   assert.match(early.result.text, /Waiting for the prover: \d+ commands? \(.*\), the first at line 7: lemma/)
   assert.match(early.result.text, /same command is still running/)
   assert.ok(early.seconds >= 7 && early.seconds < 20, `it waits for the timeout (${early.seconds} s)`)
-  const peek = await timed({ file: 'Agent_Slow.thy', wait: false })
+  const peek = await timed({ path: 'Agent_Slow.thy', wait: false })
   assert.match(peek.result.text.split('\n')[0], /^Agent_Slow\.thy: being checked \(\d+% done\): 0 errors/)
   assert.match(peek.result.text, /Running now:\n\s+line 5: ML \\<open>/)
   assert.ok(!/same command is still running/.test(peek.result.text), 'no verdict on a command that just runs')
@@ -205,12 +209,12 @@ async function run() {
   shorten.replace(slowDoc.uri, slowDoc.lineAt(4).range,
     'ML \\<open>OS.Process.sleep (Time.fromSeconds 1)\\<close>')
   assert.ok(await vscode.workspace.applyEdit(shorten))
-  const slowDone = await timed({ file: 'Agent_Slow.thy', timeout_s: 120 })
+  const slowDone = await timed({ path: 'Agent_Slow.thy', timeout_s: 120 })
   assert.match(slowDone.result.text, /Agent_Slow\.thy: checked in/)
   assert.ok(!/Running now/.test(slowDone.result.text))
   assert.ok(slowDone.seconds < 12, `the edit ended the run (${slowDone.seconds} s)`)
   await slowDoc.save()
-  const after = await timed({ file: 'Agent_Slow.thy', wait: false })
+  const after = await timed({ path: 'Agent_Slow.thy', wait: false })
   assert.match(after.result.text, /Agent_Slow\.thy: checked in/, 'a checked theory is the result, whatever wait says')
   pass('a check at its timeout names the command that runs; wait false answers with the progress at once')
 
@@ -218,7 +222,7 @@ async function run() {
      check says so, instead of waiting out its timeout and calling the theory unfinished. */
   const badName = path.join(ws, 'Agent_BadName.thy')
   fs.writeFileSync(badName, ['theory Other', '  imports Main', 'begin', 'lemma "True" by simp', 'end', ''].join('\n'), 'utf8')
-  const named = await timed({ file: 'Agent_BadName.thy', timeout_s: 120 })
+  const named = await timed({ path: 'Agent_BadName.thy', timeout_s: 120 })
   assert.match(named.result.text, /Agent_BadName\.thy: not checked in/)
   assert.match(named.result.text, /did not run the theory: \d+ commands? never started/)
   assert.match(named.result.text, /Bad theory name "Other"/)
@@ -226,28 +230,28 @@ async function run() {
   const badImport = path.join(ws, 'Agent_BadImport.thy')
   fs.writeFileSync(badImport, ['theory Agent_BadImport', '  imports Main Nonexistent_Theory', 'begin',
     'lemma "True" by simp', 'end', ''].join('\n'), 'utf8')
-  const imported = await timed({ file: 'Agent_BadImport.thy', timeout_s: 120 })
+  const imported = await timed({ path: 'Agent_BadImport.thy', timeout_s: 120 })
   assert.match(imported.result.text, /Agent_BadImport\.thy: not checked in/)
   assert.match(imported.result.text, /did not run the theory/)
   assert.match(imported.result.text, /Bad theory import "[\w.]*Nonexistent_Theory"/)
   assert.ok(imported.seconds < 45, `it does not wait for its timeout (${imported.seconds} s)`)
-  const glimpse = await timed({ file: 'Agent_BadImport.thy', wait: false })
+  const glimpse = await timed({ path: 'Agent_BadImport.thy', wait: false })
   assert.match(glimpse.result.text, /being checked \(\d+% done\)/)
   assert.match(glimpse.result.text, /A command has failed and none runs/, 'the hint for the next call')
   pass('a theory whose start fails is reported as not checked, without waiting out the timeout')
 
   // --- state ---
-  const state = await call('isabelle_state', { file, line: at('   apply simp') })
+  const state = await call('isabelle_state', { path: file, line: at('   apply simp') })
   assert.match(state.text, /apply simp/)
   assert.match(state.text, /goal \(1 subgoal\)/)
   assert.match(state.text, /length \(\(a # xs\) @ ys\)|length \(xs @ ys\)/)
-  const inner = await call('isabelle_state', { file, line: at('  show ?thesis') })
+  const inner = await call('isabelle_state', { path: file, line: at('  show ?thesis') })
   assert.match(inner.text, /enclosing goal/, 'the goal of the lemma around the show')
   pass('isabelle_state gives the goals at a line and the enclosing ones')
 
   // --- try: the file's goal ---
   const before = fs.readFileSync(file, 'utf8')
-  const tried = await call('isabelle_try', { file, line: at('  by blast'),
+  const tried = await call('isabelle_try', { path: file, line: at('  by blast'),
     candidates: ['by simp', 'by blast', 'apply (induct xs)', 'thm rev_rev_ident', 'sorry'] })
   assert.match(tried.text, /PROVED \(\d+ ms\): by simp/)
   assert.match(tried.text, /ERROR \(\d+ ms\): by blast/)
@@ -255,19 +259,19 @@ async function run() {
   assert.match(tried.text, /OUTPUT \(\d+ ms\): thm rev_rev_ident\n\s+rev \(rev \?xs\) = \?xs/)
   assert.match(tried.text, /ERROR \(\d+ ms\): sorry\n\s+skips the proof/)
   assert.strictEqual(fs.readFileSync(file, 'utf8'), before, 'the file is not touched')
-  const onLemma = await call('isabelle_try', { file, line: at('lemma rr'), candidates: ['by simp'] })
+  const onLemma = await call('isabelle_try', { path: file, line: at('lemma rr'), candidates: ['by simp'] })
   assert.match(onLemma.text, /PROVED/, 'the line of a lemma means its goal')
   pass('isabelle_try tries candidates on the goal at a line, without editing the file')
 
   // --- try: a simp loop, and a watched rule ---
-  const loop = await call('isabelle_try', { file, line: at('lemma rr'), goal: 'loopy 3 = 3',
+  const loop = await call('isabelle_try', { path: file, line: at('lemma rr'), goal: 'loopy 3 = 3',
     candidates: ['by (simp add: loopy_loop)'], timeout_s: 3 })
   assert.match(loop.text, /TIMEOUT/)
   assert.match(loop.text, /loopy_loop x\d+/)
   assert.match(loop.text, /cycle: loopy_loop/)
   pass('a simp loop comes back as a timeout with its rule and cycle')
 
-  const watched = await call('isabelle_try', { file, line: at('lemma rr'), goal: 'f m = 0',
+  const watched = await call('isabelle_try', { path: file, line: at('lemma rr'), goal: 'f m = 0',
     candidates: ['by (simp add: f_cond)'], watch_rules: ['f_cond'] })
   assert.match(watched.text, /f_cond \[condition failed\]/)
   assert.match(watched.text, /5 < m \\<Longrightarrow> f m \\<equiv> 0/)
@@ -275,27 +279,27 @@ async function run() {
   pass('a watched conditional rule shows its instance, its premise and that the condition failed')
 
   // --- try: goals of one's own ---
-  const own = await call('isabelle_try', { file, line: at('  show ?thesis'), goal: 'x > 1',
+  const own = await call('isabelle_try', { path: file, line: at('  show ?thesis'), goal: 'x > 1',
     candidates: ['using assms by simp', 'by simp'] })
   assert.match(own.text, /goal tried:[\s\S]*(x > 1|1 < x)/)
   assert.match(own.text, /PROVED \(\d+ ms\): using assms by simp/, 'the proof\'s fixes and assumptions are there')
   assert.match(own.text, /ERROR \(\d+ ms\): by simp/)
-  const helper = await call('isabelle_try', { file, line: at('lemma app'),
+  const helper = await call('isabelle_try', { path: file, line: at('lemma app'),
     goal: 'rev (xs @ ys) = rev ys @ rev xs', candidates: ['by simp'] })
   assert.match(helper.text, /PROVED/)
-  const badGoal = await call('isabelle_try', { file, line: at('lemma app'),
+  const badGoal = await call('isabelle_try', { path: file, line: at('lemma app'),
     goal: 'True \\<and>', candidates: ['by simp'] })
   assert.ok(badGoal.isError && /could not be stated/.test(badGoal.text))
   pass('isabelle_try states goals of one\'s own, in a proof and at the theory level')
 
   // --- find_theorems ---
-  const found = await call('isabelle_find_theorems', { file, query: '"rev (rev _)"' })
+  const found = await call('isabelle_find_theorems', { path: file, query: '"rev (rev _)"' })
   // The theory's own rr states the library's rev_rev_ident again, which find_theorems drops
   assert.match(found.text, /found \d+ theorem\(s\)[\s\S]*rev \(rev \?xs\) = \?xs/)
   pass('isabelle_find_theorems searches the facts at the end of the theory')
 
   // --- sledgehammer ---
-  const hammered = await call('isabelle_sledgehammer', { file, line: at('  by blast'), timeout_s: 20 })
+  const hammered = await call('isabelle_sledgehammer', { path: file, line: at('  by blast'), timeout_s: 20 })
   if (/that check:/.test(hammered.text)) {
     assert.match(hammered.text, /by /)
     pass('isabelle_sledgehammer finds proofs and checks them')
@@ -314,7 +318,7 @@ async function run() {
     we.replace(doc.uri, new vscode.Range(appLine, col, appLine, col + from.length), to)
     assert.ok(await vscode.workspace.applyEdit(we))
   }
-  const editedRun = call('isabelle_sledgehammer', { file, line: at('lemma app'), timeout_s: 20 })
+  const editedRun = call('isabelle_sledgehammer', { path: file, line: at('lemma app'), timeout_s: 20 })
   await wait(1500)
   await restate('length ys + length xs"', 'length ys + length (xs)"')
   const edited = await editedRun
@@ -329,13 +333,13 @@ async function run() {
   const hard = '(x::nat) ^ 3 + y ^ 3 \\<noteq> z ^ 3 \\<or> x * y * z = 0'
   const cancelledAt = Date.now()
   const cancelled = await vscode.commands.executeCommand('isabelle.agentCall', 'isabelle_sledgehammer',
-    { file, line: at('lemma app'), goal: hard, timeout_s: 40 }, 4000)
+    { path: file, line: at('lemma app'), goal: hard, timeout_s: 40 }, 4000)
   assert.ok(cancelled.isError && /Cancelled/.test(cancelled.text), 'the call should be cancelled')
   assert.ok(Date.now() - cancelledAt < 10000, 'at once')
   const twoAt = Date.now()
   const [one, two] = await Promise.all([
-    call('isabelle_sledgehammer', { file, line: at('lemma rr'), timeout_s: 15 }),
-    call('isabelle_sledgehammer', { file, line: at('lemma app'), timeout_s: 15 }),
+    call('isabelle_sledgehammer', { path: file, line: at('lemma rr'), timeout_s: 15 }),
+    call('isabelle_sledgehammer', { path: file, line: at('lemma app'), timeout_s: 15 }),
   ])
   const both = (Date.now() - twoAt) / 1000
   assert.ok(!one.isError && !two.isError, 'both calls should answer')
@@ -355,7 +359,7 @@ async function run() {
     })
     req.on('error', reject)
     req.end(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call',
-      params: { name: 'isabelle_state', arguments: { file, line: at('  done') } } }))
+      params: { name: 'isabelle_state', arguments: { path: file, line: at('  done') } } }))
   })
   assert.match(reply.result.content[0].text, /done/)
   pass('the MCP endpoint answers a tool call')
@@ -384,7 +388,7 @@ async function run() {
   const tools = await relay.call('tools/list', {})
   assert.strictEqual(tools.result.tools.length, 5)
   const viaRelay = await relay.call('tools/call',
-    { name: 'isabelle_check', arguments: { file: 'Agent_Tools.thy' } })
+    { name: 'isabelle_check', arguments: { path: 'Agent_Tools.thy' } })
   console.log('--- via the relay:\n' + viaRelay.result.content[0].text)
   assert.ok(!viaRelay.result.isError, 'the relay answered with an error: ' + viaRelay.result.content[0].text)
   assert.match(viaRelay.result.content[0].text, /1 error\b/)
@@ -394,17 +398,27 @@ async function run() {
      under way is answered at once, not after it. */
   const slow2 = path.join(ws, 'Agent_Slow2.thy')
   fs.writeFileSync(slow2, slowTheory('Agent_Slow2', 20), 'utf8')
-  const longCheck = relay.call('tools/call',
-    { name: 'isabelle_check', arguments: { file: 'Agent_Slow2.thy', timeout_s: 120 } })
+  const longCheck = relay.call('tools/call', { name: 'isabelle_check',
+    arguments: { path: 'Agent_Slow2.thy', timeout_s: 120 }, _meta: { progressToken: 'slow2' } })
   await wait(2000)
   const meanwhileAt = Date.now()
   const meanwhile = await relay.call('tools/call',
-    { name: 'isabelle_state', arguments: { file, line: at('  done') } })
+    { name: 'isabelle_state', arguments: { path: file, line: at('  done') } })
   const meanwhileSeconds = (Date.now() - meanwhileAt) / 1000
   assert.match(meanwhile.result.content[0].text, /done/)
   assert.ok(meanwhileSeconds < 10, `answered while the check runs (${meanwhileSeconds.toFixed(1)} s)`)
   const longDone = await longCheck
   assert.match(longDone.result.content[0].text, /Agent_Slow2\.thy: checked in/)
+  /* What Claude Code shows with the running call: how far the check is, and what runs. */
+  const reported = relay.notes.filter(n => n.method === 'notifications/progress' &&
+    n.params.progressToken === 'slow2')
+  console.log('--- progress:\n' + reported.map(n => `${n.params.progress}/${n.params.total}: ${n.params.message}`)
+    .join('\n'))
+  assert.ok(reported.length >= 2, 'the check reports as it goes')
+  assert.ok(reported.every(n => /^checking Agent_Slow2\.thy/.test(n.params.message) && n.params.total === 100))
+  assert.ok(reported.some(n => /running line 5: ML/.test(n.params.message)),
+    'the command the prover runs is named')
+  pass(`a check through the relay reports its progress as it goes (${reported.length} reports)`)
   relay.close()
   pass(`through the relay, a call is answered while a check runs (${meanwhileSeconds.toFixed(1)} s)`)
   fs.rmSync(mcpFile, { force: true })

@@ -14,7 +14,7 @@ const path = require('path')
 
 const out = path.join(__dirname, '..', 'out', 'agent')
 const { answer, McpHttpServer, PROTOCOL_VERSIONS } = require(path.join(out, 'mcp_http.js'))
-const { findLock } = require(path.join(out, 'mcp_stdio.js'))
+const { findLock, sseEvents } = require(path.join(out, 'mcp_stdio.js'))
 const { TOOL_DEFS, NO_WINDOW } = require(path.join(out, 'tool_defs.js'))
 const { goalStatement, unicodeLines, proofsOf } = require(path.join(out, 'text.js'))
 
@@ -34,10 +34,31 @@ function post(url, body, headers = {}) {
   })
 }
 
-/** A relay child, and a function that sends a message and waits for the answer to it. */
+/** A POST whose answer may be an event stream: its content type and the messages in it. */
+function postStream(url, body, headers) {
+  return new Promise((resolve, reject) => {
+    const req = http.request(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers } },
+      res => {
+        let data = ''
+        res.on('data', c => { data += c })
+        res.on('end', () => {
+          const type = String(res.headers['content-type'])
+          resolve({ type, messages: type.startsWith('text/event-stream')
+            ? sseEvents(data).events.map(e => JSON.parse(e)) : [JSON.parse(data)] })
+        })
+      })
+    req.on('error', reject)
+    req.end(JSON.stringify(body))
+  })
+}
+
+/** A relay child, and a function that sends a message and waits for the answer to it; the
+    notifications it passes on are kept in `notes`. */
 function relay(env) {
   const child = spawn(process.execPath, [path.join(out, 'mcp_stdio.js')],
     { env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'inherit'] })
+  const exited = new Promise(resolve => child.on('exit', resolve))
+  const notes = []
   const waiting = new Map()
   let buffer = ''
   child.stdout.setEncoding('utf8')
@@ -49,6 +70,7 @@ function relay(env) {
       buffer = buffer.slice(i + 1)
       if (!line.trim()) continue
       const msg = JSON.parse(line)
+      if (msg.id === undefined) { notes.push(msg); continue }
       waiting.get(msg.id)?.(msg)
       waiting.delete(msg.id)
     }
@@ -67,7 +89,7 @@ function relay(env) {
   const call = (method, params) => send(method, params).answer
   const notify = (method, params) =>
     child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n')
-  return { send, call, notify, close: () => child.stdin.end() }
+  return { send, call, notify, notes, exited, close: () => child.stdin.end() }
 }
 
 /** A POST that can be aborted before its answer. */
@@ -113,6 +135,11 @@ async function run() {
   }
   pass('tools/list lists the five tools, each with a schema covering its required arguments')
 
+  for (const t of list.result.tools) {
+    assert.ok(t.inputSchema.required.includes('path') && !t.inputSchema.properties.file, t.name)
+  }
+  pass('the theory is a `path`, which Claude Code\'s panel shows with a running call')
+
   const check = list.result.tools.find(t => t.name === 'isabelle_check')
   assert.strictEqual(check.inputSchema.properties.wait.type, 'boolean')
   assert.ok(!check.inputSchema.required.includes('wait'), 'waiting is the default')
@@ -135,15 +162,25 @@ async function run() {
   fs.mkdirSync(path.join(project, 'sub'), { recursive: true })
   const calls = []
   const stopped = []
-  const handlers = Object.fromEntries(TOOL_DEFS.map(t => [t.name, async (args, token) => {
+  const handlers = Object.fromEntries(TOOL_DEFS.map(t => [t.name, async (args, token, progress) => {
     calls.push([t.name, args])
+    if (args.report) {
+      // A check that gets on: a repeat is not sent again, a new text at the same percentage is
+      progress?.('one', 10)
+      progress?.('one', 10)
+      progress?.('two', 10)
+      await new Promise(r => setTimeout(r, 50))
+      progress?.('three', 50)
+      return { text: 'reported' }
+    }
     if (args.wait) {
+      progress?.(`waiting ${args.wait}`)
       // Like a check that waits for the prover: only cancellation ends it
       await new Promise(resolve => token.onCancellationRequested(resolve))
       stopped.push(args.wait)
       return { text: 'Cancelled.', isError: true }
     }
-    return args.fail ? { text: 'it failed', isError: true } : { text: `${t.name} on ${args.file}` }
+    return args.fail ? { text: 'it failed', isError: true } : { text: `${t.name} on ${args.path}` }
   }]))
   const server = new McpHttpServer(handlers, '9.9', () => {}, lockDir)
   await server.start([project])
@@ -157,7 +194,7 @@ async function run() {
   pass('the endpoint refuses requests without the token, and any from a web page')
 
   const called = await post(server.url, { jsonrpc: '2.0', id: 7, method: 'tools/call',
-    params: { name: 'isabelle_check', arguments: { file: 'A.thy' } } }, auth)
+    params: { name: 'isabelle_check', arguments: { path: 'A.thy' } } }, auth)
   assert.strictEqual(called.status, 200)
   assert.deepStrictEqual(called.body.result.content, [{ type: 'text', text: 'isabelle_check on A.thy' }])
   assert.strictEqual(called.body.result.isError, false)
@@ -191,6 +228,41 @@ async function run() {
   assert.ok(stopped.includes('named'))
   pass('a tool call is cancelled by closing its connection, or by notifications/cancelled')
 
+  // --- progress ---
+  const reporting = (id, meta) => ({ jsonrpc: '2.0', id, method: 'tools/call',
+    params: { name: 'isabelle_check', arguments: { report: true }, ...(meta ? { _meta: meta } : {}) } })
+  const sse = { ...auth, Accept: 'application/json, text/event-stream', 'User-Agent': 'suite63' }
+  const streamed = await postStream(server.url, reporting(20, { progressToken: 'tok' }), sse)
+  assert.match(streamed.type, /^text\/event-stream/)
+  const progress = streamed.messages.slice(0, -1)
+  assert.deepStrictEqual(progress.map(m => [m.method, m.params.progressToken, m.params.message, m.params.total]),
+    [['notifications/progress', 'tok', 'one', 100], ['notifications/progress', 'tok', 'two', 100],
+      ['notifications/progress', 'tok', 'three', 100]], 'each report once, in order')
+  const values = progress.map(m => m.params.progress)
+  assert.ok(values.every((v, i) => i === 0 || v > values[i - 1]), `the value grows: ${values}`)
+  assert.strictEqual(values[0], 10)
+  assert.strictEqual(values[2], 50)
+  const last = streamed.messages[streamed.messages.length - 1]
+  assert.strictEqual(last.id, 20)
+  assert.strictEqual(last.result.content[0].text, 'reported', 'the answer is the last event')
+  pass('a call with a progress token streams its progress, then its answer, as server-sent events')
+
+  const noToken = await postStream(server.url, reporting(21), sse)
+  assert.match(noToken.type, /^application\/json/)
+  assert.strictEqual(noToken.messages[0].result.content[0].text, 'reported')
+  const { 'User-Agent': _ua, ...oldRelay } = sse
+  const old = await postStream(server.url, reporting(22, { progressToken: 'tok' }), oldRelay)
+  assert.match(old.type, /^application\/json/, 'the relay of earlier versions sends no User-Agent')
+  assert.strictEqual(old.messages[0].result.content[0].text, 'reported')
+  const jsonOnly = await postStream(server.url, reporting(23, { progressToken: 'tok' }),
+    { ...auth, 'User-Agent': 'suite63' })
+  assert.match(jsonOnly.type, /^application\/json/)
+  pass('without a progress token, or to a client that reads no stream, the answer is plain JSON')
+
+  assert.deepStrictEqual(sseEvents('event: message\r\ndata: {"a":1}\r\n\r\ndata: {"b"\ndata: :2}\n\ndata: {"c'),
+    { events: ['{"a":1}', '{"b"\n:2}'], rest: 'data: {"c' })
+  pass('server-sent events are read whole, across lines, with what is left for the next chunk')
+
   const lock = JSON.parse(fs.readFileSync(path.join(lockDir, `${process.pid}.json`), 'utf8'))
   assert.strictEqual(lock.url, server.url)
   assert.strictEqual(lock.token, server.token)
@@ -222,9 +294,9 @@ async function run() {
   assert.strictEqual(rInit.result.serverInfo.version, '9.9', 'initialize reaches the window')
   const rList = await r.call('tools/list', {})
   assert.strictEqual(rList.result.tools.length, 5)
-  const rCall = await r.call('tools/call', { name: 'isabelle_state', arguments: { file: 'B.thy', line: 3 } })
+  const rCall = await r.call('tools/call', { name: 'isabelle_state', arguments: { path: 'B.thy', line: 3 } })
   assert.strictEqual(rCall.result.content[0].text, 'isabelle_state on B.thy')
-  assert.deepStrictEqual(calls[calls.length - 1], ['isabelle_state', { file: 'B.thy', line: 3 }])
+  assert.deepStrictEqual(calls[calls.length - 1], ['isabelle_state', { path: 'B.thy', line: 3 }])
   pass('the relay passes initialize, tools/list and tool calls to the window')
 
   /* A long call does not hold up the others: the agent reads a proof state, or starts a second
@@ -234,7 +306,7 @@ async function run() {
   let answered = false
   long.answer.then(() => { answered = true }, () => { /* never answered: right */ })
   assert.ok(await until(() => calls.some(c => c[1].wait === 'relayed')), 'the call reaches the window')
-  const during = await r.call('tools/call', { name: 'isabelle_state', arguments: { file: 'C.thy' } })
+  const during = await r.call('tools/call', { name: 'isabelle_state', arguments: { path: 'C.thy' } })
   assert.strictEqual(during.result.content[0].text, 'isabelle_state on C.thy',
     'a call is answered while a long one is under way')
   const second = r.send('tools/call', { name: 'isabelle_check', arguments: { wait: 'second' } })
@@ -249,17 +321,73 @@ async function run() {
   assert.ok(!stopped.includes('relayed'), 'a cancellation of one call leaves the other running')
   r.notify('notifications/cancelled', { requestId: long.id, reason: 'user' })
   assert.ok(await until(() => stopped.includes('relayed')), 'the window stops the call')
-  const after = await r.call('tools/call', { name: 'isabelle_state', arguments: { file: 'D.thy' } })
+  const after = await r.call('tools/call', { name: 'isabelle_state', arguments: { path: 'D.thy' } })
   assert.strictEqual(after.result.content[0].text, 'isabelle_state on D.thy', 'the relay goes on')
   assert.ok(!answered, 'a cancelled call gets no answer')
-  r.close()
   pass('the relay cancels the call the agent cancels, and only that one')
+
+  /* Progress through the relay, as Claude Code asks for it: notifications before the answer. */
+  const rReport = r.send('tools/call', { name: 'isabelle_check', arguments: { report: true },
+    _meta: { progressToken: 7 } })
+  assert.strictEqual((await rReport.answer).result.content[0].text, 'reported')
+  assert.deepStrictEqual(r.notes.map(n => [n.method, n.params.progressToken, n.params.message]),
+    [['notifications/progress', 7, 'one'], ['notifications/progress', 7, 'two'],
+      ['notifications/progress', 7, 'three']])
+  pass('the relay passes the progress of a call on as it comes, before the answer')
+
+  /* A call cancelled while its answer streams: the window stops it, and the relay is not held
+     up by it, not even when it exits. */
+  const rStreaming = r.send('tools/call', { name: 'isabelle_check', arguments: { wait: 'streamed' },
+    _meta: { progressToken: 8 } })
+  let streamedAnswer = false
+  rStreaming.answer.then(() => { streamedAnswer = true }, () => {})
+  assert.ok(await until(() => r.notes.some(n => n.params.message === 'waiting streamed')),
+    'the call reports before it waits')
+  r.notify('notifications/cancelled', { requestId: rStreaming.id })
+  assert.ok(await until(() => stopped.includes('streamed')), 'the window stops the call')
+  const afterStream = await r.call('tools/call', { name: 'isabelle_state', arguments: { path: 'E.thy' } })
+  assert.strictEqual(afterStream.result.content[0].text, 'isabelle_state on E.thy')
+  assert.ok(!streamedAnswer, 'a cancelled call gets no answer')
+  r.close()
+  const code = await Promise.race([r.exited, new Promise(res => setTimeout(() => res('hung'), 5000))])
+  assert.strictEqual(code, 0, 'the relay exits when its input closes')
+  pass('a call cancelled while it streams is stopped, and the relay still exits')
+
+  /* A window that goes away while its answer streams: the relay looks again, and does not
+     wait for good on a stream that never ends. */
+  let cuts = 0
+  const cutter = http.createServer((req, res) => {
+    req.resume()
+    req.on('end', () => {
+      cuts++
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+      res.write('event: message\ndata: ' + JSON.stringify({ jsonrpc: '2.0', method: 'notifications/progress',
+        params: { progressToken: 1, progress: 1, message: 'cut' } }) + '\n\n')
+      setTimeout(() => res.destroy(), 50)
+    })
+  })
+  await new Promise(resolve => cutter.listen(0, '127.0.0.1', resolve))
+  const cutDir = path.join(project, 'cut')
+  fs.mkdirSync(cutDir)
+  fs.writeFileSync(path.join(lockDir, 'cut.json'), JSON.stringify({ pid: process.pid,
+    port: cutter.address().port, token: 't', url: `http://127.0.0.1:${cutter.address().port}/mcp`,
+    workspaceFolders: [cutDir] }))
+  const c = relay({ ...env, ISABELLE_VSCODE_WORKSPACE: cutDir })
+  const cCall = await c.call('tools/call', { name: 'isabelle_check', arguments: { path: 'A.thy' },
+    _meta: { progressToken: 1 } })
+  assert.strictEqual(cuts, 2, 'the relay tries again once')
+  assert.strictEqual(cCall.result.content[0].text, NO_WINDOW)
+  assert.ok(c.notes.some(n => n.params.message === 'cut'), 'the progress before the cut came through')
+  c.close()
+  cutter.close()
+  fs.rmSync(path.join(lockDir, 'cut.json'))
+  pass('a stream cut off by the window is not waited for: the relay looks for the window again')
 
   const lost = relay({ ...env, ISABELLE_VSCODE_WORKSPACE: os.tmpdir() })
   const lInit = await lost.call('initialize', { protocolVersion: '2025-06-18' })
   assert.strictEqual(lInit.result.serverInfo.name, 'isabelle')
   assert.strictEqual((await lost.call('tools/list', {})).result.tools.length, 5)
-  const lCall = await lost.call('tools/call', { name: 'isabelle_check', arguments: { file: 'A.thy' } })
+  const lCall = await lost.call('tools/call', { name: 'isabelle_check', arguments: { path: 'A.thy' } })
   assert.strictEqual(lCall.result.isError, true)
   assert.strictEqual(lCall.result.content[0].text, NO_WINDOW)
   lost.close()
