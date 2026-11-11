@@ -138,6 +138,14 @@ function goesNoFurther(r: Report): boolean {
     r.running_commands === 0 && (r.waiting_commands ?? 0) > 0
 }
 
+/** Whether a command has failed but its error is not in the report yet. The failure (a
+    command's status) and its error (a result) reach the server separately, and on a fast
+    machine a theory whose start fails is reported within 0.3 s, between the two. */
+function errorToCome(r: Report): boolean {
+  return !r.error && !r.outdated && (r.failed_commands ?? 0) > 0 &&
+    !(r.messages ?? []).some(m => m.severity === 'error')
+}
+
 /** The commands a theory runs, as one string to compare with the next look: empty when
     none runs, or the report cannot tell. */
 function runningKey(r: Report): string {
@@ -359,7 +367,7 @@ export class AgentTools {
       }
     }
     let report = await client.sendRequest(AgentReport, { uri: this.asUri(client, uri) })
-    for (let i = 0; i < 20 && report.outdated; i++) {
+    for (let i = 0; i < 20 && (report.outdated || errorToCome(report)); i++) {
       await sleep(POLL_MS)
       report = await client.sendRequest(AgentReport, { uri: this.asUri(client, uri) })
     }
