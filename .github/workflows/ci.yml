@@ -222,7 +222,7 @@ jobs:
       # `unzip` still running.
       #
       # A single download can hang too: on macOS one ran past ten minutes against its usual
-      # 20 s. fetch-editor.js gives each attempt three minutes and tries twice; the step
+      # 20 s. fetch-editor.js gives each attempt three minutes and tries four times; the step
       # limit is a backstop should the script itself ever stick.
       #
       # Cached, and for more than speed: before any download @vscode/test-electron asks
@@ -240,7 +240,7 @@ jobs:
 
       - name: Pre-download the test editor
         id: editor
-        timeout-minutes: 8
+        timeout-minutes: 14
         run: |
           set -eu
           exe=$(node test/fetch-editor.js)

@@ -10,7 +10,11 @@ const cp = require('child_process')
 const path = require('path')
 
 const LIMIT_MS = 3 * 60_000
-const ATTEMPTS = 2
+/* The update service also answered with something that is no JSON, after 30-80 s, on 4 of
+   14 runners twice in a row. Each attempt ends the moment one succeeds; a pause before the
+   next gives the service a moment. */
+const ATTEMPTS = 4
+const PAUSE_MS = 15_000
 const root = path.join(__dirname, '..')
 
 /* The library's requests give up after 15 s without an answer. Before downloading, it asks
@@ -59,7 +63,10 @@ async function main() {
   for (let i = 1; i <= ATTEMPTS; i++) {
     const exe = await attempt()
     if (exe) { console.log(exe); return }
-    if (i < ATTEMPTS) console.error(`retrying (${i + 1} of ${ATTEMPTS})`)
+    if (i < ATTEMPTS) {
+      console.error(`retrying (${i + 1} of ${ATTEMPTS}) in ${PAUSE_MS / 1000} s`)
+      await new Promise(r => setTimeout(r, PAUSE_MS))
+    }
   }
   console.error(`::error::no test editor after ${ATTEMPTS} attempts`)
   process.exit(1)
