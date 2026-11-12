@@ -545,6 +545,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         bold: r.bold.length,
         glyphs: r.hidden.map(d => d.renderOptions?.before?.contentText).filter(Boolean).slice(0, 12),
         sent: renderer.sent,
+        pending: renderer.pending,
       }
     }),
     // Test hooks for the PIDE panels.
@@ -579,6 +580,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('isabelle.heapWatchState', () => ({
       watched: heapWatch?.watchedCount ?? 0,
       stale: heapWatch?.files ?? [],
+      busy: heapWatch?.busy ?? 0,
     })),
     vscode.commands.registerCommand('isabelle.heapWatchCapture',
       (logic: string, requirements: boolean) => heapWatch?.capture(logic, requirements)),
@@ -613,6 +615,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       status: sledgehammer.lastStatus,
       output: sledgehammer.lastOutput,
       jobs: sledgehammer.jobs && [...sledgehammer.jobs.jobs.values()].map(j => ({ ...j })),
+      updates: sledgehammer.jobs && [...sledgehammer.jobs.updates],
       options: sledgehammer.jobs?.options,
     })),
     // Test hooks: the panel's controls, and where the prover cache is.

@@ -243,8 +243,17 @@ async function run() {
   for (const j of done) console.log(`  ${j.label}: ${j.status}, ${j.proofs.length} proof(s) ${JSON.stringify(j.proofs)}` +
     ` in ${((j.endedAt - j.startedAt) / 1000).toFixed(1)}s`)
   assert.ok(done.every(j => j.proofs.length > 0), 'each sorry should get a proof')
-  assert.ok(done.every(j => j.endedAt - j.startedAt < 15000 * 2),
-    'stopped at the first proof, well before twice the timeout')
+  /* Stopped at the first proof: the server ends a job the moment a message brings one, so
+     its update with the first proofs is followed straight by "finished". One that ran on
+     would have more messages first. Checked by order, not by time: the bound this replaced
+     (twice the timeout) failed on a loaded macOS runner where the runs were merely slow. */
+  const updates = ((await vscode.commands.executeCommand('isabelle.sledgehammerState')) || {}).updates || []
+  for (const j of done) {
+    const mine = updates.filter(u => u.id === j.id)
+    const first = mine.findIndex(u => u.proofs > 0)
+    assert.ok(first >= 0 && mine[first + 1] && mine[first + 1].status === 'finished',
+      `${j.label} stopped at its first proof: ${mine.map(u => u.status + (u.proofs ? `+${u.proofs}` : '')).join(' ')}`)
+  }
   const lenses = await vscode.commands.executeCommand('vscode.executeCodeLensProvider', doc.uri)
   assert.ok(lenses.some(l => l.command && l.command.command === 'isabelle.sledgehammerApply'),
     'the proofs are offered as CodeLenses')

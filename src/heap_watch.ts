@@ -107,9 +107,15 @@ export class HeapWatch {
     const generation = this.generation
     this.pending.set(key, setTimeout(() => {
       this.pending.delete(key)
-      void this.recheck(file, generation)
+      this.rechecking++
+      void this.recheck(file, generation).finally(() => { this.rechecking-- })
     }, delay))
   }
+
+  private rechecking = 0
+
+  /** Changes seen and not yet compared, for a test: once 0, `files` is final for them. */
+  get busy(): number { return this.pending.size + this.rechecking }
 
   private async recheck(file: string, generation: number): Promise<void> {
     const baseline = this.baseline

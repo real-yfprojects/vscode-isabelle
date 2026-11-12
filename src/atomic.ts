@@ -244,6 +244,10 @@ function takeSnapshot(editor: vscode.TextEditor | undefined): void {
  * it was just before -- never undo or redo. The edit joins the deletion's undo step, and
  * VS Code drops it if more typing has changed the document in the meantime.
  */
+/** Edits of repairCut sent and not yet applied, for a test: the decision to repair is made
+    in the change event, so once this is 0 after an edit, the text is final either way. */
+let repairsInFlight = 0
+
 function repairCut(e: vscode.TextDocumentChangeEvent): void {
   const snap = snapshot
   if (!snap || e.reason !== undefined || e.contentChanges.length !== 1 || !enabled()) return
@@ -264,7 +268,10 @@ function repairCut(e: vscode.TextDocumentChangeEvent): void {
     const rest = new vscode.Range(snap.line, start, snap.line, end - 1)
     if (doc.getText(rest) !== (backspace ? m[0].slice(0, -1) : m[0].slice(1))) return
     const editor = vscode.window.visibleTextEditors.find(ed => ed.document === doc)
-    void editor?.edit(b => b.delete(rest), { undoStopBefore: false, undoStopAfter: false })
+    if (!editor) return
+    repairsInFlight++
+    void Promise.resolve(editor.edit(b => b.delete(rest), { undoStopBefore: false, undoStopAfter: false }))
+      .finally(() => { repairsInFlight-- })
     return
   }
 }
@@ -334,6 +341,8 @@ export function registerAtomicMotion(context: vscode.ExtensionContext, symbols: 
     }),
     // Test hook: the context keys as last set.
     vscode.commands.registerCommand('isabelle.atomicContext', () => ({ ...keyState })),
+    // Test hook: whether a repair of a cut symbol is still on its way.
+    vscode.commands.registerCommand('isabelle.atomicState', () => ({ repairsInFlight })),
   )
   follow(vscode.window.activeTextEditor)
 

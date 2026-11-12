@@ -9,6 +9,7 @@ const fs = require('fs')
 const path = require('path')
 
 const wait = ms => new Promise(r => setTimeout(r, ms))
+const { rewriterSettled } = require('./settle')
 let passed = 0
 const pass = m => { passed++; console.log('PASS: ' + m) }
 
@@ -23,26 +24,12 @@ async function run() {
   fs.writeFileSync(file, ['theory Shorth', '  imports Main', 'begin', '', '', '', 'end', ''].join('\n'))
   const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file))
   const editor = await vscode.window.showTextDocument(doc, { preview: false })
-  await wait(500)
 
   const state = () => vscode.commands.executeCommand('isabelle.shorthandsState')
 
-  /* Wait for the rewriter instead of sleeping a fixed time: it answers a keystroke with an
-     edit of its own, and so does the comment closer, a round trip that takes much longer
-     on a CI machine shared with a prover. Typing on before it lands makes VS Code drop the edit as stale, so a sleep
-     that is too short both misses the expansion and loses it for good. Settled means no
-     edit in flight and the document unchanged across two polls. */
-  async function settle() {
-    const deadline = Date.now() + 10_000
-    let version = -1
-    for (;;) {
-      const s = await state()
-      if (s.rewritesInFlight === 0 && s.commentEditsInFlight === 0 && doc.version === version) return
-      if (Date.now() > deadline) throw new Error('the shorthand rewriter did not settle within 10 s')
-      version = doc.version
-      await wait(25)
-    }
-  }
+  /* Wait for the rewriter instead of sleeping a fixed time: a sleep that is too short both
+     misses the expansion and loses it for good (see rewriterSettled). */
+  const settle = () => rewriterSettled(doc)
 
   /* Type one character and wait until this document has it. The `type` command goes to
      whichever editor has focus, and this copy of the document hears of the change by a
@@ -166,7 +153,7 @@ async function run() {
 
   // ---------- hover: every way to type the symbol under the mouse ----------
   await editor.edit(b => b.replace(doc.lineAt(LINE).range, 'x \\<forall>y'))
-  await wait(150)
+  await settle()
   const hovers = await vscode.commands.executeCommand(
     'vscode.executeHoverProvider', doc.uri, new vscode.Position(LINE, 5))
   const text = (hovers || []).flatMap(h => h.contents).map(c => c.value ?? String(c)).join('\n')
@@ -177,7 +164,7 @@ async function run() {
 
   // ---------- completion: shorthands are listed with their result ----------
   await editor.edit(b => b.replace(doc.lineAt(LINE).range, '\\al'))
-  await wait(100)
+  await settle()
   const list = await vscode.commands.executeCommand(
     'vscode.executeCompletionItemProvider', doc.uri, new vscode.Position(LINE, 3))
   const all = list.items.find(i => (typeof i.label === 'string' ? i.label : i.label.label) === '\\all')

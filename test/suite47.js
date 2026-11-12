@@ -8,6 +8,7 @@ const vscode = require('vscode')
 const assert = require('assert')
 const fs = require('fs')
 const target_ = require('./server_target')
+const { settled } = require('./settle')
 const { anchorPosition } = require('../out/tutorial.js')
 
 const EXT_ID = 'yfprojects.vscode-isabelle'
@@ -27,7 +28,7 @@ async function until(what, probe, timeoutMs = 240000) {
       throw new Error(`language client failed while waiting for ${what}: ${status.lastError}`)
     }
     try { last = await probe(); if (last) return last } catch { /* not ready */ }
-    await wait(1000)
+    await wait(250)
   }
   throw new Error(`timed out after ${timeoutMs}ms waiting for ${what}`)
 }
@@ -84,7 +85,7 @@ async function drive() {
   const tabs = () => vscode.window.tabGroups.all.flatMap(g => g.tabs).length
   const before = tabs()
   await vscode.commands.executeCommand('isabelle.gettingStarted')
-  await wait(1000)
+  await settled(tabs, n => n > before)
   assert.ok(tabs() > before, 'the walkthrough opens in a tab')
   pass('isabelle.gettingStarted opens the walkthrough')
 

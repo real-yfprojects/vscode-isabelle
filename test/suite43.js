@@ -84,9 +84,18 @@ async function run() {
     async () => (await heapState()).stale.length === 0)
   pass('putting the old text back clears it')
 
-  // A live theory is not in the image: changing it is ordinary editing.
+  /* A live theory is not in the image: changing it is ordinary editing. Checked once the
+     watcher has seen the write -- ours fires after HeapWatch's, which came first -- and
+     HeapWatch is done with whatever it made of it, not after a fixed time. */
+  const appSeen = vscode.workspace.createFileSystemWatcher('**/App.thy')
+  let appChanged = false
+  appSeen.onDidChange(() => { appChanged = true })
+  appSeen.onDidCreate(() => { appChanged = true })
   fs.writeFileSync(app, 'theory App\n  imports Lib\nbegin\n\nlemma a: True by simp\n\nend\n')
-  await wait(1500)
+  assert.ok(await until('the watcher seeing App.thy change', 15, async () => appChanged),
+    'the file-system watcher never reported the change of App.thy')
+  appSeen.dispose()
+  await until('the heap watcher to settle', 15, async () => (await heapState()).busy === 0)
   assert.deepStrictEqual((await heapState()).stale, [])
   pass('editing the session\'s own theory is not staleness')
 
