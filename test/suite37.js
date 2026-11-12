@@ -217,14 +217,17 @@ async function run() {
 
   // Semantic indentation: apply is indented by the number of subgoals, once the prover
   // has reported it for the checked commands.
+  /* The prover reports the subgoals command by command: wait for all of them, not only the
+     first -- on macOS line 3 was asserted before the prover had reported on line 2. */
   const c = line('lemma c: "A \\<and> B \\<Longrightarrow> B \\<and> A"')
+  const expected = [0, 2, 3, 3, 2, 2, 2]
+  let lastScript = []
   const script = await until('the prover to report subgoals for lemma c', 180, async () => {
-    const lines = applied(doc, await onRange(doc, c, c + 6)).slice(c, c + 7)
-    return indentOf(lines[2]) === 3 ? lines : undefined
-  }, 4000)
-  assert.ok(script, 'apply after rule conjI (2 subgoals) should get one more space')
-  assert.deepStrictEqual(script.map(indentOf), [0, 2, 3, 3, 2, 2, 2],
-    `script indentation: ${JSON.stringify(script)}`)
+    lastScript = applied(doc, await onRange(doc, c, c + 6)).slice(c, c + 7)
+    return JSON.stringify(lastScript.map(indentOf)) === JSON.stringify(expected) ? lastScript : undefined
+  }, 1000)
+  assert.ok(script, 'apply is indented by the number of subgoals (2 after rule conjI and erule conjE): ' +
+    `script indentation: ${JSON.stringify(lastScript)}`)
   pass('apply lines are indented by the number of subgoals')
 
   // Typing: the edits above are also what the editor applies.

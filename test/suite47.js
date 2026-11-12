@@ -40,9 +40,17 @@ const errors = uri => vscode.languages.getDiagnostics(uri)
  * Open the tutorial at its last command and wait for find_theorems' output: the prover
  * gets there only after checking everything above it, so no error by then means none.
  */
+/** Opens the tutorial, at `anchor` if given, and returns its editor once it is the active one. */
+async function openTutorial(anchor) {
+  await vscode.commands.executeCommand('isabelle.openTutorial', ...(anchor ? [anchor] : []))
+  const editor = await settled(() => vscode.window.activeTextEditor,
+    e => e !== undefined && e.document.uri.fsPath.endsWith('Tutorial.thy'))
+  assert.ok(editor, 'the tutorial should be the active editor')
+  return editor
+}
+
 async function checkTutorial(label) {
-  await vscode.commands.executeCommand('isabelle.openTutorial', 'facts')
-  const editor = vscode.window.activeTextEditor
+  const editor = await openTutorial('facts')
   await until(`find_theorems output (${label})`, async () => {
     const state = await vscode.commands.executeCommand('isabelle.infoviewState')
     return /found \d+ theorem/.test(text(state?.live?.messages)) && state
@@ -82,16 +90,18 @@ async function drive() {
   await font.update('fontFamily', undefined, vscode.ConfigurationTarget.Global, true)
   pass('useIsabelleFont sets the font for theories only')
 
-  const tabs = () => vscode.window.tabGroups.all.flatMap(g => g.tabs).length
+  /* The walkthrough's tab appears first and takes the focus a moment later: until it has,
+     a tutorial opened next can lose its place as the active editor to it. */
+  const tabs = () => vscode.window.tabGroups.all.flatMap(g => g.tabs)
   const before = tabs()
   await vscode.commands.executeCommand('isabelle.gettingStarted')
-  await settled(tabs, n => n > before)
-  assert.ok(tabs() > before, 'the walkthrough opens in a tab')
+  const walkthrough = await settled(() => vscode.window.tabGroups.activeTabGroup.activeTab,
+    t => t !== undefined && !before.includes(t))
+  assert.ok(walkthrough && !before.includes(walkthrough), 'the walkthrough opens in a tab')
   pass('isabelle.gettingStarted opens the walkthrough')
 
   // --- the tutorial --------------------------------------------------------------------
-  await vscode.commands.executeCommand('isabelle.openTutorial', 'goals')
-  let editor = vscode.window.activeTextEditor
+  let editor = await openTutorial('goals')
   assert.ok(editor.document.uri.fsPath.endsWith('Tutorial.thy'), editor.document.uri.fsPath)
   assert.ok(!editor.document.uri.fsPath.startsWith(ext.extensionPath), 'opens a copy, not the shipped file')
   const at = anchorPosition(editor.document.getText(), 'goals')
@@ -115,8 +125,7 @@ async function drive() {
   // A second open keeps the user's copy, edits and all.
   await doc.save()
   await vscode.commands.executeCommand('workbench.action.closeActiveEditor')
-  await vscode.commands.executeCommand('isabelle.openTutorial')
-  editor = vscode.window.activeTextEditor
+  editor = await openTutorial()
   assert.ok(editor.document.getText().includes('x - 1'), 'the edited copy was replaced')
   await editor.edit(e => e.replace(new vscode.Range(line, col, line, col + 5), 'x + 1'))
   await editor.document.save()
