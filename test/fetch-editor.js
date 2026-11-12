@@ -13,7 +13,12 @@ const LIMIT_MS = 3 * 60_000
 const ATTEMPTS = 2
 const root = path.join(__dirname, '..')
 
-const FETCH = `require('@vscode/test-electron').downloadAndUnzipVSCode()
+/* The library's requests give up after 15 s without an answer. Before downloading, it asks
+   the update service which version "stable" is, and on 9 of 14 CI runners that question
+   timed out twice: answered from the CDN it takes 0.1 s, but the service itself took 52 s
+   for the same kind of list. 90 s, then; a request still returns the moment it is answered,
+   and LIMIT_MS bounds the whole attempt. */
+const FETCH = `require('@vscode/test-electron').downloadAndUnzipVSCode({ timeout: 90_000 })
   .then(p => console.log('EDITOR=' + p), e => { console.error(e); process.exit(1) })`
 
 /** Kill the child and whatever it spawned: a process group on POSIX, a tree on Windows. */

@@ -249,7 +249,7 @@ jobs:
           echo "editor: $exe"
           # The version's directory, e.g. vscode-darwin-arm64-1.146.0, names the cache entry;
           # older versions go, so an entry holds one editor.
-          rel=$(printf '%s' "$exe" | tr '\\' '/'); rel=${rel#*.vscode-test/}; version=${rel%%/*}
+          rel=$(printf '%s' "$exe" | sed 's|\\|/|g'); rel=${rel#*.vscode-test/}; version=${rel%%/*}
           for d in .vscode-test/vscode-*; do [ "$(basename "$d")" = "$version" ] || rm -rf "$d"; done
           echo "key=vscode-test-${{ runner.os }}-$version" >> "$GITHUB_OUTPUT"
 
