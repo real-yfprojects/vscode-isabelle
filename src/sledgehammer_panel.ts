@@ -9,16 +9,22 @@
  *   PIDE/sledgehammer_provers_request  -> _provers_response {provers}   (prefill)
  *   PIDE/sledgehammer_request {provers, isar, try0}                     (run)
  *   PIDE/sledgehammer_status {message} / _output {content}              (progress, results)
- *   PIDE/sledgehammer_sendback {text}  -> _insert {uri, line, character, text}
+ *   PIDE/sledgehammer_sendback {text}  -> _insert {uri, line, character, text}   (2025-2)
+ *   PIDE/markup_action {active, text}  -> PIDE/document_edit                     (2026)
  *
- * The results are raw XML (VSCode_Sledgehammer uses XML.string_of_body, so this is not
- * affected by vscode_html_output). Proof suggestions arrive as <sendback> *elements*,
- * not as a CSS class, so the webview rewrites those into buttons.
+ * Isabelle2025-2 sends the results as XML text (XML.string_of_body, not affected by
+ * vscode_html_output); Isabelle2026 as YXML, which is turned into the same XML here, so the
+ * webview renders both alike. Proof suggestions arrive as <sendback> *elements*, not as a
+ * CSS class, so the webview rewrites those into buttons. Isabelle2026 dropped the
+ * sendback/insert pair for the generic active-markup round trip (markup_action.ts), which
+ * needs the element itself back: it is looked up by its text among the last results.
  */
 
 import * as vscode from 'vscode'
 import { LanguageClient } from 'vscode-languageclient/node'
+import { sendMarkupAction } from './markup_action'
 import { markupText, renderMarkup } from './markup_render'
+import { XmlBody, content, isElem, isYxml, parseYxmlFailsafe, xmlOfBody, yxmlOfTree } from './yxml'
 import { HammerOptions, isActive, SledgehammerJobs } from './sledgehammer_jobs'
 import { SLEDGEHAMMER_RAN } from './walkthrough'
 import { isabelleCss, scriptNonce } from './webview'
@@ -32,6 +38,8 @@ export class SledgehammerPanel implements vscode.WebviewViewProvider {
   private provers = ''
   private status = ''
   private output = ''
+  /* Isabelle2026: the sendbacks of the last results, by their text, as YXML. */
+  private sendbacks = new Map<string, string>()
 
   constructor(
     private readonly client: LanguageClient,
@@ -54,7 +62,7 @@ export class SledgehammerPanel implements vscode.WebviewViewProvider {
       this.client.onNotification('PIDE/sledgehammer_status',
         (p: { message: string }) => { this.status = p.message ?? ''; this.post({ type: 'status', message: this.status }) }),
       this.client.onNotification('PIDE/sledgehammer_output',
-        (p: { content: string }) => { this.output = p.content ?? ''; this.post({ type: 'output', content: this.output }) }),
+        (p: { content: string }) => { this.output = this.receive(p.content ?? ''); this.post({ type: 'output', content: this.output }) }),
       this.client.onNotification('PIDE/sledgehammer_insert',
         (p: InsertParams) => void this.applyInsert(p)),
       vscode.commands.registerCommand('isabelle.sledgehammer', async () => {
@@ -123,9 +131,12 @@ export class SledgehammerPanel implements vscode.WebviewViewProvider {
         case 'cancelJob': jobs?.cancel(m.id); break
         case 'retry': jobs?.retry(m.id); break
         case 'dismiss': jobs?.dismiss(m.id); break
-        case 'sendback':
-          await this.client.sendNotification('PIDE/sledgehammer_sendback', { text: m.text })
+        case 'sendback': {
+          const active = this.sendbacks.get(String(m.text ?? '').trim())
+          if (active) sendMarkupAction(this.client, active, m.text, this.log)
+          else await this.client.sendNotification('PIDE/sledgehammer_sendback', { text: m.text })
           break
+        }
       }
     })
     view.webview.html = this.html()
@@ -134,6 +145,22 @@ export class SledgehammerPanel implements vscode.WebviewViewProvider {
   }
 
   /** The editor the panel's buttons mean: focus is in the panel by the time they are clicked. */
+  /** Results as the webview takes them: XML text, whichever release sent them. */
+  private receive(raw: string): string {
+    this.sendbacks.clear()
+    if (!isYxml(raw)) return raw
+    const body = parseYxmlFailsafe(raw)
+    const collect = (b: XmlBody): void => {
+      for (const t of b) {
+        if (!isElem(t)) continue
+        if (t.name === 'sendback') this.sendbacks.set(content(t.body).trim(), yxmlOfTree(t))
+        else collect(t.body)
+      }
+    }
+    collect(body)
+    return xmlOfBody(body)
+  }
+
   private lastEditor(): vscode.TextEditor | undefined {
     return vscode.window.activeTextEditor ??
       vscode.window.visibleTextEditors.find(e => e.document.languageId === 'isabelle')

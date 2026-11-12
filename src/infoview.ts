@@ -38,6 +38,9 @@ import { LanguageClient } from 'vscode-languageclient/node'
 import { isabelleCss, MARGIN_SCRIPT, openIsabelleLink, scriptNonce } from './webview'
 import { INFOVIEW_CSS, InfoSection, InfoviewMode, InfoviewModel, infoviewBody } from './infoview_view'
 import { FIND_BAR_HTML, FIND_CSS, FIND_SCRIPT } from './find_bar'
+import { outputCommand } from './markup_action'
+import { Glyphs, renderPideOutput } from './pide_html'
+import { isYxml } from './yxml'
 
 export { infoviewBody } from './infoview_view'
 
@@ -76,6 +79,8 @@ export class Infoview implements vscode.WebviewViewProvider {
   private pending = false
   private renderScheduled = false
   private lastEditor: vscode.TextEditor | undefined
+  /** Symbol glyphs, for output the client renders itself (Isabelle2026); set by extension.ts. */
+  glyphs: Glyphs = () => undefined
 
   constructor(private readonly log: (m: string) => void) {
     const editor = vscode.window.activeTextEditor
@@ -326,6 +331,10 @@ export class Infoview implements vscode.WebviewViewProvider {
         break
       case 'revealLine': if (msg.arg) await this.revealLine(msg.arg); break
       case 'open': if (msg.link) await openIsabelleLink(msg.link); break
+      default:
+        if (msg.command && msg.arg !== undefined && this.client) {
+          await outputCommand(this.client, msg.command, msg.arg, this.log)
+        }
     }
   }
 
@@ -523,13 +532,28 @@ class ExtendedBackend implements Backend {
   }
 }
 
-/* A released server's messages, put together: see the header. */
+/* A released server's messages, put together: see the header.
+
+   The content is what the server sent: HTML from Isabelle2025-2, which formats to the
+   margin it is told; unformatted YXML from Isabelle2026, which leaves formatting and HTML
+   to the client (pide_html.ts) and ignores the margin. So the raw content is kept, and
+   rendered here whenever it or the margin changes. */
 class StockBackend implements Backend {
   private liveId: number | undefined
   private liveGoals: string | undefined
   private liveMessages: string | undefined
-  /* Pins by state id, in the order they were made. */
+  /* Pins by state id, in the order they were made; `goals` rendered, `pinGoals` raw. */
   private readonly pins = new Map<number, InfoSection>()
+  private readonly pinGoals = new Map<number, string>()
+  /* Whether the server sends YXML, so a new margin means rendering again here. */
+  private yxml = false
+
+  private render(content: string | undefined): string {
+    if (!content) return ''
+    if (!isYxml(content)) return content
+    this.yxml = true
+    return renderPideOutput(content, this.margin, this.infoview.glyphs)
+  }
   /* Output for an instance whose id the state_init reply has not delivered yet: the server
      starts the instance's query before it answers. */
   private readonly early = new Map<number, string>()
@@ -555,7 +579,8 @@ class StockBackend implements Backend {
         } else {
           const pin = this.pins.get(p.id)
           if (pin) {
-            pin.goals = p.content
+            this.pinGoals.set(p.id, p.content)
+            pin.goals = this.render(p.content)
             this.publishPins()
           } else this.early.set(p.id, p.content)
         }
@@ -591,8 +616,8 @@ class StockBackend implements Backend {
     this.infoview.setLive({
       uri: editor?.document.uri.toString(),
       line: editor?.selection.active.line,
-      goals: this.liveGoals ?? '',
-      messages: this.liveMessages ?? '',
+      goals: this.render(this.liveGoals),
+      messages: this.render(this.liveMessages),
     })
   }
 
@@ -609,17 +634,20 @@ class StockBackend implements Backend {
     await this.client.sendNotification('PIDE/state_auto_update', { id, enabled: false })
     if (this.margin) this.sendMargin(id, this.margin)
     const line = editor.selection.active.line
+    const goals = this.claimEarly(id) ?? this.liveGoals ?? ''
+    this.pinGoals.set(id, goals)
     this.pins.set(id, {
       id,
       uri: editor.document.uri.toString(),
       line,
       source: editor.document.lineAt(line).text.trim().slice(0, 100),
-      goals: this.claimEarly(id) ?? this.infoview.live?.goals ?? '',
+      goals: this.render(goals),
     })
     this.publishPins()
   }
 
   unpin(id: number): void {
+    this.pinGoals.delete(id)
     if (!this.pins.delete(id)) return
     void this.client.sendNotification('PIDE/state_exit', { id })
       .catch(err => this.log(`state_exit failed: ${err}`))
@@ -642,6 +670,11 @@ class StockBackend implements Backend {
       .catch(err => this.log(`output_set_margin failed: ${err}`))
     if (this.liveId !== undefined) this.sendMargin(this.liveId, margin)
     for (const id of this.pins.keys()) this.sendMargin(id, margin)
+    if (this.yxml) {
+      for (const [id, pin] of this.pins) pin.goals = this.render(this.pinGoals.get(id))
+      this.publishLive()
+      this.publishPins()
+    }
   }
 
   private sendMargin(id: number, margin: number): void {
@@ -657,5 +690,6 @@ class StockBackend implements Backend {
       void this.client.sendNotification('PIDE/state_exit', { id }).catch(() => { /* server gone */ })
     }
     this.pins.clear()
+    this.pinGoals.clear()
   }
 }

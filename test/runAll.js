@@ -31,7 +31,7 @@ const REGRESSION = ['suite', 'suite2', 'suite4', 'suite6', 'suite12', 'suite15',
                     'suite44', 'suite45', 'suite46', 'suite47', 'suite48', 'suite49', 'suite50',
                     'suite51', 'suite52', 'suite53', 'suite54', 'suite60', 'suite61', 'suite62',
                     'suite63', 'suite64', 'suite65', 'suite66', 'suite67',
-                    'suite68', 'suite69']
+                    'suite68', 'suite69', 'suite70']
 
 /**
  * Suites that need the editor to have focus: they type through VS Code's `type` command,
@@ -85,7 +85,8 @@ function shard(suites, index, count, jobs) {
 /** Suites that need no editor at all, and so cost nothing to run. */
 const PURE = new Set(['suite25', 'suite27', 'suite28', 'suite29', 'suite31', 'suite32',
                     'suite34', 'suite38', 'suite41', 'suite42', 'suite44', 'suite46',
-                    'suite48', 'suite49', 'suite60', 'suite63', 'suite66', 'suite67'])
+                    'suite48', 'suite49', 'suite60', 'suite63', 'suite66', 'suite67',
+                    'suite70'])
 
 /**
  * Suites that assert nothing the prover produces.
