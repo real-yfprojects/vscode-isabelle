@@ -35,14 +35,52 @@ const REGRESSION = ['suite', 'suite2', 'suite4', 'suite6', 'suite12', 'suite15',
 
 /**
  * Suites that need the editor to have focus: they type through VS Code's `type` command,
- * which goes only to the focused editor, or take ghost text, which VS Code shows only there.
+ * which goes only to the focused editor, take ghost text, which VS Code shows only there, or
+ * fold and undo (suite4), which act on the focused editor and did nothing beside another.
  * Two test windows at once take it from each other: on macOS only the frontmost window's
  * editor has focus at all, and suite35's keystrokes went nowhere there, refocusing included;
- * on Linux both windows can say they are focused while neither editor is, and suite62's ghost
- * text never came. These run after the others, one at a time. (suite61 types too, but falls
- * back to an edit when its window is not focused, so it can run beside another.)
+ * on Linux both windows can say they are focused while neither editor is, and the ghost text
+ * of suite61 and suite62 never came -- their fallback for an unfocused window is not taken
+ * when the window claims focus. These run after the others, one at a time.
  */
-const ALONE = new Set(['suite35', 'suite37', 'suite62'])
+const ALONE = new Set(['suite4', 'suite35', 'suite37', 'suite61', 'suite62'])
+
+/**
+ * Seconds each suite took on the macOS CI runner (the slowest of the three), the longest of
+ * three runs: to split the set into shards of about equal length, and to start the long
+ * suites first. Only the proportions matter; a suite not listed counts as DEFAULT_SECONDS.
+ */
+const SECONDS = {
+  suite36: 329, suite64: 216, suite68: 179, suite30: 94, suite53: 93, suite: 88, suite33: 87,
+  suite52: 86, suite54: 79, suite15: 76, suite65: 72, suite12: 68, suite23: 65, suite39: 63,
+  suite6: 55, suite47: 54, suite2: 52, suite21: 49, suite62: 49, suite4: 45, suite61: 45,
+  suite17: 44, suite45: 43, suite51: 41, suite37: 34, suite18: 32, suite69: 28, suite16: 22,
+  suite26: 22, suite19: 21, suite35: 20, suite50: 18, suite40: 16, suite63: 16, suite31: 12,
+  suite43: 12,
+}
+const DEFAULT_SECONDS = 60
+const seconds = name => PURE.has(name) ? 0 : SECONDS[name] ?? DEFAULT_SECONDS
+
+/**
+ * The suites of shard `index` (1-based) of `count`, for CI to run the set on several runners
+ * at once: each suite on exactly one, each runner with its own editors and provers, so the
+ * suites interact no more than they do on one. Every shard computes the same split: longest
+ * suite first, into the shard that is estimated to finish soonest -- where a suite run alone
+ * costs its whole length and the others share the runner `jobs` at a time.
+ */
+function shard(suites, index, count, jobs) {
+  const load = Array.from({ length: count }, () => ({ together: 0, alone: 0, names: new Set() }))
+  const length = l => l.together / jobs + l.alone
+  const ordered = [...suites].sort((a, b) => seconds(b) - seconds(a) || a.localeCompare(b))
+  for (const name of ordered) {
+    const add = l => ALONE.has(name) ? { ...l, alone: l.alone + seconds(name) }
+      : { ...l, together: l.together + seconds(name) }
+    let best = 0
+    for (let i = 1; i < count; i++) if (length(add(load[i])) < length(add(load[best]))) best = i
+    load[best] = { ...add(load[best]), names: load[best].names.add(name) }
+  }
+  return { names: suites.filter(n => load[index - 1].names.has(n)), seconds: Math.round(length(load[index - 1])) }
+}
 
 /** Suites that need no editor at all, and so cost nothing to run. */
 const PURE = new Set(['suite25', 'suite27', 'suite28', 'suite29', 'suite31', 'suite32',
@@ -126,14 +164,25 @@ function runOne(name) {
 
 async function main() {
   const names = process.argv.slice(2)
-  const suites = names.length > 0 ? names.map(n => n.replace(/\.js$/, '')) : REGRESSION
+  let suites = names.length > 0 ? names.map(n => n.replace(/\.js$/, '')) : REGRESSION
   const jobs = Math.max(1, Number(process.env.ISABELLE_TEST_JOBS) || 3)
+
+  // ISABELLE_TEST_SHARD=i/n runs the i-th of n shards of the set (CI: one per runner).
+  const spec = process.env.ISABELLE_TEST_SHARD
+  if (spec) {
+    const m = /^(\d+)\/(\d+)$/.exec(spec)
+    if (!m || +m[1] < 1 || +m[1] > +m[2]) throw new Error(`ISABELLE_TEST_SHARD=${spec}: expected i/n with 1 <= i <= n`)
+    const part = shard(suites, +m[1], +m[2], jobs)
+    console.log(`shard ${spec}: ${part.names.length} of ${suites.length} suites, about ${part.seconds}s on macOS`)
+    suites = part.names
+  }
 
   const solo = suites.filter(n => ALONE.has(n))
   console.log(`running ${suites.length} suite(s), ${jobs} at a time` +
     (solo.length && jobs > 1 ? `, then ${solo.join(', ')} alone` : '') + '\n')
   const started = Date.now()
-  const queue = suites.filter(n => !ALONE.has(n))
+  // Longest first: a long suite started last would run on alone after all the others.
+  const queue = suites.filter(n => !ALONE.has(n)).sort((a, b) => seconds(b) - seconds(a))
   const results = []
 
   const runAndReport = async name => {
