@@ -4,7 +4,7 @@
 #
 #   build        the tree compiles and the pure suites pass, on all three platforms
 #   integration  a real prover starts and the regression passes, on all three platforms,
-#                the extended server's suites included
+#                the extended server's suites included -- in two shards per platform
 #   server-jar   the extended server builds from its pinned commit
 #   package      the .vsix builds, with the extended server compiled into it
 #
@@ -62,9 +62,15 @@ jobs:
 
   integration:
     needs: server-jar
+    # Each platform's suites in two shards on two runners (test/runAll.js splits them by
+    # how long they take): the macOS job, the longest, took 20 min alone. Every suite still
+    # gets an editor and a prover of its own; shards only add runners, which are free here.
+    name: integration (${{ matrix.os }}, ${{ matrix.shard }}/2)
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        shard: [1, 2]
         include:
           - os: ubuntu-latest
             bundle: Isabelle2025-2_linux.tar.gz
@@ -229,6 +235,7 @@ jobs:
       - name: Integration suites
         env:
           ISABELLE_TEST_JOBS: 2
+          ISABELLE_TEST_SHARD: ${{ matrix.shard }}/2
         run: |
           if [ "${{ runner.os }}" = "Linux" ]; then
             sudo apt-get update && sudo apt-get install -y xvfb
