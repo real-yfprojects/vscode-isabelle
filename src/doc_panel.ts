@@ -1,10 +1,12 @@
 /* Documentation panel: the Isabelle manuals, as jEdit's Documentation dockable shows them.
  *
  *   PIDE/documentation_request -> PIDE/documentation_response
- *     { sections: [ { title, important, entries: [ { print_html, platform_path } ] } ] }
+ *     { sections: [ { title, important, entries: [ entry ] } ] }
  *
- * `platform_path` points at a real file in the distribution -- usually a PDF, sometimes a
- * directory or text file -- so entries are opened (openDoc) rather than rendered here.
+ * An entry is { print_html, platform_path } from Isabelle2025-2, and { name, path, title }
+ * from Isabelle2026. Either way the path points at a real file in the distribution --
+ * usually a PDF, sometimes a directory or text file -- so entries are opened (openDoc)
+ * rather than rendered here.
  */
 
 import * as vscode from 'vscode'
@@ -12,8 +14,20 @@ import { LanguageClient } from 'vscode-languageclient/node'
 import { CustomEditorContribution, EditorAssociations, pdfViewerRegistered } from './doc_open'
 import { isabelleCss, scriptNonce } from './webview'
 
-interface DocEntry { print_html: string; platform_path: string }
+interface DocEntry {
+  print_html?: string; platform_path?: string      // Isabelle2025-2
+  name?: string; path?: string; title?: string     // Isabelle2026
+}
 interface DocSection { title: string; important: boolean; entries: DocEntry[] }
+
+/** The file an entry opens, and what it is called, whichever release sent it. */
+export function docEntry(entry: DocEntry): { path: string; label: string } {
+  const file = entry.path ?? entry.platform_path ?? ''
+  const label = entry.title
+    ? (entry.name ? `${entry.name}: ${entry.title}` : entry.title)
+    : plainText(entry.print_html ?? '')
+  return { path: file, label: label || entry.name || file }
+}
 
 const escapeHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -77,11 +91,9 @@ export class DocumentationPanel implements vscode.WebviewViewProvider {
     const body = this.sections.length === 0
       ? '<p style="opacity:.6">Waiting for Isabelle…</p>'
       : this.sections.map(section => {
-          const entries = (section.entries ?? []).map(entry => {
-            const label = escapeHtml(plainText(entry.print_html) || entry.platform_path)
-            return `<button class="doc" data-path="${escapeHtml(entry.platform_path)}" ` +
-                   `title="${escapeHtml(entry.platform_path)}">${label}</button>`
-          }).join('')
+          const entries = (section.entries ?? []).map(docEntry).filter(e => e.path).map(e =>
+            `<button class="doc" data-path="${escapeHtml(e.path)}" ` +
+            `title="${escapeHtml(e.path)}">${escapeHtml(e.label)}</button>`).join('')
           return `<section><h3${section.important ? ' class="important"' : ''}>` +
                  `${escapeHtml(section.title)}</h3>${entries}</section>`
         }).join('')

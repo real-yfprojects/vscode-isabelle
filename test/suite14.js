@@ -59,7 +59,7 @@ async function run() {
   assert.strictEqual(typeof state.querySupported, 'boolean',
     'the panel must settle on a definite answer, not stay undefined')
   assert.strictEqual(state.querySupported, false,
-    'released Isabelle2025-2 has no PIDE/query_* messages, so support must read false')
+    'a released Isabelle (2025-2 or 2026) has no PIDE/query_* messages, so support must read false')
   pass('Query panel reports the server as unsupported instead of hanging')
 
   await vscode.workspace.getConfiguration('isabelle')

@@ -290,7 +290,7 @@
       "patterns": [
         {
           "name": "meta.theory-header.isabelle",
-          "begin": "\\b(imports|keywords|abbrevs)\\b",
+          "begin": "\\b(imports|options|keywords|abbrevs)\\b",
           "beginCaptures": {
             "1": {
               "name": "keyword.other.unit.isabelle"
@@ -309,7 +309,7 @@
             },
             {
               "name": "keyword.other.unit.isabelle",
-              "match": "\\b(imports|keywords|abbrevs|and)\\b"
+              "match": "\\b(imports|options|keywords|abbrevs|and)\\b"
             }
           ]
         }

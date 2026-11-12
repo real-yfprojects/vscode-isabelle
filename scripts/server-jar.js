@@ -8,8 +8,9 @@
 //
 // The Isabelle is ISABELLE_HOME, else the newest ~/Isabelle/Isabelle<year>-<n> -- the one
 // the extension finds by default. The source is ISABELLE_SERVER_SOURCE, else the
-// vscode-2025-2 worktree beside this repository (../mirror-2025-2), else the commit
-// pinned in server/<IDENTIFIER>.ref.
+// worktree of that release's backport branch beside this repository (../mirror-2025-2
+// for Isabelle2025-2, ../mirror-2026 for Isabelle2026), else the commit pinned in
+// server/<IDENTIFIER>.ref.
 
 const { spawnSync } = require('child_process')
 const fs = require('fs')
@@ -41,11 +42,21 @@ function findStockHome() {
     .pop()
 }
 
+/** The worktree for `home`'s release: Isabelle2026 -> ../mirror-2026. */
+function siblingWorktree(home) {
+  let identifier
+  try {
+    identifier = fs.readFileSync(path.join(home, 'etc', 'ISABELLE_IDENTIFIER'), 'utf8').trim()
+  } catch { return undefined }
+  const release = /^Isabelle(\d{4}(?:-\d+)?)$/.exec(identifier)
+  return release ? path.join(REPO, '..', `mirror-${release[1]}`) : undefined
+}
+
 /** The checkout to build from, if any; without one, the pinned commit is fetched. */
-function serverSource() {
+function serverSource(home) {
   if (process.env.ISABELLE_SERVER_SOURCE) return path.resolve(process.env.ISABELLE_SERVER_SOURCE)
-  const sibling = path.join(REPO, '..', 'mirror-2025-2')
-  return fs.existsSync(path.join(sibling, '.git')) ? sibling : undefined
+  const sibling = siblingWorktree(home)
+  return sibling && fs.existsSync(path.join(sibling, '.git')) ? sibling : undefined
 }
 
 /** Git's bash: on Windows, the first `bash` on PATH can be WSL's. */
@@ -61,7 +72,7 @@ function gitBash() {
 
 /** Rebuild the jar for `home` unless it is current; returns where it was built from. */
 function ensureJar(home) {
-  const source = serverSource()
+  const source = serverSource(home)
   const slashes = p => p.replace(/\\/g, '/')  // bash takes C:/..., not C:\...
   const args = [slashes(path.join(REPO, 'scripts', 'build-server-jar.sh')), '--if-stale',
     slashes(home)]
