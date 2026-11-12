@@ -96,9 +96,15 @@ jobs:
 
       # ~2 GB unpacked. Worth caching both to keep the job quick and to avoid pulling a
       # gigabyte off a university server on every push.
-      - name: Cache the Isabelle distribution
+      #
+      # Restored everywhere, saved on main only. A run reads the caches of its own ref and
+      # of main, so with the plain actions/cache every branch and release tag saved its own
+      # 1.2-1.6 GB copy; those pushed the repository past GitHub's 10 GB limit, and the
+      # least recently used entries -- main's among them -- were evicted, so most runs
+      # missed and downloaded again. One copy per platform, on main, is ~4 GB.
+      - name: Restore the Isabelle distribution
         id: isabelle-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/isabelle-dist
           key: isabelle-${{ matrix.os }}-${{ matrix.bundle }}
@@ -181,6 +187,15 @@ jobs:
                   "$ISABELLE_HOME" "$ISABELLE_HOME\\contrib\\cygwin"
           echo "Cygwin initialized"
 
+      # After Cygwin's initialization, so a restored Windows copy needs none; before the
+      # suites, so nothing they leave behind is cached.
+      - name: Save the Isabelle distribution
+        if: steps.isabelle-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/isabelle-dist
+          key: isabelle-${{ matrix.os }}-${{ matrix.bundle }}
+
       # The release ships prebuilt Pure and HOL images, which is what makes this job
       # affordable: building HOL from source would cost half an hour before the first
       # assertion. If a future bundle stops shipping them the suites would still pass but
@@ -235,9 +250,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache the Isabelle distribution
+      # The integration job's Linux entry, and saved on main only for the same reason.
+      - name: Restore the Isabelle distribution
         id: isabelle-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/isabelle-dist
           key: isabelle-ubuntu-latest-Isabelle2025-2_linux.tar.gz
@@ -258,6 +274,13 @@ jobs:
           test -n "$ok"
           tar -xzf /tmp/isabelle-bundle -C ~/isabelle-dist
           rm /tmp/isabelle-bundle
+
+      - name: Save the Isabelle distribution
+        if: steps.isabelle-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/isabelle-dist
+          key: isabelle-ubuntu-latest-Isabelle2025-2_linux.tar.gz
 
       # The script only reads the distribution, so the cached copy stays pristine. It
       # fetches the pinned commit itself; that commit must have been pushed.
