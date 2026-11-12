@@ -33,6 +33,15 @@ const REGRESSION = ['suite', 'suite2', 'suite4', 'suite6', 'suite12', 'suite15',
                     'suite63', 'suite64', 'suite65', 'suite66', 'suite67',
                     'suite68', 'suite69']
 
+/**
+ * Suites that type through VS Code's `type` command, which goes only to the editor that has
+ * focus. Two test windows at once take it from each other: on macOS only the frontmost
+ * window's editor has focus at all, and suite35's keystrokes went nowhere there, refocusing
+ * included. These run after the others, one at a time. (suite61 types too, but falls back to
+ * an edit when its window is not focused, so it can run beside another.)
+ */
+const ALONE = new Set(['suite35', 'suite37'])
+
 /** Suites that need no editor at all, and so cost nothing to run. */
 const PURE = new Set(['suite25', 'suite27', 'suite28', 'suite29', 'suite31', 'suite32',
                     'suite34', 'suite38', 'suite41', 'suite42', 'suite44', 'suite46',
@@ -118,21 +127,24 @@ async function main() {
   const suites = names.length > 0 ? names.map(n => n.replace(/\.js$/, '')) : REGRESSION
   const jobs = Math.max(1, Number(process.env.ISABELLE_TEST_JOBS) || 3)
 
-  console.log(`running ${suites.length} suite(s), ${jobs} at a time\n`)
+  const solo = suites.filter(n => ALONE.has(n))
+  console.log(`running ${suites.length} suite(s), ${jobs} at a time` +
+    (solo.length && jobs > 1 ? `, then ${solo.join(', ')} alone` : '') + '\n')
   const started = Date.now()
-  const queue = [...suites]
+  const queue = suites.filter(n => !ALONE.has(n))
   const results = []
 
-  const worker = async () => {
-    while (queue.length > 0) {
-      const name = queue.shift()
-      const r = await runOne(name)
-      results.push(r)
-      const detail = r.checks !== undefined ? `${r.checks} checks` : `exit ${r.code}`
-      console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${name.padEnd(10)} ${detail}, ${r.seconds}s`)
-    }
+  const runAndReport = async name => {
+    const r = await runOne(name)
+    results.push(r)
+    const detail = r.checks !== undefined ? `${r.checks} checks` : `exit ${r.code}`
+    console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${name.padEnd(10)} ${detail}, ${r.seconds}s`)
   }
-  await Promise.all(Array.from({ length: Math.min(jobs, suites.length) }, worker))
+  const worker = async () => {
+    while (queue.length > 0) await runAndReport(queue.shift())
+  }
+  await Promise.all(Array.from({ length: Math.min(jobs, queue.length) }, worker))
+  for (const name of solo) await runAndReport(name)
 
   const failed = results.filter(r => !r.ok)
   console.log(`\n${results.length - failed.length}/${results.length} passed in ` +
@@ -143,9 +155,12 @@ async function main() {
     // Enough to identify the failure without reprinting a whole editor startup log: from the
     // first error on, so that an assertion keeps the actual/expected lines under it.
     const lines = f.out.split(/\r?\n/)
-    // VS Code's own "Error: Error mutex already exists" opens every log and says nothing.
+    // VS Code's own "Error: Error mutex already exists" opens every log and says nothing; so
+    // does test-electron's version lookup timing out ("Error retrieving VS Code versions ...
+    // TimeoutError: ... request timeout"), which then uses the editor it already has -- taken
+    // for the failure, it hid suite68's on a Windows run.
     const first = lines.findIndex(l => /FAIL|AssertionError|Error:|expected|actual|timed out/.test(l) &&
-      !/mutex already exists/.test(l))
+      !/mutex already exists|Error retrieving VS Code versions|TimeoutError: @vscode\/test-electron/.test(l))
     // And the suite's own PASS and progress lines before it: what it printed just before the
     // assertion (a status, a message) is often the whole diagnosis, and a CI log has no more.
     const own = lines.slice(0, first >= 0 ? first : 0).filter(l => /^\s*(PASS|\.\.\.|[a-z][\w ]*: )/.test(l))
