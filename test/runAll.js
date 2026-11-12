@@ -39,11 +39,11 @@ const REGRESSION = ['suite', 'suite2', 'suite4', 'suite6', 'suite12', 'suite15',
  * fold and undo (suite4), which act on the focused editor and did nothing beside another.
  * Two test windows at once take it from each other: on macOS only the frontmost window's
  * editor has focus at all, and suite35's keystrokes went nowhere there, refocusing included;
- * on Linux both windows can say they are focused while neither editor is, and suite62's ghost
- * text never came. These run after the others, one at a time. (suite61 types too, but falls
- * back to an edit when its window is not focused, so it can run beside another.)
+ * on Linux both windows can say they are focused while neither editor is, and the ghost text
+ * of suite61 and suite62 never came -- their fallback for an unfocused window is not taken
+ * when the window claims focus. These run after the others, one at a time.
  */
-const ALONE = new Set(['suite4', 'suite35', 'suite37', 'suite62'])
+const ALONE = new Set(['suite4', 'suite35', 'suite37', 'suite61', 'suite62'])
 
 /**
  * Seconds each suite took on the macOS CI runner (the slowest of the three), the longest of

@@ -46,6 +46,9 @@ const ours = actions => actions.filter(a => a.kind && a.kind.value.includes('.is
 async function typeAt(editor, pos, text) {
   const before = editor.document.getText()
   if (vscode.window.state.focused) {
+    // The keyboard into this editor first: the ghost text comes from the keystroke itself.
+    await vscode.window.showTextDocument(editor.document, { preview: false, preserveFocus: false })
+    await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup')
     editor.selection = new vscode.Selection(pos, pos)
     await vscode.commands.executeCommand('type', { text })
     if (editor.document.getText() !== before) return
