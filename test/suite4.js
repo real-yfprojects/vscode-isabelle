@@ -10,7 +10,7 @@ const assert = require('assert')
 const fs = require('fs')
 const path = require('path')
 
-const wait = ms => new Promise(r => setTimeout(r, ms))
+const { wait, settled, decorationsSettled, select, setCaret } = require('./settle')
 let passed = 0
 const pass = m => { passed++; console.log('PASS: ' + m) }
 
@@ -20,14 +20,10 @@ async function open(name, lines) {
   fs.writeFileSync(file, lines.join('\n'), 'utf8')
   const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file))
   const editor = await vscode.window.showTextDocument(doc, { preview: false })
-  await wait(700)
+  await decorationsSettled()
   return { doc, editor }
 }
 
-const setCaret = async (editor, line, col) => {
-  editor.selection = new vscode.Selection(line, col, line, col)
-  await wait(300)
-}
 const glyphCount = async () =>
   (await vscode.commands.executeCommand('isabelle.decorationRanges')).withGlyph
 const probe = dir => vscode.commands.executeCommand('isabelle.atomicProbe', dir)
@@ -66,22 +62,19 @@ async function run() {
   pass('caret strictly inside reveals the escape as raw text')
 
   // ==================== selection ====================
-  editor.selection = new vscode.Selection(4, 0, 4, s)
-  await wait(300)
+  await select(editor, new vscode.Selection(4, 0, 4, s))
   assert.strictEqual(await glyphCount(), baseline,
     'a selection ending exactly at the symbol start must not reveal it')
   pass('selection abutting a symbol keeps the glyph')
 
-  editor.selection = new vscode.Selection(4, 0, 4, s + 3)
-  await wait(300)
+  await select(editor, new vscode.Selection(4, 0, 4, s + 3))
   assert.strictEqual(await glyphCount(), baseline - 1,
     'a selection overlapping the symbol must reveal it')
   pass('selection overlapping a symbol reveals it')
 
   await setCaret(editor, 4, e)
   await vscode.commands.executeCommand('isabelle.cursorLeftSelect')
-  await wait(250)
-  let sel = editor.selection
+  let sel = await settled(() => editor.selection, x => doc.getText(x) === '\\<forall>')
   console.log(`  shift+Left from ${e}: anchor=${sel.anchor.character} active=${sel.active.character} text=${JSON.stringify(doc.getText(sel))}`)
   assert.strictEqual(sel.anchor.character, e, 'anchor must stay put')
   assert.strictEqual(sel.active.character, s, 'active must jump to the escape start')
@@ -90,8 +83,7 @@ async function run() {
 
   await setCaret(editor, 4, s)
   await vscode.commands.executeCommand('isabelle.cursorRightSelect')
-  await wait(250)
-  sel = editor.selection
+  sel = await settled(() => editor.selection, x => doc.getText(x) === '\\<forall>')
   assert.strictEqual(doc.getText(sel), '\\<forall>', 'shift+Right must select the whole escape')
   assert.strictEqual(sel.active.character, e)
   assert.strictEqual(sel.anchor.character, s, 'anchor must stay at the start')
@@ -160,20 +152,26 @@ async function run() {
     '', 'end', '',
   ])
   const cutText = l => cut.doc.lineAt(l).text
-  const deleteChar = (l, c) => cut.editor.edit(b => b.delete(new vscode.Range(l, c, l, c + 1)),
-    { undoStopBefore: true, undoStopAfter: false })
+  /* The extension decides in the change event whether a deletion cut a rendered symbol, and
+     if so sends the rest of it after: once no such edit is in flight, the text is final. */
+  const deleteChar = async (l, c) => {
+    await cut.editor.edit(b => b.delete(new vscode.Range(l, c, l, c + 1)),
+      { undoStopBefore: true, undoStopAfter: false })
+    await settled(() => vscode.commands.executeCommand('isabelle.atomicState'), st => st.repairsInFlight === 0)
+  }
 
   const fEnd = cutText(4).indexOf('\\<forall>') + '\\<forall>'.length
   await setCaret(cut.editor, 4, fEnd)
   await deleteChar(4, fEnd - 1)
-  await wait(400)
   assert.strictEqual(cutText(4), 'lemma r1: "x. x"', 'Backspace at a symbol\'s end removes all of it')
   pass('a symbol cut by a native Backspace is removed whole')
   /* `undo` acts on the focused editor, and a test window running beside others often has
      no focus: then nothing is undone at all, and the check is skipped rather than failed.
      Anything undone must be the whole symbol, in one step. */
-  await vscode.commands.executeCommand('undo')
-  await wait(300)
+  if (vscode.window.state.focused) {
+    await vscode.commands.executeCommand('undo')
+    await settled(() => cutText(4), t => t !== 'lemma r1: "x. x"', 3000)
+  }
   console.log(`  after undo: ${JSON.stringify(cutText(4))}`)
   if (cutText(4) === 'lemma r1: "x. x"') {
     console.log('  SKIP: undo did not reach the editor (window not focused)')
@@ -186,19 +184,16 @@ async function run() {
   const aStart = cutText(5).indexOf('\\<and>')
   await setCaret(cut.editor, 5, aStart)
   await deleteChar(5, aStart)
-  await wait(400)
   assert.strictEqual(cutText(5), 'lemma r2: "A  B"', 'Delete at a symbol\'s start removes all of it')
   pass('a symbol cut by a native Delete is removed whole')
 
   const gt = cutText(6).indexOf('>')
   await setCaret(cut.editor, 6, gt + 1)
   await deleteChar(6, gt)
-  await wait(400)
   assert.strictEqual(cutText(6), 'lemma r3: "x  0"', 'a > that ends no symbol is just a character')
   const inside = cutText(7).indexOf('\\<forall>') + 1
   await setCaret(cut.editor, 7, inside)
   await deleteChar(7, inside - 1)
-  await wait(400)
   assert.strictEqual(cutText(7), 'lemma r4: "<forall>y. y"',
     'inside a revealed symbol, a Backspace deletes one character as shown')
   pass('deletions that cut no rendered symbol are left alone')
@@ -209,19 +204,15 @@ async function run() {
   const fStart = fEnd - '\\<forall>'.length
   const caretAt = () => cut.editor.selection.active.character
   await setCaret(cut.editor, 4, fEnd)
-  cut.editor.selection = new vscode.Selection(4, fEnd - 1, 4, fEnd - 1)
-  await wait(300)
+  await setCaret(cut.editor, 4, fEnd - 1)
   assert.strictEqual(caretAt(), fStart, 'Left into a symbol from its end goes on to its start')
-  cut.editor.selection = new vscode.Selection(4, fStart + 1, 4, fStart + 1)
-  await wait(300)
+  await setCaret(cut.editor, 4, fStart + 1)
   assert.strictEqual(caretAt(), fEnd, 'Right into a symbol from its start goes on to its end')
-  cut.editor.selection = new vscode.Selection(4, fEnd, 4, fEnd - 1)
-  await wait(300)
+  await select(cut.editor, new vscode.Selection(4, fEnd, 4, fEnd - 1))
   assert.strictEqual(cut.doc.getText(cut.editor.selection), '\\<forall>',
     'Shift+Left selects the whole symbol, keeping the anchor')
   await setCaret(cut.editor, 4, fStart + 3)
-  cut.editor.selection = new vscode.Selection(4, fStart + 2, 4, fStart + 2)
-  await wait(300)
+  await setCaret(cut.editor, 4, fStart + 2)
   assert.strictEqual(caretAt(), fStart + 2, 'inside a revealed symbol the caret moves per character')
   pass('a native arrow that steps into a rendered symbol is carried over it')
 
@@ -231,7 +222,7 @@ async function run() {
   const sent = async () => (await vscode.commands.executeCommand('isabelle.decorationRanges')).sent
   const typeAt = async (l, c, text) => {
     await cut.editor.edit(b => b.insert(new vscode.Position(l, c), text))
-    await wait(250)
+    await decorationsSettled()
   }
   await setCaret(cut.editor, 6, cutText(6).length)
   let before = await sent()
@@ -292,16 +283,14 @@ async function run() {
 
   // Somewhere strictly inside the rendered escape, but not at its boundaries.
   await mark(4, os + 2)
-  await wait(200)
-  r = await ranges()
+  r = await settled(ranges, x => x.linked === 1)
   assert.strictEqual(r.linked, 1, 'the hovered glyph moves to the linked decoration')
   assert.deepStrictEqual(r.linkedGlyphs.length, 1, JSON.stringify(r.linkedGlyphs))
   pass('a glyph offered as a link is drawn underlined rather than left unmarked')
 
   // A position outside any escape must take the offer away again.
   await mark(4, 0)
-  await wait(200)
-  r = await ranges()
+  r = await settled(ranges, x => x.linked === 0)
   assert.strictEqual(r.linked, 0, 'moving off the glyph withdraws the underline')
   pass('the underline is withdrawn when the offer moves elsewhere')
 
@@ -332,7 +321,7 @@ async function run() {
   assert.strictEqual(cart.editor.selection.active.character, 12)
   await setCaret(cart.editor, 4, 15)
   await vscode.commands.executeCommand('isabelle.deleteWordLeft')
-  await wait(200)
+  await settled(() => cart.doc.lineAt(4).text, x => x === 'text \\<open> bar\\<close>')
   assert.strictEqual(cart.doc.lineAt(4).text, 'text \\<open> bar\\<close>',
     'Ctrl+Backspace after foo leaves the delimiter in place')
   pass('the rebound word commands move, select and delete by those stops')
@@ -376,7 +365,7 @@ async function run() {
     await vscode.commands.executeCommand('editor.fold', { selectionLines: [7], levels: 1 })
     await wait(300)
   }
-  await wait(400)
+  await decorationsSettled()
   const visible = folded.editor.visibleRanges.map(r => `${r.start.line}-${r.end.line}`)
   console.log(`  visible ranges after folding lemma b: ${visible.join(', ')}`)
   assert.ok(visible.length >= 2, 'folding lemma b must split the viewport, or this tests nothing')

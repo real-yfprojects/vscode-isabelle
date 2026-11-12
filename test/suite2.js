@@ -4,9 +4,11 @@ const assert = require('assert')
 const fs = require('fs')
 const path = require('path')
 
-const wait = ms => new Promise(r => setTimeout(r, ms))
+const { settled, decorationsSettled, select, setCaret, rewriterSettled } = require('./settle')
 let passed = 0
 function pass(msg) { passed++; console.log('PASS: ' + msg) }
+
+const ranges = () => vscode.commands.executeCommand('isabelle.decorationRanges')
 
 async function openScratch(name, content) {
   const ws = vscode.workspace.workspaceFolders[0].uri.fsPath
@@ -14,22 +16,22 @@ async function openScratch(name, content) {
   fs.writeFileSync(file, content, 'utf8')
   const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file))
   const editor = await vscode.window.showTextDocument(doc, { preview: false })
-  await wait(400)
+  await decorationsSettled()
   return { file, doc, editor }
 }
 
-/** Type one character at a time so the rewriter sees realistic single-char changes. */
+/** Type one character at a time so the rewriter sees realistic single-char changes, each
+    once the rewriter is done with the one before. */
 async function typeText(editor, position, text) {
   let pos = position
   for (const ch of text) {
     await editor.edit(b => b.insert(pos, ch), { undoStopBefore: false, undoStopAfter: false })
+    await rewriterSettled(editor.document)
     // the rewriter may have replaced \name with \<name>, so re-derive from the line end
-    await wait(60)
     const line = editor.document.lineAt(pos.line)
     pos = new vscode.Position(pos.line, line.text.length)
-    editor.selection = new vscode.Selection(pos, pos)
+    await select(editor, new vscode.Selection(pos, pos))
   }
-  await wait(200)
   return editor.document.lineAt(position.line).text
 }
 
@@ -60,7 +62,7 @@ async function run() {
   ].join('\n')
   const { editor } = await openScratch('Scratch.thy', body)
 
-  let deco = await vscode.commands.executeCommand('isabelle.decorationRanges')
+  let deco = await settled(ranges, r => r && r.withGlyph >= 2)
   console.log('decorations         : ' + JSON.stringify(deco))
   assert.ok(deco.withGlyph >= 2, `expected >=2 glyph substitutions, got ${deco.withGlyph}`)
   assert.ok(deco.glyphs.includes('∀'), `expected the forall glyph among ${deco.glyphs}`)
@@ -71,14 +73,12 @@ async function run() {
 
   // ---------- 3. reveal-at-cursor ----------
   const before = deco.withGlyph
-  editor.selection = new vscode.Selection(4, 14, 4, 14) // inside \<forall>
-  await wait(300)
-  deco = await vscode.commands.executeCommand('isabelle.decorationRanges')
+  await setCaret(editor, 4, 14) // inside \<forall>
+  deco = await ranges()
   assert.strictEqual(deco.withGlyph, before - 1,
     `caret inside a symbol should reveal exactly one escape (${before} -> ${deco.withGlyph})`)
   pass('the symbol under the caret is revealed as raw text for editing')
-  editor.selection = new vscode.Selection(9, 0, 9, 0)
-  await wait(200)
+  await setCaret(editor, 9, 0)
 
   // ---------- 4. control symbols render as sub/superscript ----------
   const ctl = await openScratch('Ctl.thy', [
@@ -86,9 +86,8 @@ async function run() {
     'definition x\\<^sub>1 :: nat where "x\\<^sub>1 = 1"',
     '', 'end', '',
   ].join('\n'))
-  ctl.editor.selection = new vscode.Selection(6, 0, 6, 0)
-  await wait(400)
-  const cdeco = await vscode.commands.executeCommand('isabelle.decorationRanges')
+  await setCaret(ctl.editor, 6, 0)
+  const cdeco = await settled(ranges, r => r && r.sub >= 2)
   console.log('control decorations : ' + JSON.stringify(cdeco))
   assert.ok(cdeco.sub >= 2, `expected >=2 subscripted chars, got ${cdeco.sub}`)
   pass('control symbols render as subscripts (escape hidden, next char styled)')
@@ -123,8 +122,7 @@ async function run() {
   await nrm.editor.edit(b => b.insert(new vscode.Position(4, 0), 'lemma z: "∀x. x = x"'))
   assert.ok(nrm.doc.getText().includes('∀'), 'precondition: buffer holds literal Unicode')
   await vscode.commands.executeCommand('workbench.action.files.save')
-  await wait(1500)
-  const onDisk = fs.readFileSync(nrm.file, 'utf8')
+  const onDisk = await settled(() => fs.readFileSync(nrm.file, 'utf8'), t => t.includes('lemma z'))
   console.log('disk after save     : ' + JSON.stringify(onDisk.split('\n')[4]))
   assert.ok(onDisk.includes('\\<forall>'), 'disk must hold the ASCII escape')
   assert.ok(!onDisk.includes('∀'), 'disk must not hold literal Unicode')
@@ -138,27 +136,25 @@ async function run() {
   const lineText = atom.doc.lineAt(4).text
   const symStart = lineText.indexOf('\\<forall>')
   const symEnd = symStart + '\\<forall>'.length
-  atom.editor.selection = new vscode.Selection(4, symEnd, 4, symEnd)
-  await wait(200)
+  const caret = () => atom.editor.selection.active.character
+  await setCaret(atom.editor, 4, symEnd)
   await vscode.commands.executeCommand('isabelle.cursorLeft')
-  await wait(200)
+  await settled(caret, c => c === symStart)
   console.log(`cursorLeft          : ${symEnd} -> ${atom.editor.selection.active.character} (escape starts at ${symStart})`)
   assert.strictEqual(atom.editor.selection.active.character, symStart,
     'one left-arrow should jump over the whole escape')
   pass('left arrow steps over \\<forall> as a single unit')
 
   await vscode.commands.executeCommand('isabelle.cursorRight')
-  await wait(200)
+  await settled(caret, c => c === symEnd)
   assert.strictEqual(atom.editor.selection.active.character, symEnd,
     'one right-arrow should jump back over the whole escape')
   pass('right arrow steps over \\<forall> as a single unit')
 
   // ---------- 9. atomic deletion ----------
-  atom.editor.selection = new vscode.Selection(4, symEnd, 4, symEnd)
-  await wait(150)
+  await setCaret(atom.editor, 4, symEnd)
   await vscode.commands.executeCommand('isabelle.deleteLeft')
-  await wait(300)
-  const after = atom.doc.lineAt(4).text
+  const after = await settled(() => atom.doc.lineAt(4).text, t => t !== lineText)
   console.log('after deleteLeft    : ' + JSON.stringify(after))
   assert.ok(!after.includes('\\<forall>'), 'backspace should remove the whole escape')
   assert.strictEqual(after, lineText.replace('\\<forall>', ''), 'only the escape should be gone')

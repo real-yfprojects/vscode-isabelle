@@ -198,7 +198,10 @@ async function run() {
   assert.ok(!bulb.some(a => /^Sledgehammer all/.test(a.title)), 'not for all: the lemma has one')
   // `two` is false and not proved either: as a fact it proves anything, and a prover that is
   // quick with it (vampire, where there is one) ends the run before the falsification says so.
-  await setOptions({ facts: 'del: two' })
+  /* 15 s was too short for the counterexample on a loaded Linux runner ("No proof found").
+     A longer budget costs nothing when it is not needed: the run is cancelled below as soon
+     as it says the goal is falsified. */
+  await setOptions({ facts: 'del: two', timeout: 60 })
   t0 = Date.now()
   await vscode.commands.executeCommand(hammerThis.command.command, ...hammerThis.command.arguments)
   const falsify = await newJob(t0 - 1)
@@ -213,13 +216,16 @@ async function run() {
   // --- 4. falsification -------------------------------------------------------------------
   const falsified = await until('the false goal', 90, async () => {
     const j = await job(falsify.id)
-    return j && !active(j) ? j : undefined
-  })
+    return j && (j.falsified || !active(j)) ? j : undefined
+  }, 250)
+  if (falsified && active(falsified)) {
+    await vscode.commands.executeCommand('isabelle.sledgehammerCancelJob', falsified.id)
+  }
   console.log(`  wrong: ${falsified && falsified.status}, falsified: ${falsified && falsified.falsified}` +
     `, messages: ${JSON.stringify((falsified && falsified.messages || []).map(m => m.replace(/<[^>]*>/g, '')).slice(-3))}`)
   assert.ok(falsified && falsified.falsified, 'c = 4 should be falsified')
   pass('a false goal is reported as falsified')
-  await setOptions({ facts: '' })
+  await setOptions({ facts: '', timeout: 15 })
 
   // --- 5. all the sorrys of a lemma, put in ---------------------------------------------------
   const THREE = at('lemma three')
@@ -243,8 +249,17 @@ async function run() {
   for (const j of done) console.log(`  ${j.label}: ${j.status}, ${j.proofs.length} proof(s) ${JSON.stringify(j.proofs)}` +
     ` in ${((j.endedAt - j.startedAt) / 1000).toFixed(1)}s`)
   assert.ok(done.every(j => j.proofs.length > 0), 'each sorry should get a proof')
-  assert.ok(done.every(j => j.endedAt - j.startedAt < 15000 * 2),
-    'stopped at the first proof, well before twice the timeout')
+  /* Stopped at the first proof: the server ends a job the moment a message brings one, so
+     its update with the first proofs is followed straight by "finished". One that ran on
+     would have more messages first. Checked by order, not by time: the bound this replaced
+     (twice the timeout) failed on a loaded macOS runner where the runs were merely slow. */
+  const updates = ((await vscode.commands.executeCommand('isabelle.sledgehammerState')) || {}).updates || []
+  for (const j of done) {
+    const mine = updates.filter(u => u.id === j.id)
+    const first = mine.findIndex(u => u.proofs > 0)
+    assert.ok(first >= 0 && mine[first + 1] && mine[first + 1].status === 'finished',
+      `${j.label} stopped at its first proof: ${mine.map(u => u.status + (u.proofs ? `+${u.proofs}` : '')).join(' ')}`)
+  }
   const lenses = await vscode.commands.executeCommand('vscode.executeCodeLensProvider', doc.uri)
   assert.ok(lenses.some(l => l.command && l.command.command === 'isabelle.sledgehammerApply'),
     'the proofs are offered as CodeLenses')

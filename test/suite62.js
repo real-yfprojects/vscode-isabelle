@@ -46,6 +46,9 @@ const linesFrom = (doc, line, n) => doc.getText().split('\n').slice(line, line +
 async function takeGhost(editor, line, done, seconds) {
   const deadline = Date.now() + seconds * 1000
   let unfocused = false
+  // The keyboard into this editor: the selection set before does not move it there.
+  await vscode.window.showTextDocument(editor.document, { preview: false, preserveFocus: false })
+  await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup')
   while (Date.now() < deadline) {
     if (!vscode.window.state.focused) { unfocused = true; break }
     await vscode.commands.executeCommand('editor.action.inlineSuggest.trigger')

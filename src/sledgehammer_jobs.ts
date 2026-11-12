@@ -244,7 +244,14 @@ export class SledgehammerJobs implements vscode.CodeLensProvider, vscode.CodeAct
 
   /* ---------- from the server ---------- */
 
+  /** The last 500 updates of every job, the agent's included, for a test: what the server
+      did and in which order -- queued for a slot, stopped at a proof -- rather than how long
+      it took, which says little on a loaded machine. */
+  readonly updates: { id: string; status: JobStatus; proofs: number; at: number }[] = []
+
   private onUpdate(u: Update): void {
+    this.updates.push({ id: u.id, status: u.status, proofs: u.proofs?.length ?? 0, at: Date.now() })
+    if (this.updates.length > 500) this.updates.shift()
     const job = this.jobs.get(u.id)
     if (!job || !isActive(job)) return
     if (u.message) {

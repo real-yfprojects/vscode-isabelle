@@ -156,11 +156,16 @@ async function run() {
   pass('isabelle_check loads a theory nobody opened, and reports its error with the goal, in ASCII')
 
   // --- check: a theory being written has no end yet, and only an end consolidates ---
-  // The sleep makes a check that ran it again take seconds rather than none.
+  /* The ML command writes an x to Agent_Draft.runs each time it runs, so "not checked again"
+     is a count rather than a time; the sleep makes the first check wait. */
   const draft = path.join(ws, 'Agent_Draft.thy')
+  const runs = path.join(ws, 'Agent_Draft.runs')
+  fs.rmSync(runs, { force: true })
   fs.writeFileSync(draft, ['theory Agent_Draft', '  imports Main', 'begin', '',
-    'ML_val \\<open>OS.Process.sleep (Time.fromSeconds 6)\\<close>', '',
+    'ML_val \\<open>(File.append (Path.append \\<^master_dir> (Path.basic "Agent_Draft.runs")) "x";' +
+      ' OS.Process.sleep (Time.fromSeconds 6))\\<close>', '',
     'lemma "rev (rev xs) = xs"', '  by simp', ''].join('\n'), 'utf8')
+  const ranTimes = () => fs.existsSync(runs) ? fs.readFileSync(runs, 'utf8').length : 0
   const timed = async args => {
     const started = Date.now()
     const result = await call('isabelle_check', args)
@@ -170,40 +175,45 @@ async function run() {
   assert.match(first.result.text, /Agent_Draft\.thy: checked in/)
   assert.match(first.result.text, /has no end/)
   assert.ok(first.seconds >= 6, 'the first check waits for the theory')
+  assert.strictEqual(ranTimes(), 1, 'the first check ran the theory once')
   const again = await timed({ path: 'Agent_Draft.thy', timeout_s: 120 })
   assert.match(again.result.text, /checked in/)
-  assert.ok(again.seconds < 2, `a checked theory is not checked again (${again.seconds} s)`)
+  assert.strictEqual(ranTimes(), 1, `a checked theory is not checked again (${again.seconds} s)`)
   pass('a theory without end is checked once its commands are, and says it has no end')
 
   const opened = await vscode.window.showTextDocument(vscode.Uri.file(draft))
+  /* Room for a wrong second run to start before the check looks: nothing marks the moment
+     PIDE has taken in the editor's copy, and without this a regression would pass. */
   await wait(1000)
   const inEditor = await timed({ path: draft, timeout_s: 120 })
   assert.match(inEditor.result.text, /checked in/)
-  assert.ok(inEditor.seconds < 2, `opening a checked theory does not check it again (${inEditor.seconds} s)`)
+  assert.strictEqual(ranTimes(), 1, `opening a checked theory does not check it again (${inEditor.seconds} s)`)
   assert.strictEqual(vscode.window.activeTextEditor?.document, opened.document)
   await vscode.commands.executeCommand('workbench.action.closeActiveEditor')
   pass('opening the checked theory in an editor does not check it again')
 
   // --- check: a command that takes long is named, and a check need not wait for it ---
   const slow = path.join(ws, 'Agent_Slow.thy')
-  fs.writeFileSync(slow, slowTheory('Agent_Slow', 30), 'utf8')
+  /* 300 s, longer than any check below waits: a call that waited for the command instead of
+     answering would come back with another text than the one asserted, so none of these
+     needs a bound on how long it took -- which a loaded CI machine broke. */
+  fs.writeFileSync(slow, slowTheory('Agent_Slow', 300), 'utf8')
   const started = await timed({ path: 'Agent_Slow.thy', wait: false })
   assert.ok(!started.result.isError, 'asking for a theory nobody loaded is no error')
-  assert.match(started.result.text, /being checked \(\d+% done\)/)
-  assert.ok(started.seconds < 5, `wait false answers at once (${started.seconds} s)`)
+  assert.match(started.result.text, /being checked \(\d+% done\)/, `wait false answers at once (${started.seconds} s)`)
   const early = await timed({ path: 'Agent_Slow.thy', timeout_s: 8 })
   assert.match(early.result.text, /still being checked \(\d+%\) when the timeout passed/)
   assert.match(early.result.text, /Running now:\n\s+line 5: ML \\<open>/, 'the slow command is named')
   assert.match(early.result.text, /Waiting for the prover: \d+ commands? \(.*\), the first at line 7: lemma/)
   assert.match(early.result.text, /same command is still running/)
-  assert.ok(early.seconds >= 7 && early.seconds < 20, `it waits for the timeout (${early.seconds} s)`)
+  assert.ok(early.seconds >= 7, `it waits for the timeout (${early.seconds} s)`)
   const peek = await timed({ path: 'Agent_Slow.thy', wait: false })
   assert.match(peek.result.text.split('\n')[0], /^Agent_Slow\.thy: being checked \(\d+% done\): 0 errors/)
   assert.match(peek.result.text, /Running now:\n\s+line 5: ML \\<open>/)
   assert.ok(!/same command is still running/.test(peek.result.text), 'no verdict on a command that just runs')
-  assert.ok(peek.seconds < 3, `a check that does not wait answers at once (${peek.seconds} s)`)
   /* What the report advises: editing the command that runs ends its run, so the check
-     ends with the edit and not after the 30 s, of which about 20 are left. */
+     ends with the edit. Had it not, the check would come back with the command still
+     running -- as stuck after 30 s -- and not "checked". */
   const slowDoc = await vscode.workspace.openTextDocument(vscode.Uri.file(slow))
   const shorten = new vscode.WorkspaceEdit()
   shorten.replace(slowDoc.uri, slowDoc.lineAt(4).range,
@@ -211,8 +221,7 @@ async function run() {
   assert.ok(await vscode.workspace.applyEdit(shorten))
   const slowDone = await timed({ path: 'Agent_Slow.thy', timeout_s: 120 })
   assert.match(slowDone.result.text, /Agent_Slow\.thy: checked in/)
-  assert.ok(!/Running now/.test(slowDone.result.text))
-  assert.ok(slowDone.seconds < 12, `the edit ended the run (${slowDone.seconds} s)`)
+  assert.ok(!/Running now/.test(slowDone.result.text), `the edit ended the run (${slowDone.seconds} s)`)
   await slowDoc.save()
   const after = await timed({ path: 'Agent_Slow.thy', wait: false })
   assert.match(after.result.text, /Agent_Slow\.thy: checked in/, 'a checked theory is the result, whatever wait says')
@@ -234,7 +243,7 @@ async function run() {
   assert.match(imported.result.text, /Agent_BadImport\.thy: not checked in/)
   assert.match(imported.result.text, /did not run the theory/)
   assert.match(imported.result.text, /Bad theory import "[\w.]*Nonexistent_Theory"/)
-  assert.ok(imported.seconds < 45, `it does not wait for its timeout (${imported.seconds} s)`)
+  // Waiting out the timeout would say "still being checked", not "not checked".
   const glimpse = await timed({ path: 'Agent_BadImport.thy', wait: false })
   assert.match(glimpse.result.text, /being checked \(\d+% done\)/)
   assert.match(glimpse.result.text, /A command has failed and none runs/, 'the hint for the next call')
@@ -253,13 +262,14 @@ async function run() {
   assert.match(stuck.result.text, /probably stuck/)
   assert.match(stuck.result.text, /Running now:\n\s+line 6: by \(tactic/, 'the stuck command is named')
   assert.ok(!/same command is still running/.test(stuck.result.text), 'no second verdict')
-  assert.ok(stuck.seconds >= 30 && stuck.seconds < 80, `it answers before its timeout (${stuck.seconds} s)`)
+  // At its timeout the check would say "still being checked", not "no progress".
+  assert.ok(stuck.seconds >= 30, `the command ran 30 s before it was called stuck (${stuck.seconds} s)`)
   const stuckAt = Date.now()
   const stuckState = await call('isabelle_state', { path: 'Agent_Stuck.thy', line: 6 })
   const stuckStateSeconds = (Date.now() - stuckAt) / 1000
   assert.match(stuckState.text, /\[running\]/)
   assert.match(stuckState.text, /still running this command/)
-  assert.ok(stuckStateSeconds < 25, `state does not wait for a command that runs on (${stuckStateSeconds} s)`)
+  // Had state waited for the command (300 s), it would not say that it still runs.
   /* As the report advises: the edit ends the run. */
   const stuckDoc = await vscode.workspace.openTextDocument(vscode.Uri.file(stuckFile))
   const unstick = new vscode.WorkspaceEdit()
@@ -365,7 +375,24 @@ async function run() {
   const cancelled = await vscode.commands.executeCommand('isabelle.agentCall', 'isabelle_sledgehammer',
     { path: file, line: at('lemma app'), goal: hard, timeout_s: 40 }, 4000)
   assert.ok(cancelled.isError && /Cancelled/.test(cancelled.text), 'the call should be cancelled')
-  assert.ok(Date.now() - cancelledAt < 10000, 'at once')
+  // A call that ignored the cancellation would come back with Sledgehammer's answer instead.
+  /* The server runs two jobs at a time and says "queued" of one that waits for a slot.
+     Checked by what it said, not by how long the calls took: the bound this replaced (both
+     within 30 s) is also what one run after the other takes on a slow machine, and failed on
+     a loaded macOS runner. A run cancelled before it started frees its slot only when it
+     would have started, so a call may queue briefly then; that case is told apart. */
+  const updates = async () =>
+    ((await vscode.commands.executeCommand('isabelle.sledgehammerState')) || {}).updates || []
+  const agentUpdates = async () =>
+    (await updates()).filter(u => u.id.startsWith('agent-') && u.at >= cancelledAt)
+  const cancelledId = ((await agentUpdates()).find(u => u.status === 'starting' || u.status === 'queued') || {}).id
+  /* The call answers the moment it is cancelled; the server's "cancelled" comes after. */
+  let ofCancelled = []
+  for (const deadline = Date.now() + 15000; Date.now() < deadline; await wait(200)) {
+    ofCancelled = (await agentUpdates()).filter(u => u.id === cancelledId)
+    if (ofCancelled.some(u => u.status === 'cancelled')) break
+  }
+  const ranBeforeCancel = ofCancelled.some(u => u.status === 'running')
   const twoAt = Date.now()
   const [one, two] = await Promise.all([
     call('isabelle_sledgehammer', { path: file, line: at('lemma rr'), timeout_s: 15 }),
@@ -373,7 +400,13 @@ async function run() {
   ])
   const both = (Date.now() - twoAt) / 1000
   assert.ok(!one.isError && !two.isError, 'both calls should answer')
-  assert.ok(both < 30, `side by side, and no slot held by the cancelled run (${both.toFixed(1)} s)`)
+  const queued = (await updates()).filter(u => u.id.startsWith('agent-') && u.at >= twoAt && u.status === 'queued')
+  if (ranBeforeCancel) {
+    assert.strictEqual(queued.length, 0,
+      `side by side, and no slot held by the cancelled run: ${JSON.stringify(queued)} (${both.toFixed(1)} s)`)
+  } else {
+    console.log(`NOTE: the cancelled run (${cancelledId}) had not started, so a call may queue until it would have`)
+  }
   pass(`a cancelled call frees its slot, and two calls run at once (${both.toFixed(1)} s)`)
 
   // --- the endpoint, as Copilot or the relay reach it ---
@@ -426,17 +459,29 @@ async function run() {
 
   /* The agent goes on while a check runs: through the relay, a call made while another is
      under way is answered at once, not after it. */
+  /* By order, not by time: the call is answered before the check ends. The check's command
+     sleeps 300 s, so a call held up behind it could not come first, however slow the
+     machine; once answered, an edit of that command ends the check, as above. */
   const slow2 = path.join(ws, 'Agent_Slow2.thy')
-  fs.writeFileSync(slow2, slowTheory('Agent_Slow2', 20), 'utf8')
+  fs.writeFileSync(slow2, slowTheory('Agent_Slow2', 300), 'utf8')
+  let longEnded = false
   const longCheck = relay.call('tools/call', { name: 'isabelle_check',
     arguments: { path: 'Agent_Slow2.thy', timeout_s: 120 }, _meta: { progressToken: 'slow2' } })
-  await wait(2000)
+  void longCheck.then(() => { longEnded = true })
+  assert.ok(await until(undefined, 60, async () => relay.notes.some(n => n.method === 'notifications/progress' &&
+    n.params.progressToken === 'slow2' && /running line 5: ML/.test(n.params.message)), 200),
+    'the check gets under way, and says it runs line 5')
   const meanwhileAt = Date.now()
   const meanwhile = await relay.call('tools/call',
     { name: 'isabelle_state', arguments: { path: file, line: at('  done') } })
   const meanwhileSeconds = (Date.now() - meanwhileAt) / 1000
   assert.match(meanwhile.result.content[0].text, /done/)
-  assert.ok(meanwhileSeconds < 10, `answered while the check runs (${meanwhileSeconds.toFixed(1)} s)`)
+  assert.ok(!longEnded, `answered while the check runs (${meanwhileSeconds.toFixed(1)} s)`)
+  const slow2Doc = await vscode.workspace.openTextDocument(vscode.Uri.file(slow2))
+  const shorten2 = new vscode.WorkspaceEdit()
+  shorten2.replace(slow2Doc.uri, slow2Doc.lineAt(4).range, 'ML \\<open>OS.Process.sleep (Time.fromSeconds 1)\\<close>')
+  assert.ok(await vscode.workspace.applyEdit(shorten2))
+  await slow2Doc.save()
   const longDone = await longCheck
   assert.match(longDone.result.content[0].text, /Agent_Slow2\.thy: checked in/)
   /* What Claude Code shows with the running call: how far the check is, and what runs. */

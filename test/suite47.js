@@ -8,6 +8,7 @@ const vscode = require('vscode')
 const assert = require('assert')
 const fs = require('fs')
 const target_ = require('./server_target')
+const { settled } = require('./settle')
 const { anchorPosition } = require('../out/tutorial.js')
 
 const EXT_ID = 'yfprojects.vscode-isabelle'
@@ -27,7 +28,7 @@ async function until(what, probe, timeoutMs = 240000) {
       throw new Error(`language client failed while waiting for ${what}: ${status.lastError}`)
     }
     try { last = await probe(); if (last) return last } catch { /* not ready */ }
-    await wait(1000)
+    await wait(250)
   }
   throw new Error(`timed out after ${timeoutMs}ms waiting for ${what}`)
 }
@@ -39,9 +40,17 @@ const errors = uri => vscode.languages.getDiagnostics(uri)
  * Open the tutorial at its last command and wait for find_theorems' output: the prover
  * gets there only after checking everything above it, so no error by then means none.
  */
+/** Opens the tutorial, at `anchor` if given, and returns its editor once it is the active one. */
+async function openTutorial(anchor) {
+  await vscode.commands.executeCommand('isabelle.openTutorial', ...(anchor ? [anchor] : []))
+  const editor = await settled(() => vscode.window.activeTextEditor,
+    e => e !== undefined && e.document.uri.fsPath.endsWith('Tutorial.thy'))
+  assert.ok(editor, 'the tutorial should be the active editor')
+  return editor
+}
+
 async function checkTutorial(label) {
-  await vscode.commands.executeCommand('isabelle.openTutorial', 'facts')
-  const editor = vscode.window.activeTextEditor
+  const editor = await openTutorial('facts')
   await until(`find_theorems output (${label})`, async () => {
     const state = await vscode.commands.executeCommand('isabelle.infoviewState')
     return /found \d+ theorem/.test(text(state?.live?.messages)) && state
@@ -81,16 +90,21 @@ async function drive() {
   await font.update('fontFamily', undefined, vscode.ConfigurationTarget.Global, true)
   pass('useIsabelleFont sets the font for theories only')
 
-  const tabs = () => vscode.window.tabGroups.all.flatMap(g => g.tabs).length
+  const tabs = () => vscode.window.tabGroups.all.flatMap(g => g.tabs)
   const before = tabs()
   await vscode.commands.executeCommand('isabelle.gettingStarted')
-  await wait(1000)
-  assert.ok(tabs() > before, 'the walkthrough opens in a tab')
+  const walkthrough = await settled(() => tabs().find(t => !before.includes(t)), t => t !== undefined)
+  assert.ok(walkthrough, 'the walkthrough opens in a tab')
   pass('isabelle.gettingStarted opens the walkthrough')
+  /* Closed again before the tutorial opens beside it. Its page takes the focus once it has
+     loaded, which can be seconds later and has no event to wait for; it then took the
+     tutorial's place as the active editor (5 of 9 CI jobs). What follows is about the
+     tutorial, not about what stands beside it. */
+  await vscode.window.tabGroups.close(walkthrough)
+  await settled(() => tabs().includes(walkthrough), open => !open)
 
   // --- the tutorial --------------------------------------------------------------------
-  await vscode.commands.executeCommand('isabelle.openTutorial', 'goals')
-  let editor = vscode.window.activeTextEditor
+  let editor = await openTutorial('goals')
   assert.ok(editor.document.uri.fsPath.endsWith('Tutorial.thy'), editor.document.uri.fsPath)
   assert.ok(!editor.document.uri.fsPath.startsWith(ext.extensionPath), 'opens a copy, not the shipped file')
   const at = anchorPosition(editor.document.getText(), 'goals')
@@ -114,8 +128,7 @@ async function drive() {
   // A second open keeps the user's copy, edits and all.
   await doc.save()
   await vscode.commands.executeCommand('workbench.action.closeActiveEditor')
-  await vscode.commands.executeCommand('isabelle.openTutorial')
-  editor = vscode.window.activeTextEditor
+  editor = await openTutorial()
   assert.ok(editor.document.getText().includes('x - 1'), 'the edited copy was replaced')
   await editor.edit(e => e.replace(new vscode.Range(line, col, line, col + 5), 'x + 1'))
   await editor.document.save()

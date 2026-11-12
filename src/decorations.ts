@@ -169,8 +169,11 @@ export class SymbolRenderer implements vscode.Disposable {
   private schedule(editor?: vscode.TextEditor): void {
     if (!editor || editor.document.languageId !== 'isabelle') return
     if (this.timer) clearTimeout(this.timer)
-    this.timer = setTimeout(() => this.refresh(editor), 20)
+    this.timer = setTimeout(() => { this.timer = undefined; this.refresh(editor) }, 20)
   }
+
+  /** Whether a refresh is scheduled and has not run, for a test to wait on. */
+  get pending(): boolean { return this.timer !== undefined }
 
   private clearAll(): void {
     for (const editor of vscode.window.visibleTextEditors) {
