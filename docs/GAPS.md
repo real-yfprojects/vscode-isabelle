@@ -9,7 +9,8 @@ code that runs unmodified in stock VS Code. Both of those two have workarounds, 
 stock-VS-Code Isabelle client is feasible; what remains is unwritten UI, not a missing
 capability.
 
-Measured against Isabelle2025-2 and VS Code 1.136.1.
+Measured against Isabelle2025-2 and VS Code 1.136.1. Isabelle2026 changes the picture in one
+place, sendback and dialogs, noted where it applies.
 
 ---
 
@@ -149,7 +150,8 @@ shapes, the bugs found on the way, and what each is verified against — are in
 | Simplifier trace | `vscode-simplifier-trace`, behind `isabelle.simplifierTrace` | `mode=full` alone only *logs*; `interactive` is a separate flag, and the panel waits forever without it |
 | Graph view | `vscode-graphview` | `Graph_Display` wraps the graph in `xml_elem`; matching `GRAPHVIEW` alone finds nothing. It survived every unit test |
 | Colours inside a term | the grammar's inner syntax (`scripts/gen_grammar.scala`), and `semantic_*` markup from the extended server (`vscode-inner-syntax`) | not a jEdit gap -- jEdit colours only a term's variables too. `Rendering.text_color` gives `delimiter` the colour of `string` and none to `numeral` or entities, so the client could not tell operators, constants and types apart. The server now sends them as their own categories, which only ever fill gaps the text colours leave |
-| Sendback | nothing — LSP code actions | exposed twice over: code actions on the goal line *and* `<sendback>` in the panel stream |
+| Sendback | nothing — LSP code actions; with Isabelle2026 also `PIDE/markup_action` | exposed twice over: code actions on the goal line *and* `<sendback>` in the panel stream. Isabelle2026 makes sendback in any output clickable through one generic message, answered with `PIDE/document_edit` (`src/markup_action.ts`) |
+| Dialogs ("Tracing paused. Stop, or continue ...") | `PIDE/markup_action`, Isabelle2026 only | the prover thread waits on a promise until an answer comes, so without a way to click one, the command stays blocked until it is edited |
 | Syslog | nothing — `window/logMessage` | already lands in the Isabelle output channel |
 | Info | nothing — VS Code hovers | jEdit needs a dockable only because it has no hovers |
 | Outline, breadcrumbs, `Ctrl+T` | `src/outline.ts`, client-side | the server advertises **no** symbol provider of either kind. Registering one changed which lines sticky scroll pins, so `viewport.ts` had to follow |
@@ -243,6 +245,8 @@ Verified by running it:
   (a `by simp` action appears there), and as `<sendback>` elements inside
   `PIDE/sledgehammer_output`, which the panel turns into clickable buttons. Clicking one
   round-trips `sledgehammer_sendback` -> `sledgehammer_insert` and edits the theory.
+  Isabelle2026 dropped that pair: the click sends the element as `PIDE/markup_action`,
+  and the server answers with `PIDE/document_edit`.
   An earlier note here claimed the panel stream carried progress only; that was wrong,
   the automated poll simply gave up before the final message arrived
 - Isabelle's spell-checker underlining needs no client code: it arrives as an ordinary

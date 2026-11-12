@@ -36,9 +36,9 @@ and a tutorial theory to try things on. **Isabelle: Get Started** opens it again
 ### Requirements
 
 - VS Code 1.85 or newer
-- [Isabelle2025-2](https://isabelle.in.tum.de/website-Isabelle2025-2/), not yet Isabelle2026,
-  the current release. You only need the distribution itself, not the VSCodium that comes
-  with it.
+- [Isabelle2026](https://isabelle.in.tum.de/), the current release, or
+  [Isabelle2025-2](https://isabelle.in.tum.de/website-Isabelle2025-2/). You only need the
+  distribution itself, not the VS Code that comes with it.
 
 ### 1. Install the extension
 
@@ -87,8 +87,8 @@ There's nothing to download, and your Isabelle installation isn't changed: the e
 only starts Isabelle's language server with its additions in front. Your proofs are
 checked by the same Isabelle as before. To switch back, untick the box.
 
-This works with Isabelle2025-2. With any other version, the extension shows a warning and
-starts the standard server.
+This works with Isabelle2026 and Isabelle2025-2. With any other version, the extension
+shows a warning and starts the standard server.
 
 ### 3. Install the Isabelle fonts
 
@@ -124,10 +124,12 @@ the view into a side bar, or open it in an editor tab beside the theory with the
 **Open in Editor** button in its title bar.
 
 To find Isabelle, the extension first checks `$ISABELLE_HOME`. After that it looks for a
-folder named like `Isabelle2025-2` in `~/Isabelle`, your home folder and `C:\` on Windows,
-or in your home folder, `/opt` and `/usr/local` on Linux. If yours is somewhere else, set
-`isabelle.home` to the folder containing `bin/isabelle`. On macOS that is
-`/Applications/Isabelle2025-2.app/Contents/Resources/Isabelle2025-2`.
+folder named like `Isabelle2026` or `Isabelle2025-2` in `~/Isabelle`, your home folder and
+`C:\` on Windows, or in your home folder, `/opt` and `/usr/local` on Linux, and takes the
+newest it finds. If yours is somewhere else, set `isabelle.home` to the folder containing
+`bin/isabelle`. On macOS that is
+`/Applications/Isabelle2026.app/Contents/Resources/Isabelle2026`. Isabelle2026 comes as
+two macOS downloads, for Apple Silicon and for Intel Macs; use the one for your Mac.
 
 ### 5. Pick a session for your project
 
@@ -188,7 +190,7 @@ they're built differently:
   lemmas with `Ctrl+T` before Isabelle starts. Isabelle-VSCode does more at that stage:
   it highlights other uses of a name, jumps to local definitions, and lists `sorry`s.
 - **Isabelle versions.** Isabelle-VSCode supports Isabelle 2019 and later. This extension
-  targets Isabelle2025-2.
+  targets Isabelle2026 and Isabelle2025-2.
 - **Installing.** Isabelle-VSCode needs Java 21 for its backend. Its per-platform `.vsix`
   files include one. This extension uses the Java that comes with Isabelle.
 
@@ -205,7 +207,7 @@ source and running the tests.
 [BSD 3-Clause](LICENSE), the same license Isabelle itself uses.
 
 The extended server (step 2) is Isabelle's own Scala code with this extension's changes
-applied: the sources are branch `vscode-2025-2` of
+applied: the sources are branches `vscode-2026` and `vscode-2025-2` of
 [mirror-isabelle](https://github.com/real-yfprojects/mirror-isabelle), and the packaged
 extension contains the compiled result. Both are covered by Isabelle's license, reproduced in
 [server/ISABELLE-COPYRIGHT](server/ISABELLE-COPYRIGHT).

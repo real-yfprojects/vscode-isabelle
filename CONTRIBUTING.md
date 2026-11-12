@@ -1,6 +1,6 @@
 # Contributing
 
-You need Node.js, VS Code and an Isabelle2025-2.
+You need Node.js, VS Code and an Isabelle2026 or Isabelle2025-2.
 
 ```sh
 npm install
@@ -21,13 +21,14 @@ in `.dev-profile/`. Your normal VS Code settings and extensions are left alone. 
 profile turns on the extended server and the experimental panels.
 
 The launcher uses the Isabelle the extension would find (`ISABELLE_HOME`, or the newest one
-in `~/Isabelle`), with the extended server, `server/Isabelle2025-2.jar` (see
+in `~/Isabelle`), with the extended server for that release, `server/Isabelle2026.jar`
+or `server/Isabelle2025-2.jar` (see
 [Getting Started, step 2](README.md#2-turn-on-the-extended-server-optional-recommended)).
 It rebuilds that jar first whenever the server's source has changed since the last build,
 which takes a few minutes; otherwise it starts right away. The source is your checkout of
-the server at `../mirror-2025-2` if you have one (or wherever `ISABELLE_SERVER_SOURCE`
-points), else the commit in `server/Isabelle2025-2.ref`. To use a hand-patched Isabelle
-instead, set `ISABELLE_PATCHED_HOME`.
+the server for that release, `../mirror-2026` or `../mirror-2025-2`, if you have one (or
+wherever `ISABELLE_SERVER_SOURCE` points), else the commit in `server/<release>.ref`. To
+use a hand-patched Isabelle instead, set `ISABELLE_PATCHED_HOME`.
 
 ## Tests
 
@@ -69,25 +70,35 @@ a dark theme. `suite46` checks that the images and everything else the walkthrou
 to exist.
 
 CI ([.github/workflows](.github/workflows)) runs the unit suites, builds the extended
-server, then runs the regression set against a released Isabelle with that jar on Linux,
-macOS and Windows, and builds the `.vsix` with the same jar in it.
+server for each supported release, then runs the regression set against each of those
+releases with its jar on Linux, macOS and Windows, and builds the `.vsix` with the same
+jars in it.
+
+The tests and the launcher use the newest Isabelle in `~/Isabelle`. To test against the
+other release, set `ISABELLE_HOME` to it.
+
+The infoview formats Isabelle2026's output itself (`src/pretty.ts`, `src/pide_html.ts`).
+`suite70` holds that against what Isabelle/Scala makes of the same output, recorded in
+`test/fixtures/pide`; `scripts/gen-pide-fixtures.sh <ISABELLE_HOME>` records it again.
 
 ## Changing the language server
 
-The extended server is branch `vscode-2025-2` of
-[mirror-isabelle](https://github.com/real-yfprojects/mirror-isabelle): the Isabelle2025-2
-release plus our changes. Work in a checkout of that branch at `../mirror-2025-2`
-(`git worktree add ../mirror-2025-2 vscode-2025-2` in your mirror-isabelle clone): the dev
-launcher then builds the jar from it, uncommitted changes included. The tests use whatever
-jar is there, so after changing the server run `npm run build` or the launcher once, or
-build by hand:
+The extended server is one branch of
+[mirror-isabelle](https://github.com/real-yfprojects/mirror-isabelle) per supported
+release: `vscode-2026`, the Isabelle2026 release plus our changes, and `vscode-2025-2` for
+Isabelle2025-2. Work in a checkout of the branch beside this repository
+(`git worktree add ../mirror-2026 vscode-2026` in your mirror-isabelle clone, likewise
+`../mirror-2025-2`): the dev launcher then builds the jar from it, uncommitted changes
+included. The tests use whatever jar is there, so after changing the server run
+`npm run build` or the launcher once, or build by hand:
 
 ```sh
-scripts/build-server-jar.sh ~/Isabelle/Isabelle2025-2 ../mirror-2025-2
+scripts/build-server-jar.sh ~/Isabelle/Isabelle2026 ../mirror-2026
 ```
 
 To ship a change, commit and push it there, then put the new commit in
-`server/Isabelle2025-2.ref`. CI builds the packaged jar from that commit.
+`server/Isabelle2026.ref` (or `server/Isabelle2025-2.ref`). CI builds the packaged jars from
+those commits. A change meant for both releases goes onto both branches.
 
 Two kinds of change can't ship this way, because the jar carries only compiled code: new
 system options (read them with a fallback, as the completion options do) and new Scala
@@ -111,7 +122,7 @@ node scripts/demo/record.js --encode-only # re-encode the last take, e.g. with -
 
 It packages the extension as a release would, installs it into a throwaway profile, and
 types the storyboard in [scripts/demo/record.js](scripts/demo/record.js) into a copy of
-`scripts/demo/Demo.thy`. It needs a stock Isabelle2025-2
+`scripts/demo/Demo.thy`. It needs a stock Isabelle2026 or Isabelle2025-2
 with its HOL image, and `ffmpeg` on the `PATH` (or in `$FFMPEG`). A separate VS Code window
 opens for about two minutes. Frames come from that window's renderer, not the screen, but
 keep your mouse off it: a real pointer over it still opens hovers. When a step does not
