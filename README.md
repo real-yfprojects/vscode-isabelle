@@ -43,7 +43,11 @@ and a tutorial theory to try things on. **Isabelle: Get Started** opens it again
 ### 1. Install the extension
 
 Search for "Isabelle/PIDE" in the Extensions view and install the one by yfprojects. From
-a terminal: `code --install-extension yfprojects.vscode-isabelle`.
+a terminal:
+
+```bash
+code --install-extension yfprojects.vscode-isabelle`.
+```
 
 Each release's `.vsix` is also on the
 [Releases page](https://github.com/real-yfprojects/vscode-isabelle/releases), for

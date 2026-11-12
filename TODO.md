@@ -71,6 +71,12 @@ This documents tracks features and tasks that might already be tracked in other 
 
 
 ### High
+- [ ] ML_Heap.share_common_data () button to recover RAM space
+- [ ] Hanging PIDE:I didn't pin down why line 648 hadn't started at 18:10. One candidate is in the source, but I didn't confirm it:
+
+After an edit, the theory's new run waits for the theory's previous run to end (deps = delay :: Execution.active_tasks name).
+That previous run can't be interrupted (interrupts = false), and only notices it was superseded between two commands.
+A command that never returns would therefore hold up the new run.
 - [x] Improve performance: semantic tokens only for the visible range -- a range provider
     instead of the whole-document one (`src/semantic_tokens.ts`); VS Code asks for the
     viewport plus one viewport above and below, again on scrolling. Next to a document
