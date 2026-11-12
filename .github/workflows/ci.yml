@@ -4,7 +4,7 @@
 #
 #   build        the tree compiles and the pure suites pass, on all three platforms
 #   integration  a real prover starts and the regression passes, on all three platforms,
-#                the extended server's suites included -- in two shards per platform
+#                the extended server's suites included -- in shards, two per platform, three on macOS
 #   server-jar   the extended server builds from its pinned commit
 #   package      the .vsix builds, with the extended server compiled into it
 #
@@ -62,22 +62,23 @@ jobs:
 
   integration:
     needs: server-jar
-    # Each platform's suites in two shards on two runners (test/runAll.js splits them by
-    # how long they take): the macOS job, the longest, took 20 min alone. Every suite still
-    # gets an editor and a prover of its own; shards only add runners, which are free here.
-    name: integration (${{ matrix.os }}, ${{ matrix.shard }}/2)
+    # Each platform's suites in shards on several runners (test/runAll.js splits them by
+    # how long they take): the macOS job, the longest, took 20 min alone. macOS gets three,
+    # its runners being the slowest and the most uneven; suite36 alone, about 330 s there,
+    # sets how short a shard can get. Every suite still gets an editor and a prover of its
+    # own; shards only add runners, which are free for this repository.
+    name: integration (${{ matrix.os }}, ${{ matrix.shard }}/${{ matrix.shards }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        shard: [1, 2]
         include:
-          - os: ubuntu-latest
-            bundle: Isabelle2025-2_linux.tar.gz
-          - os: macos-latest
-            bundle: Isabelle2025-2_macos.tar.gz
-          - os: windows-latest
-            bundle: Isabelle2025-2.exe
+          - { os: ubuntu-latest, bundle: Isabelle2025-2_linux.tar.gz, shard: 1, shards: 2 }
+          - { os: ubuntu-latest, bundle: Isabelle2025-2_linux.tar.gz, shard: 2, shards: 2 }
+          - { os: macos-latest, bundle: Isabelle2025-2_macos.tar.gz, shard: 1, shards: 3 }
+          - { os: macos-latest, bundle: Isabelle2025-2_macos.tar.gz, shard: 2, shards: 3 }
+          - { os: macos-latest, bundle: Isabelle2025-2_macos.tar.gz, shard: 3, shards: 3 }
+          - { os: windows-latest, bundle: Isabelle2025-2.exe, shard: 1, shards: 2 }
+          - { os: windows-latest, bundle: Isabelle2025-2.exe, shard: 2, shards: 2 }
     runs-on: ${{ matrix.os }}
     # The bundles are 1.0-1.6 GB and the prover suites are not quick. Generous, because
     # the failure this job exists to catch looks like a hang.
@@ -223,7 +224,22 @@ jobs:
       # A single download can hang too: on macOS one ran past ten minutes against its usual
       # 20 s. fetch-editor.js gives each attempt three minutes and tries twice; the step
       # limit is a backstop should the script itself ever stick.
+      #
+      # Cached, and for more than speed: before any download @vscode/test-electron asks
+      # update.code.visualstudio.com which version "stable" is, and that request timed out
+      # on 4 of 12 runners at once. With an editor already there, the library uses it when
+      # the question goes unanswered. The newest entry is restored; main saves one whenever
+      # the editor it ends up with is another version, so there is one per release of it.
+      - name: Restore the test editor
+        id: editor-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .vscode-test
+          key: vscode-test-${{ runner.os }}-restore
+          restore-keys: vscode-test-${{ runner.os }}-
+
       - name: Pre-download the test editor
+        id: editor
         timeout-minutes: 8
         run: |
           set -eu
@@ -231,11 +247,23 @@ jobs:
           # Handed to runTest.js, which repairs it if the library's guess is wrong.
           echo "VSCODE_TEST_EXECUTABLE=$exe" >> "$GITHUB_ENV"
           echo "editor: $exe"
+          # The version's directory, e.g. vscode-darwin-arm64-1.146.0, names the cache entry;
+          # older versions go, so an entry holds one editor.
+          rel=$(printf '%s' "$exe" | tr '\\' '/'); rel=${rel#*.vscode-test/}; version=${rel%%/*}
+          for d in .vscode-test/vscode-*; do [ "$(basename "$d")" = "$version" ] || rm -rf "$d"; done
+          echo "key=vscode-test-${{ runner.os }}-$version" >> "$GITHUB_OUTPUT"
+
+      - name: Save the test editor
+        if: github.ref == 'refs/heads/main' && steps.editor-cache.outputs.cache-matched-key != steps.editor.outputs.key
+        uses: actions/cache/save@v4
+        with:
+          path: .vscode-test
+          key: ${{ steps.editor.outputs.key }}
 
       - name: Integration suites
         env:
           ISABELLE_TEST_JOBS: 2
-          ISABELLE_TEST_SHARD: ${{ matrix.shard }}/2
+          ISABELLE_TEST_SHARD: ${{ matrix.shard }}/${{ matrix.shards }}
         run: |
           if [ "${{ runner.os }}" = "Linux" ]; then
             sudo apt-get update && sudo apt-get install -y xvfb
