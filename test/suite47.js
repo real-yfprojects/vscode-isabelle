@@ -90,15 +90,18 @@ async function drive() {
   await font.update('fontFamily', undefined, vscode.ConfigurationTarget.Global, true)
   pass('useIsabelleFont sets the font for theories only')
 
-  /* The walkthrough's tab appears first and takes the focus a moment later: until it has,
-     a tutorial opened next can lose its place as the active editor to it. */
   const tabs = () => vscode.window.tabGroups.all.flatMap(g => g.tabs)
   const before = tabs()
   await vscode.commands.executeCommand('isabelle.gettingStarted')
-  const walkthrough = await settled(() => vscode.window.tabGroups.activeTabGroup.activeTab,
-    t => t !== undefined && !before.includes(t))
-  assert.ok(walkthrough && !before.includes(walkthrough), 'the walkthrough opens in a tab')
+  const walkthrough = await settled(() => tabs().find(t => !before.includes(t)), t => t !== undefined)
+  assert.ok(walkthrough, 'the walkthrough opens in a tab')
   pass('isabelle.gettingStarted opens the walkthrough')
+  /* Closed again before the tutorial opens beside it. Its page takes the focus once it has
+     loaded, which can be seconds later and has no event to wait for; it then took the
+     tutorial's place as the active editor (5 of 9 CI jobs). What follows is about the
+     tutorial, not about what stands beside it. */
+  await vscode.window.tabGroups.close(walkthrough)
+  await settled(() => tabs().includes(walkthrough), open => !open)
 
   // --- the tutorial --------------------------------------------------------------------
   let editor = await openTutorial('goals')

@@ -198,7 +198,10 @@ async function run() {
   assert.ok(!bulb.some(a => /^Sledgehammer all/.test(a.title)), 'not for all: the lemma has one')
   // `two` is false and not proved either: as a fact it proves anything, and a prover that is
   // quick with it (vampire, where there is one) ends the run before the falsification says so.
-  await setOptions({ facts: 'del: two' })
+  /* 15 s was too short for the counterexample on a loaded Linux runner ("No proof found").
+     A longer budget costs nothing when it is not needed: the run is cancelled below as soon
+     as it says the goal is falsified. */
+  await setOptions({ facts: 'del: two', timeout: 60 })
   t0 = Date.now()
   await vscode.commands.executeCommand(hammerThis.command.command, ...hammerThis.command.arguments)
   const falsify = await newJob(t0 - 1)
@@ -213,13 +216,16 @@ async function run() {
   // --- 4. falsification -------------------------------------------------------------------
   const falsified = await until('the false goal', 90, async () => {
     const j = await job(falsify.id)
-    return j && !active(j) ? j : undefined
-  })
+    return j && (j.falsified || !active(j)) ? j : undefined
+  }, 250)
+  if (falsified && active(falsified)) {
+    await vscode.commands.executeCommand('isabelle.sledgehammerCancelJob', falsified.id)
+  }
   console.log(`  wrong: ${falsified && falsified.status}, falsified: ${falsified && falsified.falsified}` +
     `, messages: ${JSON.stringify((falsified && falsified.messages || []).map(m => m.replace(/<[^>]*>/g, '')).slice(-3))}`)
   assert.ok(falsified && falsified.falsified, 'c = 4 should be falsified')
   pass('a false goal is reported as falsified')
-  await setOptions({ facts: '' })
+  await setOptions({ facts: '', timeout: 15 })
 
   // --- 5. all the sorrys of a lemma, put in ---------------------------------------------------
   const THREE = at('lemma three')
