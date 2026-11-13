@@ -128,10 +128,12 @@ It packages the extension as a release would, installs it into a throwaway profi
 types the storyboard in [scripts/demo/record.js](scripts/demo/record.js) into a copy of
 `scripts/demo/Demo.thy`. It needs a stock Isabelle2026 or Isabelle2025-2
 with its HOL image, and `ffmpeg` on the `PATH` (or in `$FFMPEG`). A separate VS Code window
-opens for about two minutes. Frames come from that window's renderer, not the screen, but
-keep your mouse off it: a real pointer over it still opens hovers. When a step does not
-appear in time the take stops, says which one, and saves the page as it was then to
-`.demo-recording/failure.png`.
+opens for three to four minutes, most of it Sledgehammer, which the GIF shows as a
+time-lapse with the real time on a clock. Frames come from that window's renderer, not the
+screen, but keep your mouse and keyboard off it: a real pointer over it still opens hovers,
+and the window comes to the front, so keys typed elsewhere can land in the take. When a
+step does not appear in time the take stops, says which one, and saves the page as it was
+then to `.demo-recording/failure.png`.
 
 ## Releasing
 

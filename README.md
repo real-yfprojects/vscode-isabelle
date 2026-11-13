@@ -2,8 +2,10 @@
 
 Isabelle/PIDE client for unmodified VS Code - no need to use a dedicated Isabelle fork of VSCodium
 
-![Finding a function with Ctrl+T, proving a lemma by induction while the infoview follows,
-typing ==> and seeing ⟹, completing lemma names, and jumping into HOL's List.thy](docs/demo.gif)
+![Finding a function with Ctrl+T, taking a proof outline for an induction as ghost text,
+letting Sledgehammer fill in both sorrys from the light bulb, typing ==> and seeing ⟹,
+completing lemma names, hovering a fact for its statement, and jumping into HOL's
+List.thy](docs/demo.gif)
 
 *Recorded with the [extended server](#2-turn-on-the-extended-server-optional-recommended)
 turned on.*

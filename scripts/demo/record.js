@@ -1,5 +1,6 @@
 // Records the README demo: a fresh VS Code with the packaged extension proves two lemmas
-// about binary trees, and the result is encoded as docs/demo.gif.
+// about binary trees -- the first from a proof outline whose sorrys Sledgehammer fills in --
+// and the result is encoded as docs/demo.gif.
 //
 //   node scripts/demo/record.js                 # package, record, encode
 //   node scripts/demo/record.js --reuse-vsix    # skip compiling and packaging
@@ -17,8 +18,8 @@
 // of the file jumped to) instead of sleeping, and the take fails loudly if it does not
 // appear, so a recording that finishes is one that shows the storyboard.
 //
-// Needs: a stock Isabelle2025-2 with its HOL image, and ffmpeg on PATH or in $FFMPEG for
-// the encoding step. The Isabelle fonts (README step 3) are used when installed.
+// Needs: a stock Isabelle2026 or Isabelle2025-2 with its HOL image, and ffmpeg on PATH or
+// in $FFMPEG for the encoding step. The Isabelle fonts (README step 3) are used when installed.
 
 const { spawn, spawnSync } = require('child_process')
 const fs = require('fs')
@@ -162,6 +163,9 @@ function settings(home, opts) {
   return {
     'isabelle.home': home,
     'isabelle.extendedServer': true,
+    // The provers share the machine with the screencast, and the Node case of the demo
+    // lemma can take them more than the default 30 s. The wait is a time-lapse anyway.
+    'isabelle.sledgehammer.timeout': 60,
     'editor.fontFamily': "'Isabelle DejaVu Sans Mono', monospace",
     'editor.fontSize': 15,
     'workbench.colorTheme': opts.theme,
@@ -244,6 +248,28 @@ function killTree(child) {
   }
 }
 
+/**
+ * Windows: the provers of a Sledgehammer run still going when the take ends (Cygwin's E,
+ * say) are cut off from the tree that taskkill follows, run on, and keep the profile's
+ * logs open, so the next take cannot remove it. They are what was started from `home`
+ * since `since` and has lost its parent; another Isabelle's provers have theirs.
+ */
+function killOrphans(home, since) {
+  if (process.platform !== 'win32') return
+  const script = `
+    $all = Get-CimInstance Win32_Process
+    $alive = @{}; $all | ForEach-Object { $alive[$_.ProcessId] = $true }
+    $all | Where-Object {
+      $_.ExecutablePath -and $_.ExecutablePath.StartsWith($env:DEMO_HOME, 'OrdinalIgnoreCase') -and
+      $_.CreationDate -ge [DateTime]::Parse($env:DEMO_SINCE) -and -not $alive[$_.ParentProcessId]
+    } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $_.Name }`
+  const r = spawnSync('powershell', ['-NoProfile', '-Command', script], {
+    encoding: 'utf8', env: { ...process.env, DEMO_HOME: path.resolve(home), DEMO_SINCE: since.toISOString() },
+  })
+  const killed = (r.stdout || '').trim().split(/\r?\n/).filter(Boolean)
+  if (killed.length) console.log(`ended ${killed.length} leftover prover process(es): ${killed.join(', ')}`)
+}
+
 // ---------------------------------------------------------------------------------------
 // Looking at the workbench. Everything here reads the DOM; nothing clicks.
 
@@ -270,6 +296,44 @@ class Director {
     this.timeline = []
     /** Wall-clock spans of typing, retimed by the encoder; see retime(). */
     this.typing = []
+    /** Wall-clock spans of waiting shown as a time-lapse, with a clock on screen. */
+    this.lapses = []
+  }
+
+  /**
+   * Start a time-lapse: until endLapse(), the wait is shown sped up, and a badge with the
+   * real time elapsed says so -- so a Sledgehammer run that takes a minute does not look
+   * like one that takes five seconds.
+   */
+  async startLapse() {
+    this.lapseStart = Date.now() / 1000
+    await this.page.evaluate(() => {
+      const badge = document.createElement('div')
+      badge.id = 'demo-lapse'
+      Object.assign(badge.style, {
+        position: 'fixed', top: '76px', right: '28px', zIndex: 100000,
+        padding: '4px 10px', borderRadius: '4px', pointerEvents: 'none',
+        font: '600 14px var(--vscode-font-family, sans-serif)',
+        color: 'var(--vscode-badge-foreground, #fff)',
+        background: 'var(--vscode-badge-background, #616161)',
+      })
+      const start = Date.now()
+      const show = () => {
+        const s = Math.floor((Date.now() - start) / 1000)
+        badge.textContent = `⏩ fast-forward  ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+      }
+      show()
+      badge.dataset.timer = String(setInterval(show, 1000))
+      document.body.appendChild(badge)
+    })
+  }
+
+  /** End the time-lapse: what it covered plays in `seconds`; the badge stays a moment. */
+  async endLapse(seconds) {
+    this.lapses.push({ start: this.lapseStart, end: Date.now() / 1000, target: seconds * this.pace })
+    await this.page.evaluate(() => clearInterval(Number(document.getElementById('demo-lapse')?.dataset.timer)))
+    await this.pause(1200)
+    await this.page.evaluate(() => document.getElementById('demo-lapse')?.remove())
   }
 
   mark(label) {
@@ -303,11 +367,15 @@ class Director {
 
   until(what, probe, timeout) { return until(what, probe, timeout) }
 
-  /** Whether an element matching `selector`, containing `text`, is on screen. */
+  /**
+   * Whether an element matching `selector`, containing `text`, is on screen. The editor
+   * draws spaces as no-break spaces, which `\s` also matches.
+   */
   visible(selector, text = '') {
     return this.page.evaluate(([sel, text]) => [...document.querySelectorAll(sel)].some(el =>
       getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden' &&
-      el.getBoundingClientRect().height > 0 && el.textContent.includes(text)), [selector, text])
+      el.getBoundingClientRect().height > 0 &&
+      el.textContent.replace(/\s/g, ' ').includes(text)), [selector, text])
   }
 
   /** Text of every webview; the infoview is the only one open during the take. */
@@ -346,6 +414,42 @@ class Director {
   errors() {
     return this.page.evaluate(() =>
       document.querySelectorAll('.editor-group-container.active .squiggly-error').length)
+  }
+
+  /** The text of each CodeLens line in the active editor. */
+  lenses() {
+    return this.page.evaluate(() =>
+      [...document.querySelectorAll('.editor-group-container.active .codelens-decoration')]
+        .map(el => (el.textContent || '').replace(/\s/g, ' ')))
+  }
+
+  /** Whether the active editor shows ghost text containing `text`. */
+  ghost(text) {
+    return this.visible('.editor-group-container.active [class*="ghost-text"]', text)
+  }
+
+  /** The text of the line the caret is on, as the editor shows it. */
+  currentLine() {
+    return this.page.evaluate(() => {
+      const editor = document.querySelector('.editor-group-container.active .monaco-editor')
+      const caret = editor?.querySelector('.cursor')
+      if (!caret) return ''
+      const top = caret.getBoundingClientRect().top
+      const line = [...editor.querySelectorAll('.view-line')].find(l => {
+        const r = l.getBoundingClientRect()
+        return r.top <= top + 2 && top < r.bottom
+      })
+      return line ? line.textContent.replace(/\u00a0/g, ' ') : ''
+    })
+  }
+
+  /** Open the light bulb's menu with Ctrl+. and run the action matching `re`. */
+  async quickFix(re, what) {
+    const menu = '.action-widget'
+    await this.press('Control+Period')
+    await this.choose(menu, re, what, 15000)
+    await this.pause(700)
+    await this.press('Enter')
   }
 
   /**
@@ -478,11 +582,11 @@ class Recorder {
   }
 
   /** Stop; the last frame is held for `holdMs`. Writes what encode() needs. */
-  async stop(holdMs, typing) {
+  async stop(holdMs, typing, lapses) {
     await this.cdp.send('Page.stopScreencast')
     this.cdp.off('Page.screencastFrame', this.onFrame)
     const last = this.frames[this.frames.length - 1]
-    const recording = { frames: this.frames, end: (last ? last.t : 0) + holdMs / 1000, typing }
+    const recording = { frames: this.frames, end: (last ? last.t : 0) + holdMs / 1000, typing, lapses }
     fs.writeFileSync(path.join(WORK, 'frames.json'), JSON.stringify(recording, null, 1))
     return this.frames
   }
@@ -492,10 +596,11 @@ class Recorder {
  * Display time of each frame. Typing is retimed to its intended speed: every keystroke is
  * a round trip to a renderer that is also encoding frames, so on a busy machine it runs
  * at a fraction of that, and differently from run to run. Everything between keystrokes --
- * how long Isabelle takes to check, to complete, to jump -- keeps its real duration.
+ * how long Isabelle takes to check, to complete, to jump -- keeps its real duration, except
+ * the time-lapses, which carry a clock of the real time on screen.
  */
-function retime({ frames, end, typing }, realTime) {
-  const spans = realTime ? [] : typing
+function retime({ frames, end, typing, lapses = [] }, realTime) {
+  const spans = [...(realTime ? [] : typing), ...lapses]
     .filter(s => s.end - s.start > s.target).sort((a, b) => a.start - b.start)
   const map = t => {
     let shift = 0
@@ -543,38 +648,79 @@ async function take(d) {
   await d.infoview('goal', 'goal (1 subgoal)', 30000)
   await d.pause(1200)
 
-  d.mark('induction: two subgoals in the infoview')
+  d.mark('induction: the proof outline as ghost text, taken with Tab')
   await d.press('Enter')
-  await d.type('apply (induction t)')
+  await d.type('proof (induction t)')
   await d.infoview('two subgoals', 'goal (2 subgoals)', 30000)
-  await d.pause(2000)
-  // The new line is indented by the number of open subgoals.
   await d.press('Enter')
-  await d.type('apply auto')
-  await d.infoview('no subgoals', 'No subgoals!', 30000)
+  // The provider waits for the prover to run the method; a person who sees nothing after
+  // a while asks again with Alt+\.
+  // Ghost text is syntax-highlighted: a span per token, so `case` and `(Node t1 x2 t2)`
+  // are apart.
+  let asked = Date.now()
+  await d.until('the proof outline as ghost text', async () => {
+    if (await d.ghost('(Node')) return true
+    if (Date.now() - asked > 10000) { await d.page.keyboard.press('Alt+Backslash'); asked = Date.now() }
+    return false
+  }, 40000).catch(async err => {
+    const holders = await d.page.evaluate(() =>
+      [...document.querySelectorAll('.editor-group-container.active .monaco-editor *')]
+        .filter(el => el.children.length === 0 && /Node/.test(el.textContent || ''))
+        .map(el => `${el.parentElement?.className} > ${el.className}: ${el.textContent}`))
+    throw new Error(`${err.message}\n  elements with "Node": ${holders.join('\n    ')}`)
+  })
+  await d.pause(1800)
+  await d.press('Tab')
+  await d.until('the outline in the editor', async () =>
+    /case \(Node[^)]*\)\s*then show \?case sorry\s*qed/.test(await d.editorText()), 5000)
   await d.pause(1200)
-  await d.press('Enter')
-  await d.type('done')
-  await d.pause(500)
+
+  d.mark('Sledgehammer every sorry of the lemma from the light bulb')
+  // From the end of `qed` onto the second case's sorry.
+  await d.press('ArrowUp')
+  await d.until('the caret on a sorry', async () => /sorry\s*$/.test(await d.currentLine()), 3000)
+  await d.pause(400)
+  await d.quickFix(/Sledgehammer all 2 sorrys/, 'Sledgehammer for both sorrys in the light bulb menu')
+  await d.until('Sledgehammer to start', async () =>
+    (await d.lenses()).some(l => /Sledgehammer (running|starting|queued)/.test(l)), 15000)
+  // Running provers for both cases takes a minute or more: shown as a time-lapse.
+  await d.pause(1500)
+  await d.startLapse()
+  // until() takes a probe that throws as "not yet", so a failed run is returned, not thrown.
+  const lenses = await d.until('a proof for both sorrys', async () => {
+    const ls = await d.lenses()
+    if (ls.some(l => /no proof|falsified|Sledgehammer:/.test(l))) return { failed: ls }
+    return ls.filter(l => l.includes('Dismiss')).length === 2 &&
+      !ls.some(l => /Sledgehammer (running|starting|queued)/.test(l)) && ls
+  }, 180000)
+  if (lenses.failed) throw new Error(`Sledgehammer did not prove a sorry: ${lenses.failed.join(' | ')}`)
+  await d.endLapse(5)
+  console.log(`         found: ${lenses.join(' | ')}`)
+  await d.pause(1500)
+  await d.quickFix(/^Replace sorry with/, 'the found proof for the second case')
+  await d.until('the second sorry to be replaced', async () =>
+    !/sorry/.test(await d.currentLine()), 5000)
+  await d.pause(700)
+  await d.press('ArrowUp', 'ArrowUp', 'ArrowUp')
+  await d.until('the caret on the first sorry', async () => /sorry\s*$/.test(await d.currentLine()), 3000)
+  await d.pause(300)
+  await d.quickFix(/^Replace sorry with/, 'the found proof for the first case')
+  await d.until('the lemma to be proved', async () =>
+    !(await d.editorText()).includes('sorry') && (await d.status()) === 'idle' &&
+    (await d.errors()) === 0, 30000)
+  await d.pause(1500)
+  await d.press('ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'End')
+  await d.until('the caret on qed', async () => (await d.currentLine()).trim() === 'qed', 3000)
   await d.press('Enter', 'Enter')
 
-  d.mark('type \\==> and see the glyph, then hover it')
+  d.mark('type \\==> and see the glyph')
   await d.type('lemma "mirror t = mirror u \\==>')
   // The rest waits for the rewrite, which a keystroke racing it would cancel.
   await d.until('\\==> to become \\<Longrightarrow>',
     async () => (await d.editorText()).includes('\\<Longrightarrow>'), 5000)
-  const rest = ' contents t = contents u"'
-  await d.type(rest)
+  await d.type(' contents t = contents u"')
   await d.infoview('goal', 'contents t = contents u', 30000)
-  await d.pause(600)
-  // Hovered once the statement parses, so the hover holds the symbol and no syntax error:
-  // back over the rest of the line, then one more step onto the glyph.
-  await d.hold('ArrowLeft', rest.length + 1)
-  await d.press('Control+K', 'Control+I')
-  await d.until('the symbol hover', () => d.visible('.monaco-hover', 'Longrightarrow'), 5000)
-  await d.pause(2600)
-  await d.press('Escape', 'End')
-  await d.pause(300)
+  await d.pause(1000)
 
   d.mark('complete a fact of our own, then one of HOL')
   await d.press('Enter')
@@ -594,8 +740,19 @@ async function take(d) {
     (await d.status()) === 'idle' && (await d.errors()) === 0, 30000)
   await d.pause(1500)
 
+  d.mark('hover a fact for its statement')
+  // Back over ` rev_rev_ident)` into `contents_mirror`.
+  await d.hold('ArrowLeft', ' rev_rev_ident)'.length + 3)
+  await d.press('Control+K', 'Control+I')
+  await d.until('the statement of contents_mirror in a hover',
+    () => d.visible('.monaco-hover', 'rev (contents'), 10000)
+  await d.pause(2800)
+  await d.press('Escape')
+  await d.pause(300)
+
   d.mark('go to the definition of a HOL fact')
-  await d.press('ArrowLeft', 'ArrowLeft')
+  // Into `rev_rev_ident`.
+  await d.hold('ArrowRight', 6)
   await d.pause(300)
   await d.press('F12')
   await d.tab('List.thy', 30000)
@@ -604,13 +761,22 @@ async function take(d) {
   d.mark('end')
 }
 
-/** The theory the take must leave behind, compared with whitespace collapsed. */
-const EXPECTED = `theory Demo imports Tree begin
-lemma contents_mirror: "contents (mirror t) = rev (contents t)"
-apply (induction t) apply auto done
-lemma "mirror t = mirror u \\<Longrightarrow> contents t = contents u"
-by (metis contents_mirror rev_rev_ident)
-end`
+/**
+ * The theory the take must leave behind, with whitespace collapsed. Each case is proved by
+ * whatever Sledgehammer found first, so that part is a pattern.
+ */
+const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const FOUND = '(?!sorry)\\S.*?'
+const EXPECTED = new RegExp('^' + [
+  escape('theory Demo imports Tree begin'),
+  escape('lemma contents_mirror: "contents (mirror t) = rev (contents t)"'),
+  escape('proof (induction t) case Leaf then show ?case') + ' ' + FOUND,
+  escape('next case (Node') + '[^)]*' + escape(') then show ?case') + ' ' + FOUND,
+  escape('qed'),
+  escape('lemma "mirror t = mirror u \\<Longrightarrow> contents t = contents u"'),
+  escape('by (metis contents_mirror rev_rev_ident)'),
+  escape('end'),
+].join(' ') + '$')
 
 const squash = s => s.replace(/\s+/g, ' ').trim()
 
@@ -692,6 +858,7 @@ async function main() {
 
   const port = await freePort()
   const demo = path.join(dirs.workspace, 'Demo.thy')
+  const launched = new Date()
   const child = spawn(code, [
     dirs.workspace, '--goto', `${demo}:5:1`,
     `--user-data-dir=${dirs.user}`, `--extensions-dir=${dirs.extensions}`,
@@ -754,7 +921,7 @@ async function main() {
     try {
       await take(d)
     } finally {
-      const frames = await rec.stop(3500, d.typing)
+      const frames = await rec.stop(3500, d.typing, d.lapses)
       fs.writeFileSync(path.join(WORK, 'timeline.json'), JSON.stringify(d.timeline, null, 1))
       console.log(`${frames.length} frames in ${path.relative(REPO, FRAMES)}`)
     }
@@ -764,7 +931,7 @@ async function main() {
     await page.keyboard.press('Control+S')
     await sleep(500)
     const written = fs.readFileSync(demo, 'utf8')
-    if (squash(written) !== squash(EXPECTED)) {
+    if (!EXPECTED.test(squash(written)) || written.includes('sorry')) {
       throw new Error(`Demo.thy is not what the storyboard types:\n${written}`)
     }
     if (opts.keepOpen) {
@@ -781,7 +948,10 @@ async function main() {
     throw err
   } finally {
     if (browser) await browser.close().catch(() => {})
-    if (!opts.keepOpen) killTree(child)
+    if (!opts.keepOpen) {
+      killTree(child)
+      killOrphans(home, launched)
+    }
   }
   encode(opts)
 }
