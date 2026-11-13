@@ -80,6 +80,10 @@ other release, set `ISABELLE_HOME` to it.
 The infoview formats Isabelle2026's output itself (`src/pretty.ts`, `src/pide_html.ts`).
 `suite70` holds that against what Isabelle/Scala makes of the same output, recorded in
 `test/fixtures/pide`; `scripts/gen-pide-fixtures.sh <ISABELLE_HOME>` records it again.
+`suite71` clicks what the infoview shows: it answers a dialog and takes a `try0` proof,
+on the stock server and then the extended one, through the message the page's click
+handler posts (`isabelle.infoviewClickActive`). It skips on Isabelle2025-2, which has
+no clickable output.
 
 ## Changing the language server
 

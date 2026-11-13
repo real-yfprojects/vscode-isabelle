@@ -31,7 +31,7 @@ const REGRESSION = ['suite', 'suite2', 'suite4', 'suite6', 'suite12', 'suite15',
                     'suite44', 'suite45', 'suite46', 'suite47', 'suite48', 'suite49', 'suite50',
                     'suite51', 'suite52', 'suite53', 'suite54', 'suite60', 'suite61', 'suite62',
                     'suite63', 'suite64', 'suite65', 'suite66', 'suite67',
-                    'suite68', 'suite69', 'suite70']
+                    'suite68', 'suite69', 'suite70', 'suite71']
 
 /**
  * Suites that need the editor to have focus: they type through VS Code's `type` command,

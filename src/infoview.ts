@@ -39,8 +39,8 @@ import { isabelleCss, MARGIN_SCRIPT, openIsabelleLink, scriptNonce } from './web
 import { INFOVIEW_CSS, InfoSection, InfoviewMode, InfoviewModel, infoviewBody } from './infoview_view'
 import { FIND_BAR_HTML, FIND_CSS, FIND_SCRIPT } from './find_bar'
 import { outputCommand } from './markup_action'
-import { Glyphs, renderPideOutput } from './pide_html'
-import { isYxml } from './yxml'
+import { decodeActive, Glyphs, renderPideOutput } from './pide_html'
+import { content, isElem, isYxml, parseYxmlFailsafe } from './yxml'
 
 export { infoviewBody } from './infoview_view'
 
@@ -112,6 +112,16 @@ export class Infoview implements vscode.WebviewViewProvider {
         inView: this.view !== undefined,
         inEditor: this.editorPanel !== undefined,
       })),
+      // Test hooks: the active elements (sendback, dialog) shown, and a click on the first
+      // whose text matches -- the message the page's click handler posts for it, so only
+      // the browser's own click event is left out.
+      vscode.commands.registerCommand('isabelle.infoviewActive', () =>
+        this.activeElements().map(({ name, text }) => ({ name, text }))),
+      vscode.commands.registerCommand('isabelle.infoviewClickActive', async (pattern: string) => {
+        const hit = this.activeElements().find(a => new RegExp(pattern).test(a.text))
+        if (hit) await this.onMessage({ command: 'markupAction', arg: hit.arg }, 'view')
+        return hit && { name: hit.name, text: hit.text }
+      }),
       vscode.window.onDidChangeTextEditorSelection(e => {
         if (e.textEditor.document.languageId === 'isabelle') this.lastEditor = e.textEditor
       }),
@@ -209,6 +219,28 @@ export class Infoview implements vscode.WebviewViewProvider {
 
   private get shownLive(): InfoSection | undefined {
     return this.paused ? this.frozen : this.latest
+  }
+
+  /* The active elements in what is shown, in order, from the spans both renderers make of
+     them (pide_html.ts, and the extended server's Pretty_Text_Panel.html): the element's
+     name, its text, and the span's data-arg. */
+  private activeElements(): { name: string; text: string; arg: string }[] {
+    const html: string[] = []
+    const collect = (v: unknown): void => {
+      if (typeof v === 'string') html.push(v)
+      else if (Array.isArray(v)) v.forEach(collect)
+      else if (v && typeof v === 'object') Object.values(v).forEach(collect)
+    }
+    collect([this.shownLive, this.pins])
+    const found: { name: string; text: string; arg: string }[] = []
+    for (const s of html) {
+      for (const m of s.matchAll(/data-command="markupAction" data-arg="([^"]*)"/g)) {
+        const body = parseYxmlFailsafe(decodeActive(m[1]))
+        const name = body.length && isElem(body[0]) ? body[0].name : ''
+        found.push({ name, text: content(body), arg: m[1] })
+      }
+    }
+    return found
   }
 
   /** The extended server's whole view. */
