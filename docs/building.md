@@ -114,6 +114,7 @@ same):
 |---|---|
 | backported `PIDE/goto_command`, Event_Timer and Delay changes, `Console_Logger` | upstream's own, so the backport's copies are gone |
 | `PIDE/sledgehammer_sendback` / `_insert` | gone upstream; active markup goes through `PIDE/markup_action` and comes back as `PIDE/document_edit`, and the infoview's HTML (`Pretty_Text_Panel.html`) makes sendback and dialogs clickable spans for it |
+| files read from disk as they are | upstream `Symbol.decode`s them (`571930f151`), for its Unicode editor; `vscode-2026` reverts that, because this client's editors hold the ASCII encoding: a decoded copy differs from the editor's text once the file is opened, and the prover checks the theory again |
 | `Keyword.proof`, `Keyword.qed`, ... | `Keyword.proof_kinds`, `Keyword.qed_kinds`, ... |
 | `Markup.Entity(kind, name)` | `Markup.Entity(entry)`, a `Name_Space.Entry` |
 | `node.header`, imports as names | `node.thy`, imports as (name, position) |
