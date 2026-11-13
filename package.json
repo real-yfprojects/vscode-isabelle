@@ -254,8 +254,8 @@
         "steps": [
           {
             "id": "isabelle",
-            "title": "Connect Isabelle2025-2",
-            "description": "The extension runs your Isabelle2025-2 distribution; the VSCodium bundled with it is not needed. It is found automatically in the usual places.\n[Check Isabelle](command:isabelle.checkInstallation)\n[Download Isabelle2025-2](https://isabelle.in.tum.de/website-Isabelle2025-2/)",
+            "title": "Connect Isabelle",
+            "description": "The extension runs your Isabelle2026 or Isabelle2025-2 distribution; the VSCodium bundled with it is not needed. It is found automatically in the usual places.\n[Check Isabelle](command:isabelle.checkInstallation)\n[Download Isabelle](https://isabelle.in.tum.de/)",
             "media": {
               "markdown": "media/walkthrough/isabelle.md"
             },
@@ -506,7 +506,7 @@
         "isabelle.extendedServer": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Start Isabelle's language server with the additions this extension ships: the Query, Theories, Timing, Simplifier Trace and Graph View panels, Go to Command, and session images for `-R` that build. Your Isabelle installation is not modified. Available for Isabelle2025-2. Takes effect after reloading the window."
+          "markdownDescription": "Start Isabelle's language server with the additions this extension ships: the Query, Theories, Timing, Simplifier Trace and Graph View panels, Go to Command, and session images for `-R` that build. Your Isabelle installation is not modified. Available for Isabelle2026 and Isabelle2025-2. Takes effect after reloading the window."
         },
         "isabelle.input.customShorthands": {
           "type": "object",
@@ -603,7 +603,7 @@
             "vscode_html_output=true",
             "vscode_unicode_symbols_output=true"
           ],
-          "markdownDescription": "Isabelle system options passed as `-o NAME=VALUE`.\n\n`vscode_pide_extensions` enables PIDE markup decorations and the infoview. `vscode_html_output` makes the infoview receive HTML, and also avoids an Isabelle2025-2 bug where the non-HTML branch fails to serialise decorations. `vscode_unicode_symbols_output` renders glyphs in panels and hovers.\n\nDo **not** enable `vscode_unicode_symbols_edits`: those edits are inserted into the buffer, which must stay ASCII."
+          "markdownDescription": "Isabelle system options passed as `-o NAME=VALUE`.\n\n`vscode_pide_extensions` enables PIDE markup decorations and the infoview. `vscode_html_output` makes the infoview receive marked-up output: HTML from Isabelle2025-2 (where it also avoids a bug in the non-HTML branch, which fails to serialise decorations), and unformatted output from Isabelle2026, which the extension formats itself. `vscode_unicode_symbols_output` renders glyphs in panels and hovers.\n\nDo **not** enable `vscode_unicode_symbols_edits`: those edits are inserted into the buffer, which must stay ASCII."
         },
         "isabelle.sessionDirs": {
           "type": "array",
@@ -944,7 +944,7 @@
     "build": "tsc -p ./ && node ./scripts/server-jar.js",
     "watch": "tsc -watch -p ./",
     "dev": "node ./test/dev.js",
-    "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29 suite32 suite38 suite41 suite42 suite44 suite46 suite48 suite49 suite60 suite63 suite66 suite67",
+    "test:unit": "node ./test/runAll.js suite25 suite27 suite28 suite29 suite32 suite38 suite41 suite42 suite44 suite46 suite48 suite49 suite60 suite63 suite66 suite67 suite70",
     "test": "node ./test/runTest.js",
     "package": "vsce package --out vscode-isabelle.vsix",
     "release": "node ./scripts/release.js"

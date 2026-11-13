@@ -94,13 +94,25 @@ function checkInstallation(extensionPath: string, report: (err: unknown) => void
   try {
     identifier = fs.readFileSync(path.join(home, 'etc', 'ISABELLE_IDENTIFIER'), 'utf8').trim()
   } catch { /* a development checkout: the folder name is the best there is */ }
-  /* The extended server is compiled against one release, so it is the jar that says
-     which Isabelle this extension targets. */
+  /* The extended server is compiled against one release, so it is the jars that say
+     which Isabelle releases this extension targets. */
   const extended = fs.existsSync(path.join(extensionPath, 'server', `${identifier}.jar`))
   void vscode.window.showInformationMessage(extended
     ? `Found ${identifier} at ${home}.`
     : `Found ${identifier} at ${home}. The extended server is not available for it; ` +
-      'the extension is made for Isabelle2025-2.')
+      `the extension is made for ${supportedReleases(extensionPath)}.`)
+}
+
+/** "Isabelle2026 or Isabelle2025-2": the releases the bundled jars were built for. */
+export function supportedReleases(extensionPath: string): string {
+  let jars: string[] = []
+  try {
+    jars = fs.readdirSync(path.join(extensionPath, 'server'))
+      .filter(n => /^Isabelle\d{4}(-\d+)?\.jar$/.test(n)).map(n => n.slice(0, -4))
+  } catch { /* none bundled */ }
+  if (jars.length === 0) jars = ['Isabelle2026', 'Isabelle2025-2']
+  jars.sort().reverse()
+  return jars.length === 1 ? jars[0] : `${jars.slice(0, -1).join(', ')} or ${jars[jars.length - 1]}`
 }
 
 /** The newest contrib/isabelle_fonts-*\/ttf of the distribution, if it has one. */

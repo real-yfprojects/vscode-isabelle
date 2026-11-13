@@ -55,11 +55,14 @@ if [ -z "${BUILD_SERVER_JAR_INNER:-}" ]; then
   fi
   ident="$(cat "$home/etc/ISABELLE_IDENTIFIER")"
   ref_file="$repo/server/$ident.ref"
-  if [ ! -f "$ref_file" ]; then
+  # A checkout builds without one: a new release's backport has no pinned commit yet.
+  commit=""
+  if [ -f "$ref_file" ]; then
+    commit="$(grep -v '^#' "$ref_file" | grep -m 1 -o '[0-9a-f]\{40\}')"
+  elif [ "$#" -ne 2 ]; then
     echo "no backport for $ident: $ref_file is missing" >&2
     exit 1
   fi
-  commit="$(grep -v '^#' "$ref_file" | grep -m 1 -o '[0-9a-f]\{40\}')"
 
   # What the jar is built from, as one hash: the source's commit, for a checkout also its
   # uncommitted changes and new files under what Setup reads, and this script, whose
@@ -90,7 +93,9 @@ if [ -z "${BUILD_SERVER_JAR_INNER:-}" ]; then
 
   if [ -n "$source" ]; then
     head="$(git -C "$source" rev-parse HEAD 2>/dev/null || true)"
-    if [ "$head" != "$commit" ]; then
+    if [ -z "$commit" ]; then
+      echo "note: building $source at ${head:-an unknown commit}; no commit is pinned in $ref_file" >&2
+    elif [ "$head" != "$commit" ]; then
       echo "note: building $source at ${head:-an unknown commit}, not $commit from $ref_file" >&2
     fi
   else

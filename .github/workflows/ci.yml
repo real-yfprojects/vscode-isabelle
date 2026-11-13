@@ -3,10 +3,11 @@
 # Four jobs, covering four different things:
 #
 #   build        the tree compiles and the pure suites pass, on all three platforms
-#   integration  a real prover starts and the regression passes, on all three platforms,
-#                the extended server's suites included -- in shards, two per platform, three on macOS
-#   server-jar   the extended server builds from its pinned commit
-#   package      the .vsix builds, with the extended server compiled into it
+#   integration  a real prover starts and the regression passes, on all three platforms and
+#                for every supported release (Isabelle2025-2, Isabelle2026), the extended
+#                server's suites included -- in shards, two per platform, three on macOS
+#   server-jar   the extended server builds from its pinned commit, for each release
+#   package      the .vsix builds, with every release's extended server compiled into it
 #
 # The integration job is the one that matters for platform confidence. Before it existed,
 # no prover had ever been launched anywhere but the author's Windows machine, so `build`
@@ -26,21 +27,25 @@ on:
   workflow_call:
 
 env:
-  # The version itself lives in the matrix bundle names below -- the env context is not
-  # available in strategy.matrix, so it cannot be factored out to here.
+  # Where each release's bundles come from, by release: ISABELLE_MIRRORS_<release> with
+  # `-` as `_`. The releases themselves live in the matrices below -- the env context is
+  # not available in strategy.matrix, so they cannot be factored out to here.
   #
-  # The website archive of the release, not the download hosts. Those serve only the
+  # The website archive of the release first, not the download hosts. Those serve only the
   # *current* release: since Isabelle2026, Cambridge answers Isabelle2025-2 with 404,
-  # and https://isabelle.in.tum.de/dist redirects to an http host that does not answer
-  # (curl would not follow the https->http downgrade anyway). The archive at
-  # website-<release>/dist keeps every superseded release's bundles over https, and none
-  # of the mirrors keeps one, so there is no second host to try.
+  # and https://isabelle.in.tum.de/dist redirects to an http host (curl would not follow
+  # the https->http downgrade anyway). The archive at website-<release>/dist keeps every
+  # release's bundles over https, the current one's too, and keeps them once it is
+  # superseded. For the current release, the dist host it redirects to answers over https
+  # as a second choice.
   #
-  # Still a list, tried in order, so a second host is one line if the archive moves or
-  # gains a mirror. The cache in front of every download means a dead host only fails
-  # the jobs whose cache was evicted (GitHub drops a cache unused for 7 days).
-  ISABELLE_MIRRORS: >-
+  # Lists, tried in order. The cache in front of every download means a dead host only
+  # fails the jobs whose cache was evicted (GitHub drops a cache unused for 7 days).
+  ISABELLE_MIRRORS_Isabelle2025_2: >-
     https://isabelle.in.tum.de/website-Isabelle2025-2/dist
+  ISABELLE_MIRRORS_Isabelle2026: >-
+    https://isabelle.in.tum.de/website-Isabelle2026/dist
+    https://dists.isabelle.cit.tum.de/dist
 
 jobs:
   build:
@@ -67,18 +72,28 @@ jobs:
     # its runners being the slowest and the most uneven; suite36 alone, about 330 s there,
     # sets how short a shard can get. Every suite still gets an editor and a prover of its
     # own; shards only add runners, which are free for this repository.
-    name: integration (${{ matrix.os }}, ${{ matrix.shard }}/${{ matrix.shards }})
+    #
+    # Isabelle2026 splits macOS into an Intel and an Apple Silicon bundle, and Rosetta-run
+    # Java is explicitly unsupported; macos-latest runners are Apple Silicon, so _macos_arm.
+    name: integration (${{ matrix.release }}, ${{ matrix.os }}, ${{ matrix.shard }}/${{ matrix.shards }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest, bundle: Isabelle2025-2_linux.tar.gz, shard: 1, shards: 2 }
-          - { os: ubuntu-latest, bundle: Isabelle2025-2_linux.tar.gz, shard: 2, shards: 2 }
-          - { os: macos-latest, bundle: Isabelle2025-2_macos.tar.gz, shard: 1, shards: 3 }
-          - { os: macos-latest, bundle: Isabelle2025-2_macos.tar.gz, shard: 2, shards: 3 }
-          - { os: macos-latest, bundle: Isabelle2025-2_macos.tar.gz, shard: 3, shards: 3 }
-          - { os: windows-latest, bundle: Isabelle2025-2.exe, shard: 1, shards: 2 }
-          - { os: windows-latest, bundle: Isabelle2025-2.exe, shard: 2, shards: 2 }
+          - { release: Isabelle2026, os: ubuntu-latest, bundle: Isabelle2026_linux.tar.gz, shard: 1, shards: 2 }
+          - { release: Isabelle2026, os: ubuntu-latest, bundle: Isabelle2026_linux.tar.gz, shard: 2, shards: 2 }
+          - { release: Isabelle2026, os: macos-latest, bundle: Isabelle2026_macos_arm.tar.gz, shard: 1, shards: 3 }
+          - { release: Isabelle2026, os: macos-latest, bundle: Isabelle2026_macos_arm.tar.gz, shard: 2, shards: 3 }
+          - { release: Isabelle2026, os: macos-latest, bundle: Isabelle2026_macos_arm.tar.gz, shard: 3, shards: 3 }
+          - { release: Isabelle2026, os: windows-latest, bundle: Isabelle2026.exe, shard: 1, shards: 2 }
+          - { release: Isabelle2026, os: windows-latest, bundle: Isabelle2026.exe, shard: 2, shards: 2 }
+          - { release: Isabelle2025-2, os: ubuntu-latest, bundle: Isabelle2025-2_linux.tar.gz, shard: 1, shards: 2 }
+          - { release: Isabelle2025-2, os: ubuntu-latest, bundle: Isabelle2025-2_linux.tar.gz, shard: 2, shards: 2 }
+          - { release: Isabelle2025-2, os: macos-latest, bundle: Isabelle2025-2_macos.tar.gz, shard: 1, shards: 3 }
+          - { release: Isabelle2025-2, os: macos-latest, bundle: Isabelle2025-2_macos.tar.gz, shard: 2, shards: 3 }
+          - { release: Isabelle2025-2, os: macos-latest, bundle: Isabelle2025-2_macos.tar.gz, shard: 3, shards: 3 }
+          - { release: Isabelle2025-2, os: windows-latest, bundle: Isabelle2025-2.exe, shard: 1, shards: 2 }
+          - { release: Isabelle2025-2, os: windows-latest, bundle: Isabelle2025-2.exe, shard: 2, shards: 2 }
     runs-on: ${{ matrix.os }}
     # The bundles are 1.0-1.6 GB and the prover suites are not quick. Generous, because
     # the failure this job exists to catch looks like a hang.
@@ -95,10 +110,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run compile
-      # Without the jar, the suites for the experimental panels would skip themselves.
+      # Without the jar, the suites for the experimental panels would skip themselves. All
+      # releases' jars, as the package has them; the extension picks the one for the
+      # distribution it finds.
       - uses: actions/download-artifact@v4
         with:
-          name: server-jar
+          pattern: server-jar-*
+          merge-multiple: true
           path: server
 
       # ~2 GB unpacked. Worth caching both to keep the job quick and to avoid pulling a
@@ -123,8 +141,10 @@ jobs:
           mkdir -p ~/isabelle-dist
           # A command tested by `if` does not trip set -e, so a dead mirror only
           # moves on to the next one; the final test fails the step if none served.
+          release='${{ matrix.release }}'
+          mirrors="ISABELLE_MIRRORS_${release//-/_}"
           ok=
-          for base in $ISABELLE_MIRRORS; do
+          for base in ${!mirrors}; do
             if curl -fL --retry 2 --retry-delay 10 --connect-timeout 30 \
                  "$base/${{ matrix.bundle }}?token=Isabelle" -o /tmp/isabelle-bundle; then
               ok=1; break
@@ -272,12 +292,17 @@ jobs:
             node test/runAll.js
           fi
 
-  # The extended server, built once. The jar is JVM bytecode and the same on every
-  # platform, so the integration jobs test the very jar the package ships. It is compiled
-  # from the mirror-isabelle commit in server/<IDENTIFIER>.ref with the toolchain of the
-  # release it targets, so this job needs that release too -- under the same cache key as
-  # the Linux integration job, so usually a cache hit.
+  # The extended server, built once per release. The jar is JVM bytecode and the same on
+  # every platform, so the integration jobs test the very jars the package ships. Each is
+  # compiled from the mirror-isabelle commit in server/<IDENTIFIER>.ref with the toolchain
+  # of the release it targets, so this job needs that release too -- under the same cache
+  # key as the Linux integration job, so usually a cache hit.
   server-jar:
+    name: server-jar (${{ matrix.release }})
+    strategy:
+      fail-fast: false
+      matrix:
+        release: [Isabelle2026, Isabelle2025-2]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -291,17 +316,19 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/isabelle-dist
-          key: isabelle-ubuntu-latest-Isabelle2025-2_linux.tar.gz
+          key: isabelle-ubuntu-latest-${{ matrix.release }}_linux.tar.gz
 
       - name: Download and unpack Isabelle
         if: steps.isabelle-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           mkdir -p ~/isabelle-dist
+          release='${{ matrix.release }}'
+          mirrors="ISABELLE_MIRRORS_${release//-/_}"
           ok=
-          for base in $ISABELLE_MIRRORS; do
+          for base in ${!mirrors}; do
             if curl -fL --retry 2 --retry-delay 10 --connect-timeout 30 \
-                 "$base/Isabelle2025-2_linux.tar.gz?token=Isabelle" -o /tmp/isabelle-bundle; then
+                 "$base/${release}_linux.tar.gz?token=Isabelle" -o /tmp/isabelle-bundle; then
               ok=1; break
             fi
             echo "::warning::$base did not serve the bundle, trying the next mirror"
@@ -315,7 +342,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ~/isabelle-dist
-          key: isabelle-ubuntu-latest-Isabelle2025-2_linux.tar.gz
+          key: isabelle-ubuntu-latest-${{ matrix.release }}_linux.tar.gz
 
       # The script only reads the distribution, so the cached copy stays pristine. It
       # fetches the pinned commit itself; that commit must have been pushed.
@@ -328,8 +355,8 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: server-jar
-          path: server/*.jar
+          name: server-jar-${{ matrix.release }}
+          path: server/${{ matrix.release }}.jar
           if-no-files-found: error
 
   package:
@@ -348,13 +375,18 @@ jobs:
       - run: npm run compile
       - uses: actions/download-artifact@v4
         with:
-          name: server-jar
+          pattern: server-jar-*
+          merge-multiple: true
           path: server
       - run: npm run package
-      # A .vsix without the jar would install fine and then fall back to the standard
-      # server for everyone who turns the setting on, so check it went in.
-      - name: Check the extended server is packaged
-        run: unzip -l vscode-isabelle.vsix | grep -E 'extension/server/Isabelle2025-2\.jar'
+      # A .vsix without a jar would install fine and then fall back to the standard server
+      # for everyone on that release who turns the setting on, so check each went in.
+      - name: Check the extended servers are packaged
+        run: |
+          set -eu
+          for release in Isabelle2026 Isabelle2025-2; do
+            unzip -l vscode-isabelle.vsix | grep -F "extension/server/$release.jar"
+          done
       # Without its runtime dependencies the extension does not activate at all. Every
       # suite runs it from the checkout, where require() finds the repository's
       # node_modules, so only the package itself can show that they are missing.

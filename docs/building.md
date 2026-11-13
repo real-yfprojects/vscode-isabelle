@@ -30,6 +30,10 @@ main                                       (all of the above, merged)
      merged: vscode-agent                 (tools for AI agents; docs/agents.md)
      merged: vscode-sledgehammer-jobs     (Sledgehammer runs that outlive edits;
                                            docs/panels.md)
+
+3188c0db21  (the Isabelle2026 release, on master's history; 8d9ad3f298 is its ancestor)
+ +- vscode-2026                           (the same backport, carried to Isabelle2026)
+     merged: vscode-2025-2                (merge base 8d9ad3f298: exactly the backport)
 ```
 
 The feature branches exist to be proposed upstream one at a time, so they stay separate
@@ -90,6 +94,47 @@ scripts/build-server-jar.sh <path to Isabelle2025-2> ../mirror-2025-2
 
 To ship it, commit on `vscode-2025-2`, push, and move `server/Isabelle2025-2.ref` in this
 repository to the new commit. CI builds the packaged jar from that commit.
+
+### Isabelle2026: `vscode-2026`
+
+The Isabelle2026 release is commit `3188c0db21` of the mirror, the parent of
+`2bd5af6c12 Added tag Isabelle2026 for changeset 096842708b28`, as `8d9ad3f298` is for
+Isabelle2025-2. Since `8d9ad3f298` is an ancestor of it, `vscode-2026` was made by merging
+`vscode-2025-2` into a branch at `3188c0db21`: the merge base is the 2025-2 release, so the
+merge applies exactly the backport and Git records where it came from. A later change to
+`vscode-2025-2` merges over the same way; a change made on `vscode-2026` first goes back by
+cherry-pick, against the table below. Work in `../mirror-2026`
+(`git worktree add ../mirror-2026 vscode-2026`); `scripts/server-jar.js` finds the worktree
+for the release it builds for.
+
+What the merge left to do, and how it was done (the merge commit, `957f506cdc`, says the
+same):
+
+| Isabelle2025-2 (the backport) | Isabelle2026 |
+|---|---|
+| backported `PIDE/goto_command`, Event_Timer and Delay changes, `Console_Logger` | upstream's own, so the backport's copies are gone |
+| `PIDE/sledgehammer_sendback` / `_insert` | gone upstream; active markup goes through `PIDE/markup_action` and comes back as `PIDE/document_edit`, and the infoview's HTML (`Pretty_Text_Panel.html`) makes sendback and dialogs clickable spans for it |
+| files read from disk as they are | upstream `Symbol.decode`s them (`571930f151`), for its Unicode editor; `vscode-2026` reverts that, because this client's editors hold the ASCII encoding: a decoded copy differs from the editor's text once the file is opened, and the prover checks the theory again |
+| `Keyword.proof`, `Keyword.qed`, ... | `Keyword.proof_kinds`, `Keyword.qed_kinds`, ... |
+| `Markup.Entity(kind, name)` | `Markup.Entity(entry)`, a `Name_Space.Entry` |
+| `node.header`, imports as names | `node.thy`, imports as (name, position) |
+| `snapshot.find_command(id)` | `snapshot.get_command(id)` and `snapshot.command_start` |
+| `assignment.command_execs` | `assignment.get(id)` (the map is private) |
+| `getClass.getName`, `Delay.last(t, channel.Error_Logger)` | `this.class_name`, `channel.Delay.last(t)` |
+| Java strings as `String` | `String \| Null` under explicit nulls: `.nn` |
+| ML: `Thy_Info.lookup_theory` | `Build.lookup_theory` |
+| ML: `Toplevel.command_exception false`, `Toplevel.level` | `Toplevel.command_exception`, `Toplevel.proof_level` |
+| ML: `Outer_Syntax.parse_text thy (K thy)` | `... (K {skip_theory = false, theory = thy})` |
+| ML: `Toplevel.make name pos` | `Toplevel.make {name, kind, is_begin, pos}` |
+
+`vscode_theories.scala` and `vscode_graphview.scala` were taken from `main`, written against
+the development tree, which differs from the backport only in the forms above. Isabelle2026
+also checks ML string literals that look like qualified names, so the Sledgehammer prelude
+spells its protocol command's name in two parts.
+
+Isabelle2026's own server sends the Output and State panels unformatted YXML; the client
+formats and renders it (`src/pretty.ts`, `src/pide_html.ts`), so the stock server needs no
+change for the infoview.
 
 ### Compiling the mirror tree itself
 

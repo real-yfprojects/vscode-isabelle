@@ -9,6 +9,10 @@
  * Setting vscode_html_output=true also sidesteps an Isabelle2025-2 bug: the non-HTML
  * branch attaches decorations, and LSP.Dynamic_Output.apply serialises them via an
  * unapplied method, producing "Bad JSON value: ...$$Lambda" on every output event.
+ *
+ * Isabelle2026's server sends the unformatted output as YXML instead of HTML, and its own
+ * client formats it; this one does so in pide_html.ts, with the same class names, so the
+ * stylesheet below serves both.
  */
 
 import { randomBytes } from 'crypto'
@@ -90,6 +94,11 @@ export function isabelleCss(): string {
        marked until the pointer is on one, as in the editor's own hover highlight. */
     .typing:hover, .xml_elem[title]:hover {
       background-color: var(--vscode-editor-hoverHighlightBackground); cursor: help; }
+    /* Active markup (Isabelle2026): a sendback to insert, a dialog's answer to give. */
+    .active { cursor: pointer; border-radius: 2px; padding: 0 2px;
+      color: var(--vscode-button-foreground); background-color: var(--vscode-button-background); }
+    .active:hover { background-color: var(--vscode-button-hoverBackground); }
+    .active * { color: inherit; }
     ${rules.join('\n    ')}
   `
 }

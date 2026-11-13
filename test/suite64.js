@@ -65,10 +65,17 @@ const LINES = [
 /** 1-based, as an agent counts. */
 const at = prefix => LINES.findIndex(l => l.startsWith(prefix)) + 1
 
+/** ML that sleeps for `seconds`, in Isabelle2025-2 and Isabelle2026 alike: OS.Process, which
+    the first sleeps with, is no longer visible to Isabelle/ML in the second, and Time.sleep,
+    which replaced it, is new there. Method.sleep is in both, and sleeps once applied -- to
+    a theorem that is not a closure state (Drule.dummy_thm is one: RUNTIME skips it). */
+const SLEEP = seconds =>
+  `ignore (Method.sleep (Time.fromSeconds ${seconds}) (\\<^context>, Drule.asm_rl))`
+
 /** A theory whose second command takes the prover `seconds` to run, as a loop would, then
     ends. The sleep is on line 5, the lemma after it on line 7. */
 const slowTheory = (name, seconds) => [`theory ${name}`, '  imports Main', 'begin', '',
-  `ML \\<open>OS.Process.sleep (Time.fromSeconds ${seconds})\\<close>`, '',
+  `ML \\<open>${SLEEP(seconds)}\\<close>`, '',
   'lemma "rev (rev xs) = xs"', '  by simp', '', 'end', ''].join('\n')
 
 /** Starts an MCP stdio server as Claude Code does, and returns a call function. */
@@ -163,7 +170,7 @@ async function run() {
   fs.rmSync(runs, { force: true })
   fs.writeFileSync(draft, ['theory Agent_Draft', '  imports Main', 'begin', '',
     'ML_val \\<open>(File.append (Path.append \\<^master_dir> (Path.basic "Agent_Draft.runs")) "x";' +
-      ' OS.Process.sleep (Time.fromSeconds 6))\\<close>', '',
+      ` ${SLEEP(6)})\\<close>`, '',
     'lemma "rev (rev xs) = xs"', '  by simp', ''].join('\n'), 'utf8')
   const ranTimes = () => fs.existsSync(runs) ? fs.readFileSync(runs, 'utf8').length : 0
   const timed = async args => {
@@ -217,7 +224,7 @@ async function run() {
   const slowDoc = await vscode.workspace.openTextDocument(vscode.Uri.file(slow))
   const shorten = new vscode.WorkspaceEdit()
   shorten.replace(slowDoc.uri, slowDoc.lineAt(4).range,
-    'ML \\<open>OS.Process.sleep (Time.fromSeconds 1)\\<close>')
+    `ML \\<open>${SLEEP(1)}\\<close>`)
   assert.ok(await vscode.workspace.applyEdit(shorten))
   const slowDone = await timed({ path: 'Agent_Slow.thy', timeout_s: 120 })
   assert.match(slowDone.result.text, /Agent_Slow\.thy: checked in/)
@@ -255,7 +262,7 @@ async function run() {
   const stuckFile = path.join(ws, 'Agent_Stuck.thy')
   fs.writeFileSync(stuckFile, ['theory Agent_Stuck', '  imports Main', 'begin', '',
     'lemma "True"',
-    '  by (tactic \\<open>fn st => (OS.Process.sleep (Time.fromSeconds 300); all_tac st)\\<close>)',
+    `  by (tactic \\<open>fn st => (${SLEEP(300)}; all_tac st)\\<close>)`,
     '', 'lemma "rev (rev xs) = xs"', '  by simp', '', 'end', ''].join('\n'), 'utf8')
   const stuck = await timed({ path: 'Agent_Stuck.thy', timeout_s: 110 })
   assert.match(stuck.result.text, /^Agent_Stuck\.thy: no progress for \d+ s \(\d+% done\)/)
@@ -479,7 +486,7 @@ async function run() {
   assert.ok(!longEnded, `answered while the check runs (${meanwhileSeconds.toFixed(1)} s)`)
   const slow2Doc = await vscode.workspace.openTextDocument(vscode.Uri.file(slow2))
   const shorten2 = new vscode.WorkspaceEdit()
-  shorten2.replace(slow2Doc.uri, slow2Doc.lineAt(4).range, 'ML \\<open>OS.Process.sleep (Time.fromSeconds 1)\\<close>')
+  shorten2.replace(slow2Doc.uri, slow2Doc.lineAt(4).range, `ML \\<open>${SLEEP(1)}\\<close>`)
   assert.ok(await vscode.workspace.applyEdit(shorten2))
   await slow2Doc.save()
   const longDone = await longCheck

@@ -29,6 +29,7 @@ import { SimplifierTracePanel } from './simplifier_trace_panel'
 import { GraphviewPanel } from './graphview_panel'
 import { registerOutline } from './outline'
 import { registerSkeletons, retitleSendbacks } from './skeleton_provider'
+import { registerDocumentEdits } from './markup_action'
 import { registerSemanticTokens } from './semantic_tokens'
 import { SessionPicker } from './session_picker'
 import { IsabelleStatus } from './status_bar'
@@ -353,6 +354,8 @@ async function startClient(): Promise<void> {
   }
   registerSpellChecker(clientScope, client, log)
   registerCaretUpdates(clientScope, client, log)
+  // Isabelle2026: the edit a clicked sendback makes (markup_action.ts).
+  registerDocumentEdits(clientScope, client, log)
 
   // Session abbreviations complement the static ones in etc/symbols.
   clientScope.push(client.onNotification('PIDE/abbrevs_response',
@@ -466,6 +469,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
      to it once it runs. */
   infoview = new Infoview(log)
   infoview.register(context.subscriptions)
+  // The table as it is when output arrives: it is reloaded when isabelle.home changes.
+  infoview.glyphs = symbol => table?.glyphOf(symbol)
 
   try {
     isabelleHome = findIsabelleHome()

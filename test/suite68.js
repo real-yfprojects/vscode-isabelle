@@ -297,7 +297,9 @@ async function run() {
     console.log(`  ${what}: ${end && end.status}/${end && end.outcome}, ${JSON.stringify(end && end.proofs)}`)
     return end
   }
-  const added = await hammerApply({ facts: 'add: c_def', subgoal: 1, timeout: 10 }, 'add: c_def')
+  // 30s, not 10: a goal this easy still came back with no proof at 10s now and then, on
+  // Windows with either release, where the provers start through Cygwin.
+  const added = await hammerApply({ facts: 'add: c_def', subgoal: 1, timeout: 30 }, 'add: c_def')
   assert.ok(added && added.proofs.some(p => /c_def/.test(p)), 'a proof with the added fact')
   const deleted = await hammerApply({ facts: 'del: c_def', subgoal: 1, timeout: 10 }, 'del: c_def')
   assert.ok(deleted && !deleted.proofs.some(p => /c_def/.test(p)), 'none with the deleted one')

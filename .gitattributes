@@ -3,3 +3,5 @@
 # the tutorial theory is copied into users' storage as it is in the package.
 *.sh text eol=lf
 media/walkthrough/Tutorial.thy text eol=lf
+# Prover output byte for byte: YXML control characters and the newlines inside messages.
+test/fixtures/pide/** -text
