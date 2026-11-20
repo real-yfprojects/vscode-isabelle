@@ -125,13 +125,15 @@ you work elsewhere, and **Pause** stops the view from following the cursor. You 
 the view into a side bar, or open it in an editor tab beside the theory with the
 **Open in Editor** button in its title bar.
 
-To find Isabelle, the extension first checks `$ISABELLE_HOME`. After that it looks for a
-folder named like `Isabelle2026` or `Isabelle2025-2` in `~/Isabelle`, your home folder and
-`C:\` on Windows, or in your home folder, `/opt` and `/usr/local` on Linux, and takes the
-newest it finds. If yours is somewhere else, set `isabelle.home` to the folder containing
-`bin/isabelle`. On macOS that is
-`/Applications/Isabelle2026.app/Contents/Resources/Isabelle2026`. Isabelle2026 comes as
-two macOS downloads, for Apple Silicon and for Intel Macs; use the one for your Mac.
+To find Isabelle, the extension first checks `$ISABELLE_HOME`. After that it looks for an
+Isabelle release, such as `Isabelle2026` or `Isabelle2026.app`, where its installer puts
+it: in `/Applications`, `~/Applications` and your home folder on macOS; in `~/Isabelle`,
+your home folder, your Desktop and `C:\` on Windows; in your home folder, `/opt` and
+`/usr/local` on Linux. It takes the newest it finds. If yours is somewhere else, set
+`isabelle.home` to the folder containing `bin/isabelle`, or on macOS to the app itself,
+such as `/Applications/Isabelle2026.app`. If you set it after Isabelle wasn't found, the
+extension picks it up straight away. Isabelle2026 comes as two macOS downloads, for Apple
+Silicon and for Intel Macs; use the one for your Mac.
 
 ### 5. Pick a session for your project
 

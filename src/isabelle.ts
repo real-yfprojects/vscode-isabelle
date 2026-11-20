@@ -11,8 +11,10 @@ import * as os from 'os'
 import * as path from 'path'
 import * as vscode from 'vscode'
 import { Executable } from 'vscode-languageclient/node'
+import { discoverIsabelleHome, IsabelleNotFound, searchRoots } from './discovery'
 
-export class IsabelleNotFound extends Error {}
+// Re-exported: callers and suites catch it from here, and it must stay one class.
+export { IsabelleNotFound }
 
 /** Windows path -> the /cygdrive/... form Isabelle's bundled Cygwin expects.
  *
@@ -31,53 +33,13 @@ export function toCygwinPath(p: string): string {
   return `/cygdrive/${m[1].toLowerCase()}/${m[2].replace(/\\/g, '/')}`
 }
 
-function isDistribution(dir: string): boolean {
-  try {
-    return fs.statSync(path.join(dir, 'bin', 'isabelle')).isFile() &&
-      fs.statSync(path.join(dir, 'etc', 'symbols')).isFile()
-  } catch { return false }
-}
-
-/** Newest-looking Isabelle* child directory of `parent`, if any. */
-function scanForDistribution(parent: string): string | undefined {
-  let entries: string[]
-  try { entries = fs.readdirSync(parent) } catch { return undefined }
-  const candidates = entries
-    .filter(n => /^Isabelle\d{4}(-\d+)?$/.test(n))
-    .map(n => path.join(parent, n))
-    .filter(isDistribution)
-    .sort()
-  return candidates.pop()
-}
-
+/** The setting, then $ISABELLE_HOME, then the usual install locations: see discovery.ts. */
 export function findIsabelleHome(): string {
-  const configured = vscode.workspace.getConfiguration('isabelle').get<string>('home')?.trim()
-  if (configured) {
-    if (!isDistribution(configured)) {
-      throw new IsabelleNotFound(
-        `isabelle.home is set to "${configured}", but that is not an Isabelle distribution ` +
-        `(expected bin/isabelle and etc/symbols beneath it).`)
-    }
-    return configured
-  }
-
-  const env = process.env.ISABELLE_HOME
-  if (env && isDistribution(env)) return env
-
-  const home = os.homedir()
-  const roots = process.platform === 'win32'
-    ? [path.join(home, 'Isabelle'), home, 'C:\\']
-    : process.platform === 'darwin'
-      ? ['/Applications', path.join(home, 'Applications'), home]
-      : [home, '/opt', '/usr/local']
-
-  for (const root of roots) {
-    const found = scanForDistribution(root)
-    if (found) return found
-  }
-
-  throw new IsabelleNotFound(
-    'No Isabelle distribution found. Set "isabelle.home" to the directory containing bin/isabelle.')
+  return discoverIsabelleHome({
+    configured: vscode.workspace.getConfiguration('isabelle').get<string>('home'),
+    env: process.env.ISABELLE_HOME,
+    roots: searchRoots(process.platform, os.homedir(), process.env),
+  })
 }
 
 /**
