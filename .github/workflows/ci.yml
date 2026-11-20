@@ -148,7 +148,7 @@ jobs:
           mirrors="ISABELLE_MIRRORS_${release//-/_}"
           ok=
           for base in ${!mirrors}; do
-            if curl -fL --retry 2 --retry-delay 10 --connect-timeout 30 \
+            if curl -fL --retry 4 --retry-delay 15 --retry-all-errors --connect-timeout 30 \
                  "$base/${{ matrix.bundle }}?token=Isabelle" -o ~/isabelle-download/part; then
               ok=1; break
             fi
@@ -170,15 +170,20 @@ jobs:
       #
       #   macOS    the .app unpacked into /Applications (what dragging it there does)
       #   Linux    the folder unpacked into the home directory
-      #   Windows  the self-extracting installer, run silently with its defaults: -y takes
-      #            them without asking, -ai runs its AutoInstall (`Isabelle2026.exe -init`)
-      #            instead of its RunProgram, which would open jEdit. Its InstallPath is
-      #            %UserDesktop%, and -init initializes the bundled Cygwin: a release ships
-      #            it with its symlinks stripped and a marker file `uninitialized`, and the
-      #            extension starts the server by calling contrib/cygwin/bin/bash.exe
-      #            directly, bypassing the launcher that would otherwise do it. Before,
-      #            CI unpacked the bundle with 7z and called Environment.cygwin_init by
-      #            hand, so a server started from a real installation was never tested.
+      #   Windows  the self-extracting installer, run from Downloads, where a browser saves
+      #            it, with its defaults. Two kinds:
+      #            - up to Isabelle2025-2, the 7zsd module with a config block: -y takes its
+      #              defaults without asking, -ai runs its AutoInstall
+      #              (`Isabelle2025-2.exe -init`, which initializes the bundled Cygwin)
+      #              instead of its RunProgram, which would open jEdit. Its InstallPath is
+      #              %UserDesktop%.
+      #            - from Isabelle2026, plain 7-Zip's 7z.sfx: it offers the folder the .exe
+      #              is in, which -y takes, and does nothing else. The Cygwin stays
+      #              uninitialized -- symlinks stripped, a marker file `uninitialized` --
+      #              until Isabelle2026.exe first runs, or the extension sets it up itself
+      #              (cygwinUninitialized), which suite74 then has to have done.
+      #            Before, CI unpacked the bundle with 7z and called Environment.cygwin_init
+      #            by hand, so a server started from a real installation was never tested.
       - name: Install Isabelle
         timeout-minutes: 15
         run: |
@@ -196,18 +201,30 @@ jobs:
               tar -xzf "$archive" -C ~
               root="$HOME/$release" ;;
             Windows)
-              chmod +x "$archive"
-              "$archive" -y -ai
-              # The installer waits for its AutoInstall by default; should it not, the
-              # launcher it started is still running under the same name. Not the marker
-              # file: cygwin_init deletes that first, before it has done anything.
-              for _ in $(seq 600); do
-                tasklist //FI "IMAGENAME eq $release.exe" | grep -qi "$release.exe" || break
-                sleep 1
-              done
-              root="$(cygpath -u "$USERPROFILE")/Desktop/$release"
-              if [ -e "$root/contrib/cygwin/isabelle/uninitialized" ]; then
-                echo "the installer left Cygwin uninitialized"; exit 1
+              downloads="$(cygpath -u "$USERPROFILE")/Downloads"
+              mkdir -p "$downloads"
+              mv "$archive" "$downloads/"
+              cd "$downloads"
+              head -c 4000000 "${{ matrix.bundle }}" > "$RUNNER_TEMP/sfx-head"
+              if grep -aq ';!@Install@!' "$RUNNER_TEMP/sfx-head"; then
+                "./${{ matrix.bundle }}" -y -ai
+                # The installer waits for its AutoInstall by default; should it not, the
+                # launcher it started is still running under the same name. Not the marker
+                # file: cygwin_init deletes that first, before it has done anything.
+                for _ in $(seq 600); do
+                  tasklist //FI "IMAGENAME eq $release.exe" | grep -qi "$release.exe" || break
+                  sleep 1
+                done
+                root="$(cygpath -u "$USERPROFILE")/Desktop/$release"
+                if [ -e "$root/contrib/cygwin/isabelle/uninitialized" ]; then
+                  echo "the installer left Cygwin uninitialized"; exit 1
+                fi
+              else
+                "./${{ matrix.bundle }}" -y
+                root="$downloads/$release"
+                if [ ! -e "$root/contrib/cygwin/isabelle/uninitialized" ]; then
+                  echo "expected the installer to leave Cygwin for the extension to set up"; exit 1
+                fi
               fi ;;
           esac
           [ -d "$root" ] || { echo "nothing installed at $root"; ls -la "$(dirname "$root")"; exit 1; }
@@ -292,25 +309,20 @@ jobs:
           path: .vscode-test
           key: ${{ steps.editor.outputs.key }}
 
-      - name: Integration suites
-        env:
-          ISABELLE_TEST_JOBS: 2
-          ISABELLE_TEST_SHARD: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: |
-          if [ "${{ runner.os }}" = "Linux" ]; then
-            sudo apt-get update && sudo apt-get install -y xvfb
-            xvfb-run -a node test/runAll.js
-          else
-            node test/runAll.js
-          fi
+      - name: Install xvfb
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb
 
-      # Every suite above is handed ISABELLE_HOME, which the extension takes before it looks
+      # Every other suite is handed ISABELLE_HOME, which the extension takes before it looks
       # anywhere -- so for a long time nothing ran its search, and it could not find a macOS
       # installation at all. This one is not: with no setting and no variable, the extension
-      # has to find the installation from "Install Isabelle" on its own. Once per platform
-      # and release; the search is the same in every shard.
+      # has to find the installation from "Install Isabelle" on its own, start a server from
+      # it and check a theory. Once per platform and release, as the search is the same in
+      # every shard -- and on every Windows shard, before the other suites: there it may
+      # also have to set up the Cygwin the Isabelle2026 installer leaves uninitialized, and
+      # two suites starting at once would both try.
       - name: Find the installation unaided
-        if: matrix.shard == 1
+        if: matrix.shard == 1 || runner.os == 'Windows'
         run: |
           set -eu
           export ISABELLE_TEST_EXPECT_HOME="$ISABELLE_HOME"
@@ -319,6 +331,17 @@ jobs:
             xvfb-run -a node test/runAll.js suite74
           else
             node test/runAll.js suite74
+          fi
+
+      - name: Integration suites
+        env:
+          ISABELLE_TEST_JOBS: 2
+          ISABELLE_TEST_SHARD: ${{ matrix.shard }}/${{ matrix.shards }}
+        run: |
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            xvfb-run -a node test/runAll.js
+          else
+            node test/runAll.js
           fi
 
   # The extended server, built once per release. The jar is JVM bytecode and the same on
@@ -357,7 +380,7 @@ jobs:
           mirrors="ISABELLE_MIRRORS_${release//-/_}"
           ok=
           for base in ${!mirrors}; do
-            if curl -fL --retry 2 --retry-delay 10 --connect-timeout 30 \
+            if curl -fL --retry 4 --retry-delay 15 --retry-all-errors --connect-timeout 30 \
                  "$base/${release}_linux.tar.gz?token=Isabelle" -o ~/isabelle-download/part; then
               ok=1; break
             fi
