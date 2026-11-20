@@ -1,7 +1,7 @@
 // Cuts a release: gives package.json the next version, commits that and tags the commit.
 // It does not push. Pushing the tag is what publishes: .github/workflows/release.yml runs
-// CI on the tagged commit and puts the .vsix CI built on the Marketplace and on a GitHub
-// release.
+// CI on the tagged commit and puts the .vsix CI built on the Marketplace, on Open VSX and
+// on a GitHub release.
 //
 //   npm run release                # e.g. v2026.9.0, and v2026.9.1 for the next one that month
 //   npm run release -- --dry-run   # only say which version it would be

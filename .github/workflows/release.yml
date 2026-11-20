@@ -6,13 +6,24 @@
 #   ci       the whole of ci.yml on the tagged commit: all three platforms against a real
 #            prover, and the .vsix with the extended server in it
 #   publish  that very .vsix to the Marketplace, and to a GitHub release
+#   publish-openvsx  that very .vsix to Open VSX, independently of `publish`: a failed
+#            Marketplace upload doesn't keep the extension off Open VSX, nor the reverse
 #
 # A red integration job blocks the release. If it was a flake, "Re-run failed jobs" on
-# this run carries on to publish once it passes.
+# this run carries on to publish once it passes. Both uploads skip a version the store
+# already has, so a re-run after one of them went through doesn't trip over it.
 #
-# Needs the repository secret VSCE_PAT: an Azure DevOps token with scope Marketplace
-# (Manage) for all accessible organizations. Azure DevOps retires such global tokens on
-# 1 December 2026; after that, vsce publish --azure-credential with a federated identity.
+# The Marketplace needs the repository secret VSCE_PAT: an Azure DevOps token with scope
+# Marketplace (Manage) for all accessible organizations. Azure DevOps retires such global
+# tokens on 1 December 2026; after that, vsce publish --azure-credential with a federated
+# identity.
+#
+# Open VSX needs no secret. This workflow is registered there as a trusted publisher
+# (https://open-vsx.org/user-settings/trusted-publishers) and trades the run's GitHub
+# OIDC token for a publishing token that lasts five minutes and covers this one extension.
+# The registration names the repository and this file's name, so renaming either, or
+# publishing from another workflow, stops it matching. A token passed in OVSX_PAT would
+# take precedence over it; there must not be one.
 
 name: Release
 
@@ -54,7 +65,7 @@ jobs:
         with:
           name: vsix
       - name: Publish to the Marketplace
-        run: npx vsce publish --packagePath vscode-isabelle.vsix
+        run: npx vsce publish --packagePath vscode-isabelle.vsix --skip-duplicate
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
       - name: Create the GitHub release
@@ -63,3 +74,33 @@ jobs:
             --title "${GITHUB_REF_NAME#v}" --generate-notes --verify-tag
         env:
           GH_TOKEN: ${{ github.token }}
+
+  # A job of its own so that the OIDC token (id-token: write) exists only where it is used.
+  # ovsx 1.4.0 wants Node 22 and brings its own @vscode/vsce, so it is installed from
+  # .github/ovsx -- its own package.json and lockfile -- rather than into the extension's
+  # devDependencies, where every CI job on every platform would install it.
+  publish-openvsx:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # what the trusted publisher exchanges for a publishing token
+    # If the trusted publisher on open-vsx.org pins an environment, name it here:
+    # environment: <name>
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # Built and checked by ci.yml's package job, in this same run.
+      - uses: actions/download-artifact@v4
+        with:
+          name: vsix
+      - name: Install the pinned ovsx
+        run: npm ci --ignore-scripts
+        working-directory: .github/ovsx
+      # --trusted-publishing fails the step when there is no OIDC token, instead of
+      # looking for an access token.
+      - name: Publish to Open VSX
+        run: ./node_modules/.bin/ovsx publish "$GITHUB_WORKSPACE/vscode-isabelle.vsix" --trusted-publishing --skip-duplicate
+        working-directory: .github/ovsx

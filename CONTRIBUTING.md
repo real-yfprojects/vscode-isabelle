@@ -148,10 +148,23 @@ git push --atomic origin main v2026.9.0
 ```
 
 Pushing the tag starts [release.yml](.github/workflows/release.yml). It runs all of CI on
-the tagged commit, then publishes the `.vsix` that CI built to the Marketplace and to a
-GitHub release. A release is never packaged on your machine, so it can't pick up a stale
-`out/` or ship without the extended server's jar. The workflow needs the repository secret
-`VSCE_PAT`, a Marketplace token for publisher `yfprojects`.
+the tagged commit, then publishes the `.vsix` that CI built to the Marketplace, to
+[Open VSX](https://open-vsx.org/extension/yfprojects/vscode-isabelle) and to a GitHub
+release. A release is never packaged on your machine, so it can't pick up a stale `out/`
+or ship without the extended server's jar.
+
+- The Marketplace upload needs the repository secret `VSCE_PAT`, a Marketplace token for
+  publisher `yfprojects`.
+- Open VSX needs no secret. `release.yml` is registered there as a
+  [trusted publisher](https://open-vsx.org/user-settings/trusted-publishers) for the
+  extension, and the job trades the run's GitHub identity for a short-lived token. The
+  registration names the repository and the file name `release.yml`, so renaming either
+  means registering the new name there (a registration can't be edited, only deleted and
+  made again), and an `OVSX_PAT` secret must never be added, because it would take
+  precedence. The CLI is pinned in `.github/ovsx/`, with a lockfile of its own because it
+  needs Node 22; bump it there.
+- Both uploads skip a version the store already has, so "Re-run failed jobs" after one of
+  them went through is safe.
 
 ## Generated files
 

@@ -1,0 +1,9 @@
+{
+  "name": "ovsx-publish",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The Open VSX CLI, pinned with its own lockfile for release.yml's publish-openvsx job. Kept apart from the extension's package.json: ovsx needs Node 22 and brings its own @vscode/vsce, and the extension's CI jobs have no use for either.",
+  "dependencies": {
+    "ovsx": "1.4.0"
+  }
+}
