@@ -1,0 +1,10 @@
+{
+  "name": "publish-tools",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The CLIs release.yml publishes with, pinned with a lockfile of their own: vsce for the Marketplace (--oidc exists from 4.x) and ovsx for Open VSX. Both need Node 22, which the rest of the repo does not, so they are kept apart from the extension's package.json and installed only by the publish jobs.",
+  "dependencies": {
+    "@vscode/vsce": "4.1.1",
+    "ovsx": "1.4.0"
+  }
+}

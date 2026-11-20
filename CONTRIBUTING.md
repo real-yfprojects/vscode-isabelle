@@ -153,18 +153,23 @@ the tagged commit, then publishes the `.vsix` that CI built to the Marketplace, 
 release. A release is never packaged on your machine, so it can't pick up a stale `out/`
 or ship without the extended server's jar.
 
-- The Marketplace upload needs the repository secret `VSCE_PAT`, a Marketplace token for
-  publisher `yfprojects`.
-- Open VSX needs no secret. `release.yml` is registered there as a
-  [trusted publisher](https://open-vsx.org/user-settings/trusted-publishers) for the
-  extension, and the job trades the run's GitHub identity for a short-lived token. The
-  registration names the repository and the file name `release.yml`, so renaming either
-  means registering the new name there (a registration can't be edited, only deleted and
-  made again), and an `OVSX_PAT` secret must never be added, because it would take
-  precedence. The CLI is pinned in `.github/ovsx/`, with a lockfile of its own because it
-  needs Node 22; bump it there.
-- Both uploads skip a version the store already has, so "Re-run failed jobs" after one of
-  them went through is safe.
+- Neither store needs a secret. `release.yml` is registered with each as a trusted
+  publisher, [on the Marketplace](https://marketplace.visualstudio.com/manage) (publisher
+  `yfprojects`, tab Trusted Publishing) and
+  [on Open VSX](https://open-vsx.org/user-settings/trusted-publishers), and each upload
+  trades the run's GitHub identity for a credential that lasts minutes. A registration
+  names the repository and the file name `release.yml`, so renaming either means
+  registering the new name (Open VSX can't edit a registration, only delete and recreate
+  it). There is no fallback to a token: don't add a `VSCE_PAT` or `OVSX_PAT` secret, which
+  would break the upload or take precedence over it.
+- The two uploads and the GitHub release are jobs of their own, so one failing doesn't hold
+  up the others, and both uploads skip a version the store already has: "Re-run failed
+  jobs" after one of them went through is safe.
+- `vsce` and `ovsx` for those jobs are pinned in `.github/publish-tools/`, with a lockfile
+  of its own because they need Node 22 and the rest of the repository does not. `vsce` is
+  there because `--oidc` exists from 4.x on, while the extension is packaged with the 3.x
+  in `devDependencies`. To bump them, edit the versions there and run
+  `npm install --package-lock-only --ignore-scripts` in that directory.
 
 ## Generated files
 
