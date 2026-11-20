@@ -455,7 +455,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // Before the lookup below, so that a missing distribution is reported, not a missing command.
   registerTerminal(context, reportStartupFailure)
-  registerWalkthrough(context, reportStartupFailure)
+  registerWalkthrough(context, reportStartupFailure, () => retryLookup?.(false))
   registerDependents(context.subscriptions, () => client, log)
   /* Before the lookup below too: an agent asking while Isabelle is missing is told so. A
      tool may start the server, which otherwise waits for a theory to be opened. */
@@ -472,17 +472,69 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // The table as it is when output arrives: it is reloaded when isabelle.home changes.
   infoview.glyphs = symbol => table?.glyphOf(symbol)
 
+  let home: string
   try {
-    isabelleHome = findIsabelleHome()
-    log(`Isabelle home: ${isabelleHome}`)
-    setHomeFound(true)
+    home = findIsabelleHome()
   } catch (err) {
     serverFailed(err)
+    awaitInstallation(context)
     return
   }
+  activateWithHome(context, home, false)
+}
+
+/** Set while activation waits for a distribution: try the lookup again. */
+let retryLookup: ((start: boolean) => void) | undefined
+
+/**
+ * No distribution was found at activation, and everything past the lookup needs one. It
+ * used to stop there for the life of the window, so the two fixes a user is pointed at
+ * did nothing: setting isabelle.home was read by no one, and "Start / Restart Language
+ * Server" -- the button on the error and the status bar's link -- said "command not
+ * found", since it was registered past the lookup too. Only a reload recovered.
+ *
+ * Now each of them tries again: the setting, the command, and the walkthrough's "Check
+ * Isabelle" (which may find one just installed). Once a lookup succeeds, activation
+ * carries on as if it had found the distribution in the first place.
+ */
+function awaitInstallation(context: vscode.ExtensionContext): void {
+  const waiting: vscode.Disposable[] = []
+  retryLookup = start => {
+    let home: string
+    try {
+      home = findIsabelleHome()
+    } catch (err) {
+      /* Asked for explicitly: say so. From the setting, which the Settings editor writes
+         while the path is still being typed, the status bar is enough. */
+      if (start) serverFailed(err)
+      else status?.setServer('failed', err instanceof Error ? err.message : String(err))
+      return
+    }
+    retryLookup = undefined
+    for (const d of waiting) d.dispose()
+    status?.setServer('off')
+    activateWithHome(context, home, start)
+  }
+  waiting.push(
+    vscode.commands.registerCommand('isabelle.restartServer', () => retryLookup?.(true)),
+    vscode.workspace.onDidChangeConfiguration(e => {
+      if (e.affectsConfiguration('isabelle.home')) retryLookup?.(false)
+    }),
+  )
+  context.subscriptions.push(...waiting)
+}
+
+/**
+ * Everything that needs a distribution. `start` starts the server at once, as the command
+ * that found the distribution asked; otherwise it starts as at activation.
+ */
+function activateWithHome(context: vscode.ExtensionContext, home: string, start: boolean): void {
+  isabelleHome = home
+  log(`Isabelle home: ${home}`)
+  setHomeFound(true)
 
   // Symbol rendering and input work without the language server, so set them up first.
-  table = SymbolTable.load(isabelleHome)
+  table = SymbolTable.load(home)
   log(`Loaded ${table.entries.length} symbols from etc/symbols ` +
       `(${table.entries.filter(e => e.glyph).length} with a codepoint, ` +
       `${table.entries.filter(e => e.isControl).length} control).`)
@@ -643,8 +695,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.window.onDidChangeTextEditorSelection(e => sendCaretUpdate(e.textEditor)),
     vscode.window.onDidChangeActiveTextEditor(editor => sendCaretUpdate(editor)),
+    /* Each start looks the distribution up again, so a new isabelle.home takes effect on
+       the next one; but a server already running keeps the old distribution, and nothing
+       said so. Offered rather than done: a restart costs a heap load. */
+    vscode.workspace.onDidChangeConfiguration(async e => {
+      if (!e.affectsConfiguration('isabelle.home') || !client) return
+      const choice = await vscode.window.showInformationMessage(
+        'Isabelle: Home changed. Restart the language server to use it?', 'Restart Server')
+      if (choice) await vscode.commands.executeCommand('isabelle.restartServer')
+    }),
   )
-  status.enableControls()
+  status?.enableControls()
+
+  if (start) {
+    void startClient().catch(err => serverFailed(err))
+    return
+  }
 
   /* Starting the server loads a heap image, which is the slowest thing this extension
      does. Plenty of what it offers -- symbol rendering, input, the outline, folding,
