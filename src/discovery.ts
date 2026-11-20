@@ -11,13 +11,18 @@
  *     the .app *is* the distribution (bin/, etc/ directly inside); from Isabelle2026 the
  *     distribution is .app/Contents/Resources and the .app root has a symlink to each of
  *     its entries, so .app/bin/isabelle exists in both layouts.
- *   - Windows: a self-extracting 7z, Isabelle2026.exe, whose InstallPath defaults to
- *     %UserDesktop% -- the Desktop, not the home folder.
+ *   - Windows: a self-extracting 7z, Isabelle2026.exe. Up to Isabelle2025-2 its
+ *     InstallPath defaults to %UserDesktop% -- the Desktop, not the home folder. From
+ *     Isabelle2026 it is plain 7-Zip's self-extractor, which offers the folder the .exe
+ *     is in: for most people, Downloads.
+ *
+ * Downloads is searched everywhere: it is also where macOS's Archive Utility leaves an
+ * .app that was never moved to /Applications.
  *
  * The scan used to accept only names like Isabelle2026, so it never found a macOS
- * installation, and it never looked at the Desktop, so it never found a Windows one
- * installed where the installer suggests. CI did not notice: it handed every suite
- * ISABELLE_HOME, and the scan never ran.
+ * installation, and it never looked at the Desktop or Downloads, so it never found a
+ * Windows one installed where the installer suggests. CI did not notice: it handed every
+ * suite ISABELLE_HOME, and the scan never ran.
  */
 
 import * as fs from 'fs'
@@ -79,11 +84,12 @@ export function searchRoots(
        installer means is OneDrive's -- and that folder's name varies ("OneDrive - ETH
        Zurich"), which the variable knows. */
     if (env.OneDrive) roots.push(p.join(env.OneDrive, 'Desktop'))
-    roots.push(p.join(home, 'OneDrive', 'Desktop'), 'C:\\')
+    roots.push(p.join(home, 'OneDrive', 'Desktop'), p.join(home, 'Downloads'), 'C:\\')
     return [...new Set(roots)]
   }
-  if (platform === 'darwin') return ['/Applications', path.posix.join(home, 'Applications'), home]
-  return [home, '/opt', '/usr/local']
+  const downloads = path.posix.join(home, 'Downloads')
+  if (platform === 'darwin') return ['/Applications', path.posix.join(home, 'Applications'), home, downloads]
+  return [home, downloads, '/opt', '/usr/local']
 }
 
 export interface Lookup {

@@ -130,21 +130,27 @@ async function run() {
 
     // --- where each platform looks ---------------------------------------------------
     const mine = searchRoots('darwin', '/Users/u')
-    assert.deepStrictEqual(mine, ['/Applications', '/Users/u/Applications', '/Users/u'])
-    assert.deepStrictEqual(searchRoots('linux', '/home/u'), ['/home/u', '/opt', '/usr/local'])
+    assert.deepStrictEqual(mine, ['/Applications', '/Users/u/Applications', '/Users/u', '/Users/u/Downloads'])
+    assert.deepStrictEqual(searchRoots('linux', '/home/u'),
+      ['/home/u', '/home/u/Downloads', '/opt', '/usr/local'])
     const win = searchRoots('win32', 'C:\\Users\\u', { OneDrive: 'C:\\Users\\u\\OneDrive - ETH Zurich' })
     assert.deepStrictEqual(win, ['C:\\Users\\u\\Isabelle', 'C:\\Users\\u', 'C:\\Users\\u\\Desktop',
-      'C:\\Users\\u\\OneDrive - ETH Zurich\\Desktop', 'C:\\Users\\u\\OneDrive\\Desktop', 'C:\\'])
+      'C:\\Users\\u\\OneDrive - ETH Zurich\\Desktop', 'C:\\Users\\u\\OneDrive\\Desktop',
+      'C:\\Users\\u\\Downloads', 'C:\\'])
     assert.strictEqual(new Set(searchRoots('win32', 'C:\\Users\\u', { OneDrive: 'C:\\Users\\u\\OneDrive' })).size,
       searchRoots('win32', 'C:\\Users\\u', { OneDrive: 'C:\\Users\\u\\OneDrive' }).length)
-    pass('each installer\'s default location is searched: /Applications, the Desktop, ~')
+    pass('each installer\'s default location is searched: /Applications, the Desktop, Downloads, ~')
 
     if (process.platform === 'win32') {
-      // The installer's own default, %UserDesktop%, through the real path module.
+      // The installers' own defaults, through the real path module: Isabelle2025-2's puts
+      // Isabelle on the Desktop, Isabelle2026's (plain 7-Zip) beside the downloaded .exe.
       const home = dir('winhome')
-      const desktop = distribution(path.join(dir('winhome', 'Desktop'), 'Isabelle2026'))
+      const desktop = distribution(path.join(dir('winhome', 'Desktop'), 'Isabelle2025-2'))
       assert.strictEqual(discoverIsabelleHome({ roots: searchRoots('win32', home, {}) }), desktop)
-      pass('an Isabelle the Windows installer put on the Desktop is found')
+      fs.rmSync(path.join(home, 'Desktop'), { recursive: true })
+      const downloads = distribution(path.join(dir('winhome', 'Downloads'), 'Isabelle2026'))
+      assert.strictEqual(discoverIsabelleHome({ roots: searchRoots('win32', home, {}) }), downloads)
+      pass('an Isabelle the Windows installers put on the Desktop or in Downloads is found')
     }
 
     console.log(passed + ' checks passed')

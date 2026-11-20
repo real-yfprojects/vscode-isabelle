@@ -127,9 +127,11 @@ the view into a side bar, or open it in an editor tab beside the theory with the
 
 To find Isabelle, the extension first checks `$ISABELLE_HOME`. After that it looks for an
 Isabelle release, such as `Isabelle2026` or `Isabelle2026.app`, where its installer puts
-it: in `/Applications`, `~/Applications` and your home folder on macOS; in `~/Isabelle`,
-your home folder, your Desktop and `C:\` on Windows; in your home folder, `/opt` and
-`/usr/local` on Linux. It takes the newest it finds. If yours is somewhere else, set
+it: in `/Applications`, `~/Applications`, your home folder and Downloads on macOS; in
+`~/Isabelle`, your home folder, your Desktop, Downloads and `C:\` on Windows; in your home
+folder, Downloads, `/opt` and `/usr/local` on Linux. It takes the newest it finds. On
+Windows, the extension sets up Isabelle's bundled Cygwin on its first start if Isabelle
+hasn't been started yet. If yours is somewhere else, set
 `isabelle.home` to the folder containing `bin/isabelle`, or on macOS to the app itself,
 such as `/Applications/Isabelle2026.app`. If you set it after Isabelle wasn't found, the
 extension picks it up straight away. Isabelle2026 comes as two macOS downloads, for Apple

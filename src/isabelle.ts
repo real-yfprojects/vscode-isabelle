@@ -5,6 +5,7 @@
  * so a stock extension can spawn it directly - no patched editor involved.
  */
 
+import * as cp from 'child_process'
 import * as crypto from 'crypto'
 import * as fs from 'fs'
 import * as os from 'os'
@@ -125,6 +126,78 @@ export function stageExtendedJar(jar: string, storageDir: string): string {
     }
   }
   return staged
+}
+
+/**
+ * Whether the distribution's bundled Cygwin still has to be set up.
+ *
+ * A released Windows bundle ships Cygwin with its symlinks stripped (listed in
+ * contrib/cygwin/isabelle/symlinks) and a marker file `uninitialized`;
+ * Environment.cygwin_init restores them and runs postinstall and rebaseall. Isabelle's
+ * own launcher, Isabelle2026.exe, does that on its first start -- but the server is
+ * started through contrib/cygwin/bin/bash.exe directly, which does not. Up to
+ * Isabelle2025-2 the installer ran the launcher's `-init` itself; from Isabelle2026 the
+ * installer is plain 7-Zip's self-extractor, which only unpacks. So someone who installs
+ * Isabelle2026 for VS Code and never starts jEdit has a Cygwin no server can start in.
+ */
+export function cygwinUninitialized(isabelleHome: string, platform = process.platform): boolean {
+  return platform === 'win32' &&
+    fs.existsSync(path.join(isabelleHome, 'contrib', 'cygwin', 'isabelle', 'uninitialized'))
+}
+
+/** The newest `<prefix>*` directory in the distribution's contrib/ with `rel` inside it. */
+function contribFile(isabelleHome: string, prefix: string, rel: string): string | undefined {
+  const contrib = path.join(isabelleHome, 'contrib')
+  let names: string[] = []
+  try { names = fs.readdirSync(contrib) } catch { /* none */ }
+  return names.filter(n => n.startsWith(prefix)).sort().reverse()
+    .map(n => path.join(contrib, n, rel)).find(f => fs.existsSync(f))
+}
+
+const CYGWIN_INIT_SOURCE = `public class CygwinInit {
+    public static void main(String[] args) throws Exception {
+        isabelle.setup.Environment.cygwin_init(args[0], args[1]);
+    }
+}
+`
+
+/**
+ * Set up the bundled Cygwin, as Isabelle's launcher would on its first start.
+ *
+ * Environment.cygwin_init itself, through the distribution's own JDK in single-file source
+ * mode -- not the launcher's `-init`, which may hand over to its JVM and return before the
+ * work is done, and on a failure opens a dialog, which would hang a start no one watches.
+ * (`isabelle.setup.Setup` cannot do it either: every operation there needs the Scala
+ * compiler, which the setup jar alone does not carry.) CI set up its Cygwin this way
+ * before it ran the real installers, on both releases.
+ */
+export async function initCygwin(isabelleHome: string, tmpDir: string, log: (m: string) => void): Promise<void> {
+  const java = contribFile(isabelleHome, 'jdk', path.join('x86_64-windows', 'bin', 'java.exe'))
+  const jar = contribFile(isabelleHome, 'isabelle_setup', path.join('lib', 'isabelle_setup.jar'))
+  if (!java || !jar) {
+    throw new IsabelleNotFound(
+      `Isabelle's bundled Cygwin at ${isabelleHome} is not set up yet, and its JDK or setup jar ` +
+      `is missing to do it. Start ${path.basename(isabelleHome)}.exe in that folder once.`)
+  }
+  fs.mkdirSync(tmpDir, { recursive: true })
+  const source = path.join(tmpDir, 'CygwinInit.java')
+  fs.writeFileSync(source, CYGWIN_INIT_SOURCE)
+  const args = ['-cp', jar, source, isabelleHome, path.join(isabelleHome, 'contrib', 'cygwin')]
+  log(`Setting up Isabelle's Cygwin: ${java} ${args.join(' ')}`)
+  const output: string[] = []
+  const code = await new Promise<number | null>((resolve, reject) => {
+    const child = cp.spawn(java, args, { cwd: isabelleHome, env: childEnv('win32'), windowsHide: true })
+    child.stdout.on('data', d => output.push(String(d)))
+    child.stderr.on('data', d => output.push(String(d)))
+    child.on('error', reject)
+    child.on('close', resolve)
+  })
+  const text = output.join('').trim()
+  if (text) log(text)
+  if (code !== 0) {
+    throw new Error(`Setting up Isabelle's Cygwin failed (exit code ${code}). ${text.split('\n').pop() ?? ''}`)
+  }
+  log('Isabelle\'s Cygwin is set up.')
 }
 
 /** Isabelle ships its own Cygwin on Windows; its bash is how the tool script must be run. */

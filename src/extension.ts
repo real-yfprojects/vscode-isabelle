@@ -5,8 +5,8 @@ import * as vscode from 'vscode'
 import { CloseAction, ErrorAction, ErrorHandler, LanguageClient, LanguageClientOptions,
   ServerOptions, State } from 'vscode-languageclient/node'
 import { isRunning, killTree } from './process_tree'
-import { buildServerOptions, checkWholeTheory, extendedServer, findIsabelleHome,
-  IsabelleNotFound, serverArguments, stageExtendedJar } from './isabelle'
+import { buildServerOptions, checkWholeTheory, cygwinUninitialized, extendedServer,
+  findIsabelleHome, initCygwin, IsabelleNotFound, serverArguments, stageExtendedJar } from './isabelle'
 import { caretPerspective, checkingExtent } from './status_items'
 import { SymbolTable } from './symbols'
 import { SymbolRenderer } from './decorations'
@@ -136,6 +136,23 @@ function logicLabel(): string {
  */
 const SHUTDOWN_TIMEOUT_MS = 5000
 
+let cygwinSetup: Promise<void> | undefined
+
+/**
+ * On Windows, set up the distribution's bundled Cygwin if nothing has yet: the server and
+ * the Isabelle terminal both run in it (see cygwinUninitialized). Once per distribution,
+ * and shared by whoever asks while it runs.
+ */
+async function prepareCygwin(home: string): Promise<void> {
+  if (!cygwinUninitialized(home)) return
+  cygwinSetup ??= Promise.resolve(vscode.window.withProgress({
+    location: vscode.ProgressLocation.Notification,
+    title: 'Isabelle: setting up its Cygwin, once after installing...',
+  }, () => initCygwin(home, path.join(globalStoragePath, 'cygwin-init'), log)))
+    .finally(() => { cygwinSetup = undefined })
+  await cygwinSetup
+}
+
 async function startClient(): Promise<void> {
   // Whatever started this, the start that was waiting for a theory is no longer needed.
   startOnTheory?.dispose()
@@ -163,6 +180,7 @@ async function startClient(): Promise<void> {
     void vscode.window.showWarningMessage(
       `Isabelle: ${extended.reason} Starting the standard language server instead.`)
   }
+  await prepareCygwin(home)
   const executable = buildServerOptions(home, process.platform, stagedJar)
   log(`Launching: ${executable.command} ${(executable.args ?? []).join(' ')}`)
   status?.setLaunchArgs(executable.args ?? [])
@@ -454,7 +472,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }))
 
   // Before the lookup below, so that a missing distribution is reported, not a missing command.
-  registerTerminal(context, reportStartupFailure)
+  registerTerminal(context, reportStartupFailure, prepareCygwin)
   registerWalkthrough(context, reportStartupFailure, () => retryLookup?.(false))
   registerDependents(context.subscriptions, () => client, log)
   /* Before the lookup below too: an agent asking while Isabelle is missing is told so. A
