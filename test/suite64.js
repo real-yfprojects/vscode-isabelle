@@ -304,7 +304,7 @@ async function run() {
   assert.match(tried.text, /ERROR \(\d+ ms\): by blast/)
   assert.match(tried.text, /GOALS_LEFT \(\d+ ms\): apply \(induct xs\)[\s\S]*2 subgoals/)
   assert.match(tried.text, /OUTPUT \(\d+ ms\): thm rev_rev_ident\n\s+rev \(rev \?xs\) = \?xs/)
-  assert.match(tried.text, /ERROR \(\d+ ms\): sorry\n\s+skips the proof/)
+  assert.match(tried.text, /PROVED WITH 1 SORRY, an outline and not yet a proof \(\d+ ms\): sorry\n\s+hole 1, goals:\n\s+[\s\S]*rev \(rev xs\) = xs/)
   assert.strictEqual(fs.readFileSync(file, 'utf8'), before, 'the file is not touched')
   const onLemma = await call('isabelle_try', { path: file, line: at('lemma rr'), candidates: ['by simp'] })
   assert.match(onLemma.text, /PROVED/, 'the line of a lemma means its goal')
@@ -338,6 +338,135 @@ async function run() {
     goal: 'True \\<and>', candidates: ['by simp'] })
   assert.ok(badGoal.isError && /could not be stated/.test(badGoal.text))
   pass('isabelle_try states goals of one\'s own, in a proof and at the theory level')
+
+  // --- try: outlines with sorry, and the time of each step ---
+  const outline = await call('isabelle_try', { path: file, line: at('lemma app'), candidates: [
+    'proof (induct xs)\n  case Nil\n  show ?case sorry\nnext\n  case (Cons x xs)\n  then show ?case sorry\nqed',
+    'oops',
+    `apply (induct xs)\n ML_val \\<open>${SLEEP(1)}\\<close>\n apply simp_all\n done`,
+  ] })
+  assert.match(outline.text, /PROVED WITH 2 SORRY, an outline and not yet a proof \(\d+ ms\): proof \(induct xs\)/)
+  assert.match(outline.text, /hole 1, the sorry at line 3 of the candidate, goals:\n[\s\S]*length \(\[\] @ ys\)/)
+  assert.match(outline.text, /hole 2, the sorry at line 6 of the candidate, goals:\n[\s\S]*length \(\(x # xs\) @ ys\)/)
+  assert.match(outline.text, /ERROR \(\d+ ms\): oops\n\s+gives the proof up/)
+  assert.match(outline.text, /PROVED \(\d+ ms(, slow: prefer a faster proof)?\): apply \(induct xs\)[\s\S]*slowest steps:\n\s+\d{4,} ms, line 2: ML_val/)
+  pass('an outline with sorry comes back with the goal of each hole; a slow step is named')
+
+  const counter = await call('isabelle_try', { path: file, line: at('lemma rr'), goal: 'rev xs = xs',
+    candidates: ['quickcheck', 'nitpick'], timeout_s: 60 })
+  assert.match(counter.text, /OUTPUT \(\d+ ms\): quickcheck\n[\s\S]*Quickcheck found a counterexample/)
+  assert.match(counter.text, /OUTPUT \(\d+ ms\): nitpick\n[\s\S]*Nitpick found a counterexample/)
+  pass('quickcheck and nitpick as candidates give their counterexamples')
+
+  // --- try: handles, to go on from a state ---
+  /** The handle of a candidate: the first after its header. */
+  const handleOf = (result, text) => {
+    const start = result.text.indexOf(`): ${text}`)
+    const m = start >= 0 && /handle (h\d+): go on from this state/.exec(result.text.slice(start))
+    assert.ok(m, `a handle for ${text}`)
+    return m[1]
+  }
+  const induct = await call('isabelle_try', { path: file, line: at('  apply (induct xs)'),
+    candidates: ['apply (induct xs)'] })
+  assert.match(induct.text, /GOALS_LEFT[\s\S]*each goal left, stated on its own[\s\S]*1\. length \(\[\] @ ys\)/)
+  assert.match(induct.text, /stated on its own[\s\S]*2\. \\<And>\w+ xs\.\s+length \(xs @ ys\) = length ys \+ length xs \\<Longrightarrow>/)
+  const h1 = handleOf(induct, 'apply (induct xs)')
+  const nil = await call('isabelle_try', { from: h1, candidates: ['apply simp'] })
+  assert.match(nil.text, /GOALS_LEFT[\s\S]*1 subgoal/)
+  assert.match(nil.text, new RegExp(`the steps so far, from line ${at('  apply (induct xs)')}:\\n\\s+apply \\(induct xs\\)\\n\\s+apply simp`))
+  const h2 = handleOf(nil, 'apply simp')
+  const cons = await call('isabelle_try', { from: h2, candidates: ['apply simp', 'done'] })
+  assert.match(cons.text, /NO_SUBGOALS \(\d+ ms\): apply simp/)
+  assert.match(cons.text, /ERROR \(\d+ ms\): done/)
+  const finished = await call('isabelle_try', { from: handleOf(cons, 'apply simp'), candidates: ['done'] })
+  assert.match(finished.text, /PROVED \(\d+ ms\): done[\s\S]*apply \(induct xs\)\n\s+apply simp\n\s+apply simp\n\s+done/)
+  const branch = await call('isabelle_try', { from: h1, candidates: ['apply simp_all'] })
+  assert.match(branch.text, /NO_SUBGOALS/, 'an earlier handle still works: a branch')
+  /* An apply proof takes no `have`: a goal of one's own there, as a restated goal of a handle
+     is, goes after `proof -`. */
+  const inApply = await call('isabelle_try', { path: file, line: at('  apply (induct xs)'),
+    goal: 'length ([] @ ys) = length ys + length []', candidates: ['by simp'] })
+  assert.match(inApply.text, /PROVED/, 'a goal of one\'s own in an apply proof')
+  const gone = await call('isabelle_try', { from: 'h99999', candidates: ['done'] })
+  assert.ok(gone.isError && /There is no handle h99999/.test(gone.text))
+  pass('handles go on from a state step by step, branch from an earlier one, and give the steps so far')
+
+  /* What obtain adds is a premise of the goal stated on its own; proved there, the proof goes
+     on from the handle with those facts. */
+  const showLine = at('  show ?thesis')
+  const obtained = await call('isabelle_try', { path: file, line: showLine,
+    candidates: ['proof -\n  obtain y where "x = Suc y" using assms by (cases x) auto'] })
+  const stated = /1\. (\\<And>y\. x = Suc y \\<Longrightarrow> x \\<noteq> 0)/.exec(obtained.text)
+  assert.ok(stated, 'the goal left after obtain, with y bound and its fact as a premise')
+  assert.match(obtained.text, /goes on from h\d+ as: show \?thesis using \\<open>x = Suc y\\<close> by M/)
+  const alone = await call('isabelle_try', { path: file, line: showLine, goal: stated[1], candidates: ['by simp'] })
+  assert.match(alone.text, /PROVED/, 'the statement reads at the line the chain started at')
+  const back = await call('isabelle_try', { from: handleOf(obtained, 'proof -'),
+    candidates: ['show ?thesis using \\<open>x = Suc y\\<close> by simp\nqed'] })
+  assert.match(back.text, /PROVED/)
+  pass('a goal left after obtain is stated on its own, and its proof goes on from the handle')
+
+  const handlesFile = path.join(ws, 'Agent_Handles.thy')
+  const handlesText = ['theory Agent_Handles', '  imports Main', 'begin', '(* one *)', '',
+    'lemma "rev (rev xs) = xs"', '  by simp', '', 'end', ''].join('\n')
+  fs.writeFileSync(handlesFile, handlesText, 'utf8')
+  const fresh = await call('isabelle_try', { path: 'Agent_Handles.thy', line: 7, candidates: ['apply simp'] })
+  const h3 = handleOf(fresh, 'apply simp')
+  const unchanged = await call('isabelle_try', { from: h3, candidates: ['done'] })
+  assert.ok(!/The theory changed/.test(unchanged.text))
+  fs.writeFileSync(handlesFile, handlesText.replace('(* one *)', '(* two *)'), 'utf8')
+  const stale = await call('isabelle_try', { from: h3, candidates: ['done'] })
+  assert.match(stale.text, /^The theory changed above line 7 since h\d+'s chain started there/)
+  assert.match(stale.text, /PROVED/, 'a stale handle still answers')
+  pass('a handle whose theory changed above its chain says so')
+
+  // --- context: definitions, facts, relevant facts ---
+  const ofRr = await call('isabelle_context', { path: file, line: at('lemma rr') })
+  assert.match(ofRr.text, /goal:[\s\S]*rev \(rev xs\) = xs/)
+  assert.match(ofRr.text, /rev :: [^\n]*\n\s+by rev\.simps:\n\s+rev \[\] = \[\]/, 'a primrec, by its simps')
+  assert.match(ofRr.text, /variables: xs :: 'a list/)
+  assert.match(ofRr.text, /relevance filter \(MePo\), best first:\n\s+\S+:\n/, 'some relevant facts')
+  const ofF = await call('isabelle_context', { path: file, line: at('lemma f_cond'), goal: 'f m = 0',
+    relevant: false })
+  assert.match(ofF.text, /f :: nat \\<Rightarrow> nat\n\s+by f_def:\n\s+f \?n = 0/, 'a definition, by its _def')
+  assert.ok(!/zero_finite|Zero_nat_def/.test(ofF.text), 'not the instances of a type class operation')
+  assert.ok(!/relevance filter/.test(ofF.text), 'relevant: false leaves them out')
+  const inProof = await call('isabelle_context', { path: file, line: at('  show ?thesis'), relevant: false })
+  assert.match(inProof.text, /variables: x :: nat/)
+  assert.match(inProof.text, /assms:[\s\S]*3 < x/, 'the assumptions of the proof')
+  const ofHandle = await call('isabelle_context', { from: h1 })
+  assert.match(ofHandle.text, /goal:[\s\S]*length \(\[\] @ ys\)/)
+  assert.match(ofHandle.text, /relevance filter \(MePo\), best first:\n\s+\S+:\n/, 'relevant facts of a handle\'s goal')
+  pass('isabelle_context gives the definitions in a goal, the facts of the proof, and relevant facts')
+
+  // --- profile, and the proofs a check finds left out ---
+  const profiled = path.join(ws, 'Agent_Profile.thy')
+  fs.writeFileSync(profiled, ['theory Agent_Profile', '  imports Main', 'begin', '',
+    'lemma slow_one: "True"',
+    `  apply (tactic \\<open>fn st => (${SLEEP(2)}; Seq.single st)\\<close>)`,
+    '  by simp', '',
+    'lemma quick: "rev (rev xs) = xs"', '  by simp', '',
+    'lemma skipped: "length (xs @ ys) = length ys + length xs"', '  sorry', '',
+    'end', ''].join('\n'), 'utf8')
+  const prof = await call('isabelle_profile', { path: 'Agent_Profile.thy' })
+  assert.match(prof.text, /^Agent_Profile\.thy: [\d.]+ s in all, over \d+ commands; checked\./)
+  assert.match(prof.text, /slowest proofs[^\n]*\n\s+[2-9]\.\d\d s {2}slow_one \(line 5\); slowest: line 6, apply \(tactic/)
+  assert.match(prof.text, /not counted: \d+ commands outside proofs/)
+  const without = await call('isabelle_profile', { path: 'Agent_Profile.thy', exclude: ['slow_one'] })
+  assert.ok(!/ slow_one \(line/.test(without.text))
+  assert.match(without.text, /excluded: \d+ commands?, [2-9]\.\d\d s \(exclude: slow_one\)/)
+  const only = await call('isabelle_profile', { path: 'Agent_Profile.thy', match: ['quick'], min_s: 0 })
+  assert.match(only.text, / quick \(line 9\)/)
+  assert.ok(!/slow_one \(line/.test(only.text))
+  const commandsAll = await call('isabelle_profile', { path: 'Agent_Profile.thy', by: 'command', kinds: 'all' })
+  assert.match(commandsAll.text, /slowest commands:\n\s+[2-9]\.\d\d s {2}line 6: apply \(tactic[^\n]*\(in slow_one\)/)
+  assert.ok(!/not counted/.test(commandsAll.text))
+  pass('isabelle_profile names the slowest lemma and its command, and leaves out what is excluded')
+
+  const skippedCheck = await call('isabelle_check', { path: 'Agent_Profile.thy' })
+  assert.match(skippedCheck.text, /1 sorry/)
+  assert.match(skippedCheck.text, /Proofs left out, with the goals each skips:\n\s+line 13: sorry\n[\s\S]*length \(xs @ ys\) = length ys \+ length xs/)
+  pass('isabelle_check lists each sorry with the goal it skips')
 
   // --- find_theorems ---
   const found = await call('isabelle_find_theorems', { path: file, query: '"rev (rev _)"' })
@@ -456,7 +585,7 @@ async function run() {
   assert.strictEqual(init.result.serverInfo.name, 'isabelle')
   assert.match(init.result.instructions, /isabelle_check/)
   const tools = await relay.call('tools/list', {})
-  assert.strictEqual(tools.result.tools.length, 5)
+  assert.strictEqual(tools.result.tools.length, 7, "the seven isabelle_* tools")
   const viaRelay = await relay.call('tools/call',
     { name: 'isabelle_check', arguments: { path: 'Agent_Tools.thy' } })
   console.log('--- via the relay:\n' + viaRelay.result.content[0].text)

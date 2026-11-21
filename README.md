@@ -25,7 +25,7 @@ in your `.thy` files.
 - *Checking*: continuous live PIDE verification; goals and messages at the cursor in one infoview, with pinned goals (that follow your edits†); cache session management
 - *Proving*: sledgehammer (runs that go on while you edit, several at once, and a proof for every `sorry` of a lemma†), find theorems† and simplifier trace† panels, overview over checked theories and timing†
 - *Navigating*: outline, breadcrumbs, indexed code symbols, code folding, go to definition, semantic find references†, Graph View† for theory, class, locale and code dependencies
-- *LLMs*†: mcp server for claude code and copilot to check theories, read goals, try proofs and run Sledgehammer with the prover of your window
+- *LLMs*†: mcp server for claude code and copilot to check theories, read goals, try proofs and proof outlines, step through a proof, look up definitions and relevant facts, find slow proofs and run Sledgehammer with the prover of your window
 - *Misc*: preview, documentation panel, cygwin terminal
 
 † = these features need a patch to the Isabelle LSP. See [step 2](#2-turn-on-the-extended-server-optional-recommended).
@@ -163,8 +163,10 @@ images work.
 ### 6. Let AI agents use the prover (optional)
 
 Claude Code, GitHub Copilot and other MCP clients can use the prover of your window as
-tools: check a theory in seconds, read the goals at a line, try several proofs at once
-without editing the file, run Sledgehammer, and find theorems. Without them, an agent can
+tools: check a theory in seconds, read the goals at a line, try several proofs or a proof
+outline at once without editing the file, go on step by step from where a try left off,
+look up the definitions and facts that matter for a goal, run Sledgehammer, find theorems,
+and find the slowest proofs. Without them, an agent can
 only run `isabelle build`, which loads the session image again for every check.
 
 With the extended server on, run **Isabelle: Set Up AI Agents** in your project. It turns

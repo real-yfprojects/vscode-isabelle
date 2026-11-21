@@ -90,12 +90,28 @@ export const TOOL_DEFS: ToolDef[] = [
       'timeout and reports proved, goals_left (with the goals), no_subgoals (finish with ' +
       '`done`), error (with the message), timeout, or output. A simplifier run that times ' +
       'out comes back with the rewrite rules it applied most and the cycle they repeat in. ' +
+      'A candidate may outline a proof with `sorry`, as in `proof (induct xs) case Nil show ' +
+      '?case sorry next ... qed`: it comes back proved_with_sorry with the goals of each ' +
+      'sorry, the holes to fill in next. Each candidate reports its time, and one of several ' +
+      'steps its slowest steps: prefer the fastest proof that checks. ' +
+      'A candidate that reaches a state comes back with a handle: pass it as `from`, instead ' +
+      'of path and line, to go on from that state -- step by step through a proof, back to ' +
+      'an earlier handle, or several ways from one -- and get the steps so far to write into ' +
+      'the file. Goals left there come back also stated on their own, to give ' +
+      'isabelle_sledgehammer as `goal`. ' +
       'Use it before writing a proof into the file, and to look up facts instead of ' +
       'guessing their names.',
     inputSchema: {
       type: 'object',
       properties: {
-        path: thyPath, line, column, goal,
+        path: { ...thyPath, description: thyPath.description + ' Not needed with `from`.' },
+        line: { ...line, description: line.description + ' Not needed with `from`.' },
+        column, goal,
+        from: {
+          type: 'string',
+          description: 'A handle from an earlier isabelle_try, like "h7": the candidates run on ' +
+            'the state it stands for. With `goal`, the goal is stated in that state.',
+        },
         candidates: {
           type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 12,
           description: 'Isar texts to try, each on its own.',
@@ -121,7 +137,7 @@ export const TOOL_DEFS: ToolDef[] = [
         },
         watch_limit: { type: 'integer', minimum: 1, description: 'Steps recorded. Default 20.' },
       },
-      required: ['path', 'line', 'candidates'],
+      required: ['candidates'],
     },
   },
   {
@@ -139,6 +155,67 @@ export const TOOL_DEFS: ToolDef[] = [
         timeout_s: { type: 'integer', minimum: 1, description: 'Default 30.' },
       },
       required: ['path', 'line'],
+    },
+  },
+  {
+    name: 'isabelle_context',
+    description:
+      'What to know about the goal at a line, or of a handle, before proving it: the ' +
+      'definitions of the constants in it, each with the fact to unfold or simp it by ' +
+      '(`foo_def`, `foo.simps`, `foo.intros`); the variables and the facts of the proof ' +
+      '(assumptions, `this`, named facts); and the facts Sledgehammer\'s relevance filter ' +
+      'ranks highest for the first goal, with their statements. Use it instead of guessing ' +
+      'which definitions to unfold or which lemmas apply.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { ...thyPath, description: thyPath.description + ' Not needed with `from`.' },
+        line: { ...line, description: line.description + ' Not needed with `from`.' },
+        column, goal,
+        from: {
+          type: 'string',
+          description: 'A handle from isabelle_try, like "h7": the context of its state.',
+        },
+        relevant: {
+          type: 'boolean',
+          description: 'Default true. false: leave out the relevant facts, which take a few seconds.',
+        },
+        limit: { type: 'integer', minimum: 1, description: 'Relevant facts. Default 20.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'isabelle_profile',
+    description:
+      'Where a theory spends its time, for making it faster: the slowest lemmas, each with ' +
+      'its slowest command, or with `by: "command"` the slowest commands. Waits until the ' +
+      'theory is checked, as isabelle_check does. Counts the commands of proofs, which an ' +
+      'agent can speed up; `kinds: "all"` counts imports, definitions and packages too. ' +
+      'Leave out what you judged cannot be made faster with `exclude` (lemma names, or text ' +
+      'of a command\'s first line), and check one lemma again after a change with `match`. ' +
+      'What is left out is summed up at the end.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: thyPath,
+        by: { type: 'string', enum: ['lemma', 'command'], description: 'Default "lemma".' },
+        kinds: { type: 'string', enum: ['proofs', 'all'], description: 'Default "proofs".' },
+        match: {
+          type: 'array', items: { type: 'string' },
+          description: 'Only these: lemma names (exact), or text in a command\'s first line.',
+        },
+        exclude: {
+          type: 'array', items: { type: 'string' },
+          description: 'Not these: lemma names (exact), or text in a command\'s first line.',
+        },
+        from_line: { type: 'integer', minimum: 1, description: 'First line to count (1-based).' },
+        to_line: { type: 'integer', minimum: 1, description: 'Last line to count (1-based).' },
+        limit: { type: 'integer', minimum: 1, description: 'Rows. Default 10.' },
+        min_s: { type: 'number', minimum: 0, description: 'Leave out rows below this. Default 0.1.' },
+        timeout_s: { type: 'integer', minimum: 1, description: 'How long to wait for the check. Default 120.' },
+      },
+      required: ['path'],
     },
   },
   {
@@ -166,9 +243,13 @@ export const SERVER_INSTRUCTIONS =
   'as \\<forall>, \\<Longrightarrow>, \\<open>...\\<close>, never as Unicode glyphs; tool ' +
   'output uses the same notation. After editing a .thy file, run isabelle_check. At an ' +
   'error, look at isabelle_state, try several candidates at once with isabelle_try, then ' +
-  'isabelle_sledgehammer, and write only a proof that came back `proved`. Test an ' +
-  'intermediate step or a helper lemma with `goal` before writing it. Look up facts with ' +
-  'isabelle_try ["thm name"] or isabelle_find_theorems instead of guessing names. A ' +
+  'isabelle_sledgehammer, and write only a proof that came back `proved`, the fastest one. ' +
+  'Test an intermediate step or a helper lemma with `goal` before writing it. Outline a ' +
+  'bigger proof as one candidate with `sorry` for its steps: the goals of the holes come ' +
+  'back. A candidate\'s result has a handle: go on from it with `from`, step by step. ' +
+  'isabelle_context shows the definitions in a goal, the facts in scope and the relevant ' +
+  'library facts; look facts up with it, isabelle_try ["thm name"] or ' +
+  'isabelle_find_theorems instead of guessing names. isabelle_profile finds slow proofs. A ' +
   'simplifier loop shows as a timeout with its rule cycle: drop that rule with `simp del:`. ' +
   'A long check need not hold you up: isabelle_check with `wait: false` returns the ' +
   'progress at once, and the other tools work while the prover goes on.'

@@ -7,12 +7,14 @@
  * in Isabelle's ASCII notation as the theory file has it. Text the agent passes in (goals,
  * candidates, patterns) is encoded the same way, in case it holds Unicode glyphs.
  */
+import { createHash } from 'crypto'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as vscode from 'vscode'
 import { LanguageClient, ParameterStructures, RequestType, State } from 'vscode-languageclient/node'
 import { isFalsification } from '../sledgehammer_text'
 import { SymbolTable } from '../symbols'
+import { formatProfile, ProfileCommand } from './profile'
 import { goalStatement, proofsOf, unicodeLines } from './text'
 
 export interface ToolResult {
@@ -61,6 +63,8 @@ interface Report {
   first_waiting?: Place
   sorry?: number
   oops?: number
+  /** Each sorry and oops (up to 20), with the goals before it where known. */
+  skipped?: (Place & { goal?: string })[]
   messages?: ReportMessage[]
 }
 
@@ -81,7 +85,8 @@ interface StateReply {
 
 interface Candidate {
   text: string
-  outcome: 'proved' | 'goals_left' | 'no_subgoals' | 'error' | 'timeout' | 'output' | 'ok'
+  outcome: 'proved' | 'proved_with_sorry' | 'goals_left' | 'no_subgoals' | 'error' |
+    'timeout' | 'output' | 'ok'
   time_ms: string
   state: string
   output: string
@@ -90,16 +95,62 @@ interface Candidate {
   stats: { rule: string; applied: number; condition_failed: number }[]
   cycle: string[]
   steps: Record<string, string>[]
+  /** The goals each sorry of an outline skips; absent from an older server. */
+  holes?: { line: string; goals: string }[]
+  /** The slowest steps of a candidate of several, slowest first. */
+  slow_steps?: { line: string; command: string; source: string; time_ms: string }[]
+  /** The handle of the state the candidate reached, to go on from. */
+  handle?: string
+  /** For goals left: each stated on its own at the root of the chain. */
+  statements?: { statement?: string; error?: string }[]
+  /** The facts the chain added, as `using ...`, for a proof of a statement tried here. */
+  using?: string
+  /** "prove" where a proof goes on by `apply`, "state" in an Isar proof body. */
+  mode?: string
 }
+
+/** A proof that checks but takes this long is reported as slow. */
+const SLOW_PROOF_MS = 1000
 
 interface TryReply {
   error?: string
   state?: string
+  /** "true" when the call started in a proof: an own goal is stated with `have` there. */
   proof?: string
+  /** The handle of the state with the agent's own goal stated. */
+  goal_handle?: string
+  /** How the goal was stated: "have ", "proof - have " in an apply proof, or "lemma ". */
+  goal_keyword?: string
   candidates?: Candidate[]
 }
 
+/** What the extension keeps of a handle the prover made: where its chain of calls started,
+    and the steps since, which the prover does not keep. */
+interface HandleInfo {
+  uri: vscode.Uri
+  /** The 1-based line the first call of the chain named. */
+  line: number
+  /** The text above that line then, hashed: once it differs, the state is from before an edit. */
+  above: string
+  script: string
+}
+
+/** As many as the prover keeps (max_handles in vscode_agent.ML). */
+const MAX_HANDLES = 256
+
+const NO_HANDLE = (id: string) => `There is no handle ${id} (any more): handles last until ` +
+  `${MAX_HANDLES} newer ones are made, or the prover restarts. Start again from a line.`
+
 interface SledgehammerReply { error?: string; messages?: string[] }
+
+interface ContextReply {
+  error?: string
+  goal?: string
+  definitions?: string
+  facts?: string
+  relevant?: { name: string; statement: string }[]
+  relevant_error?: string
+}
 
 /* By name: a request given an undefined token would otherwise go out with its parameters
    in an array, which the server does not read. */
@@ -110,6 +161,9 @@ const AgentReport = byName<object, Report>('PIDE/agent_report')
 const AgentState = byName<object, StateReply>('PIDE/agent_state')
 const AgentTry = byName<object, TryReply>('PIDE/agent_try')
 const AgentSledgehammer = byName<object, SledgehammerReply>('PIDE/agent_sledgehammer')
+const AgentContext = byName<object, ContextReply>('PIDE/agent_context')
+const AgentProfile = byName<object, { error?: string; outdated?: boolean; commands?: ProfileCommand[] }>(
+  'PIDE/agent_profile')
 
 const POLL_MS = 300
 const MAX_TEXT = 30000
@@ -162,11 +216,24 @@ function runningKey(r: Report): string {
 
 class ToolError extends Error {}
 
-/** Whether the running server answers PIDE/agent_*: it says so among its capabilities. */
-export function supportsAgent(client: LanguageClient | undefined): boolean {
+/** The version of PIDE/agent_* the server answers, as it says among its capabilities: 2 adds
+    handles, outlines, isabelle_context and isabelle_profile. */
+function agentVersion(client: LanguageClient | undefined): number {
   const experimental = client?.initializeResult?.capabilities.experimental as
     { isabelleAgent?: number } | undefined
-  return !!client && client.state === State.Running && !!experimental?.isabelleAgent
+  return experimental?.isabelleAgent ?? 0
+}
+
+/** Whether the running server answers PIDE/agent_*. */
+export function supportsAgent(client: LanguageClient | undefined): boolean {
+  return !!client && client.state === State.Running && agentVersion(client) > 0
+}
+
+const NEWER_SERVER = 'This needs a newer extended Isabelle server than the one running: ' +
+  'reload the window after updating the extension.'
+
+function needsVersion(client: LanguageClient, version: number): void {
+  if (agentVersion(client) < version) throw new ToolError(NEWER_SERVER)
 }
 
 function str(args: Record<string, unknown>, name: string): string | undefined {
@@ -206,12 +273,50 @@ export class AgentTools {
     private readonly startServer: () => Promise<void>,
   ) {}
 
+  private readonly handles = new Map<string, HandleInfo>()
+
+  private remember(id: string, info: HandleInfo): void {
+    this.handles.set(id, info)
+    while (this.handles.size > MAX_HANDLES) {
+      this.handles.delete(this.handles.keys().next().value as string)
+    }
+  }
+
+  /** Where a query runs: with a handle (`from`), at the line its chain started at, on the
+      handle's state; else at the `path` and `line` given. */
+  private locate(client: LanguageClient, args: Record<string, unknown>) {
+    const from = str(args, 'from')?.trim()
+    const origin = from ? this.handles.get(from) : undefined
+    if (from) {
+      needsVersion(client, 2)
+      if (!origin) throw new ToolError(NO_HANDLE(from))
+    }
+    const uri = origin?.uri ?? this.resolve(args)
+    const position = this.position(uri, origin ? { line: origin.line } : args)
+    return { from, origin, uri, position }
+  }
+
+  /** The note for a handle whose theory changed above its chain since. */
+  private staleNote(from: string | undefined, origin: HandleInfo | undefined): string[] {
+    if (!origin || this.above(origin.uri, origin.line) === origin.above) return []
+    return [`The theory changed above line ${origin.line} since ${from}'s chain started there: ` +
+      'its state is from before that edit. Start again from a line if the edit matters.', '']
+  }
+
+  /** The text above a 1-based line, hashed. */
+  private above(uri: vscode.Uri, line: number): string {
+    const lines = this.text(uri).split(/\r?\n/).slice(0, line - 1)
+    return createHash('sha1').update(lines.join('\n')).digest('hex')
+  }
+
   readonly handlers: Record<string, ToolHandler> = {
     isabelle_check: (a, t, p) => this.run(() => this.check(a, t, p), t),
     isabelle_state: (a, t, p) => this.run(() => this.state(a, t, p), t),
     isabelle_try: (a, t, p) => this.run(() => this.tryCandidates(a, t, p), t),
     isabelle_sledgehammer: (a, t, p) => this.run(() => this.sledgehammer(a, t, p), t),
     isabelle_find_theorems: (a, t, p) => this.run(() => this.findTheorems(a, t, p), t),
+    isabelle_context: (a, t, p) => this.run(() => this.context(a, t, p), t),
+    isabelle_profile: (a, t, p) => this.run(() => this.profile(a, t, p), t),
   }
 
   /** `work`, while `what` is reported with the seconds it has taken, every second: for a
@@ -504,6 +609,16 @@ export class AgentTools {
       out.push('The file has unsaved changes in the editor: the prover checks the text in the editor, ' +
         'not the file on disk, and edits to the file are not seen until the user saves.')
     }
+    const skipped = r.skipped ?? []
+    if (skipped.length) {
+      out.push('', 'Proofs left out, with the goals each skips:')
+      for (const p of skipped) {
+        out.push(`  line ${p.line + 1}: ${p.source}`)
+        if (p.goal) out.push(indent(p.goal, '      '))
+      }
+      const more = (r.sorry ?? 0) + (r.oops ?? 0) - skipped.length
+      if (more > 0) out.push(`  ... and ${more} more`)
+    }
     for (const m of [...errors, ...warnings]) {
       const range = m.line === m.end_line
         ? `${m.line + 1}:${m.character + 1}-${m.end_character + 1}`
@@ -570,7 +685,7 @@ export class AgentTools {
     uri: vscode.Uri,
     position: { line: number; character: number },
     params: {
-      goal: string; candidates: string[]; timeout_ms: number; stats?: boolean
+      from?: string; goal: string; candidates: string[]; timeout_ms: number; stats?: boolean
       watch_rules?: string[]; watch_patterns?: string[]; watch_limit?: number
     },
     token?: vscode.CancellationToken,
@@ -587,18 +702,20 @@ export class AgentTools {
   private async tryCandidates(args: Record<string, unknown>, token?: vscode.CancellationToken,
       progress?: Progress): Promise<string> {
     const client = await this.client(token, progress)
-    const uri = this.resolve(args)
+    const { from, origin, uri, position } = this.locate(client, args)
+    const line = position.line + 1
     const candidates = strings(args, 'candidates').map(c => this.encode(c)).filter(c => c.trim())
     if (!candidates.length) throw new ToolError('No candidates given.')
     if (candidates.length > 12) throw new ToolError('At most 12 candidates at once.')
-    const position = this.position(uri, args)
     const timeout_ms = Math.round((num(args, 'timeout_s') ?? 10) * 1000)
+    const where = from ? `from ${from}` : `at line ${line}`
     const what = candidates.length === 1
-      ? `trying ${shorten(candidates[0], 40)} at line ${position.line + 1}`
-      : `trying ${candidates.length} candidates at line ${position.line + 1}, ` +
-        `${timeout_ms / 1000} s each`
+      ? `trying ${shorten(candidates[0], 40)} ${where}`
+      : `trying ${candidates.length} candidates ${where}, ${timeout_ms / 1000} s each`
+    const goal = goalStatement(this.encode(str(args, 'goal') ?? ''))
     const reply = await this.ticking(progress, what, () => this.requestTry(client, uri, position, {
-      goal: goalStatement(this.encode(str(args, 'goal') ?? '')),
+      from: from ?? '',
+      goal,
       candidates,
       timeout_ms,
       stats: args.simp_stats === true,
@@ -606,17 +723,75 @@ export class AgentTools {
       watch_patterns: strings(args, 'watch_patterns').map(p => this.encode(p)),
       watch_limit: num(args, 'watch_limit') ?? 20,
     }, token))
-    return this.formatTry(reply,
-      strings(args, 'watch_rules').length + strings(args, 'watch_patterns').length > 0)
+
+    /* The steps since the first call, which the prover does not keep: the handle's, then the
+       own goal, then the candidate. */
+    const chain = {
+      uri, line: origin?.line ?? line,
+      above: origin?.above ?? this.above(uri, line),
+    }
+    const join = (before: string | undefined, step: string) => before ? `${before}\n${step}` : step
+    let prefix = origin?.script
+    if (reply.goal_handle) {
+      prefix = join(prefix, `${reply.goal_keyword ?? (reply.proof ? 'have ' : 'lemma ')}${goal}`)
+      this.remember(reply.goal_handle, { ...chain, script: prefix })
+    }
+    for (const c of reply.candidates ?? []) {
+      if (c.handle) this.remember(c.handle, { ...chain, script: join(prefix, c.text) })
+    }
+    const out = this.staleNote(from, origin)
+    out.push(this.formatTry(reply,
+      strings(args, 'watch_rules').length + strings(args, 'watch_patterns').length > 0,
+      { line: chain.line, prefix }))
+    return out.join('\n')
   }
 
-  private formatTry(reply: TryReply, watching = false): string {
+  /** `chain`: the line the chain of calls started at, and its steps before these candidates. */
+  private formatTry(reply: TryReply, watching = false,
+      chain?: { line: number; prefix?: string }): string {
     const out: string[] = []
+    if (reply.goal_handle) out.push(`own goal stated: handle ${reply.goal_handle}`)
     if (reply.state) out.push('goal tried:', indent(reply.state), '')
-    for (const c of reply.candidates ?? []) {
-      out.push(`${c.outcome.toUpperCase()} (${c.time_ms} ms): ${c.text}`)
+    const candidates = reply.candidates ?? []
+    for (const c of candidates) {
+      const holes = c.holes ?? []
+      const label = c.outcome === 'proved_with_sorry'
+        ? `PROVED WITH ${holes.length} SORRY, an outline and not yet a proof`
+        : c.outcome.toUpperCase()
+      const slow = c.outcome === 'proved' && Number(c.time_ms) >= SLOW_PROOF_MS
+        ? ', slow: prefer a faster proof' : ''
+      out.push(`${label} (${c.time_ms} ms${slow}): ${c.text}`)
       if (c.state) out.push(indent(c.state))
-      if (c.output && c.outcome !== 'proved') out.push(indent(c.output))
+      if (c.handle && chain?.prefix) {
+        out.push(`    the steps so far, from line ${chain.line}:`,
+          indent(`${chain.prefix}\n${c.text}`, '      '))
+      }
+      const statements = c.statements ?? []
+      if (statements.length) {
+        out.push(`    each goal left, stated on its own -- for isabelle_sledgehammer or ` +
+          `isabelle_try with it as \`goal\` at line ${chain?.line ?? '?'}:`)
+        statements.forEach((s, i) => out.push(s.statement !== undefined
+          ? indent(`${i + 1}. ${s.statement}`, '      ')
+          : `      ${i + 1}. (not given: ${s.error})`))
+        const using = c.using ? `${c.using} ` : ''
+        out.push(c.mode === 'state'
+          ? `    a proof \`by M\` found that way goes on from ${c.handle} as: show ?thesis ${using}by M`
+          : `    a proof \`by M\` of goal 1 found that way goes on from ${c.handle} as: ${using}apply M` +
+            (statements.length > 1 ? ' (for goal i, put `prefer i` first)' : ''))
+      }
+      const multiline = c.text.includes('\n')
+      holes.forEach((h, i) => {
+        out.push(`    hole ${i + 1}` + (multiline ? `, the sorry at line ${h.line} of the candidate` : '') +
+          ', goals:', indent(h.goals, '      '))
+      })
+      const steps = c.slow_steps ?? []
+      if (steps.length) {
+        out.push('    slowest steps:',
+          ...steps.map(s => `      ${s.time_ms} ms` + (multiline ? `, line ${s.line}` : '') + `: ${s.source}`))
+      }
+      if (c.output && c.outcome !== 'proved' && c.outcome !== 'proved_with_sorry') {
+        out.push(indent(c.output))
+      }
       if (c.stats.length) {
         out.push(c.traced === 'rerun'
           ? '    rewrite rules applied most (from a traced rerun of up to 5 s):'
@@ -638,9 +813,91 @@ export class AgentTools {
       } else if (watching && c.traced) {
         out.push('    no watched rule was applied (it never matched)')
       }
+      if (c.handle) out.push(`    handle ${c.handle}: go on from this state with from: "${c.handle}"`)
       out.push('')
     }
+    const proved = candidates.filter(c => c.outcome === 'proved')
+    if (proved.length > 1) {
+      const fastest = proved.reduce((a, b) => Number(b.time_ms) < Number(a.time_ms) ? b : a)
+      out.push(`Fastest proof: ${fastest.text} (${fastest.time_ms} ms)`)
+    }
     return out.join('\n').trimEnd()
+  }
+
+  /* isabelle_context */
+
+  private async context(args: Record<string, unknown>, token?: vscode.CancellationToken,
+      progress?: Progress): Promise<string> {
+    const client = await this.client(token, progress)
+    needsVersion(client, 2)
+    const { from, origin, uri, position } = this.locate(client, args)
+    await this.load(client, uri, token)
+    const relevant = args.relevant !== false
+    const reply = await this.ticking(progress,
+      `looking up the context ${from ? `of ${from}` : `at line ${position.line + 1}`}`,
+      () => client.sendRequest(AgentContext, {
+        textDocument: { uri: this.asUri(client, uri) }, position,
+        from: from ?? '',
+        goal: goalStatement(this.encode(str(args, 'goal') ?? '')),
+        relevant,
+        limit: Math.max(1, Math.round(num(args, 'limit') ?? 20)),
+        deadline_ms: 240000,
+      }, token))
+    if (reply.error) throw new ToolError(reply.error)
+    const out = this.staleNote(from, origin)
+    out.push(reply.goal ? `goal:\n${indent(reply.goal)}` : 'There is no goal here.')
+    out.push('', 'definitions of the constants in the goal, by the fact to unfold or simp them with:',
+      indent(reply.definitions || '(none with a specification)'))
+    out.push('', 'variables and facts of the proof:', indent(reply.facts || '(none)'))
+    if (relevant) {
+      out.push('', 'facts most relevant to the first goal, by Sledgehammer\'s relevance filter (MePo), best first:')
+      if (reply.relevant?.length) {
+        for (const f of reply.relevant) out.push(`    ${f.name}:`, indent(f.statement, '      '))
+      } else {
+        out.push(`    (${reply.relevant_error ?? 'none'})`)
+      }
+    }
+    return out.join('\n')
+  }
+
+  /* isabelle_profile */
+
+  private async profile(args: Record<string, unknown>, token?: vscode.CancellationToken,
+      progress?: Progress): Promise<string> {
+    const client = await this.client(token, progress)
+    needsVersion(client, 2)
+    const uri = this.resolve(args)
+    const timeout = (num(args, 'timeout_s') ?? 120) * 1000
+    const start = Date.now()
+    let status = await this.status(client, uri)
+    const tell = this.checkProgress(client, uri, progress)
+    while (status.status === 'pending' && Date.now() - start < timeout &&
+        !token?.isCancellationRequested) {
+      await tell(status)
+      await sleep(POLL_MS)
+      status = await this.status(client, uri)
+    }
+    let reply = await client.sendRequest(AgentProfile, { uri: this.asUri(client, uri) })
+    for (let i = 0; i < 20 && reply.outdated; i++) {
+      await sleep(POLL_MS)
+      reply = await client.sendRequest(AgentProfile, { uri: this.asUri(client, uri) })
+    }
+    if (reply.error) throw new ToolError(reply.error)
+    const by = str(args, 'by') === 'command' ? 'command' : 'lemma'
+    const kinds = str(args, 'kinds') === 'all' ? 'all' : 'proofs'
+    return formatProfile(reply.commands ?? [], {
+      by, kinds,
+      match: strings(args, 'match').map(m => this.encode(m)),
+      exclude: strings(args, 'exclude').map(m => this.encode(m)),
+      fromLine: num(args, 'from_line'),
+      toLine: num(args, 'to_line'),
+      limit: Math.max(1, Math.round(num(args, 'limit') ?? 10)),
+      minS: num(args, 'min_s') ?? 0.1,
+    }, {
+      name: path.basename(uri.fsPath),
+      pending: status.status === 'pending',
+      percentage: status.percentage,
+    })
   }
 
   /* isabelle_sledgehammer */

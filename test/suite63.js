@@ -17,6 +17,7 @@ const { answer, McpHttpServer, PROTOCOL_VERSIONS } = require(path.join(out, 'mcp
 const { findLock, sseEvents } = require(path.join(out, 'mcp_stdio.js'))
 const { TOOL_DEFS, NO_WINDOW } = require(path.join(out, 'tool_defs.js'))
 const { goalStatement, unicodeLines, proofsOf } = require(path.join(out, 'text.js'))
+const { formatProfile } = require(path.join(out, 'profile.js'))
 
 let passed = 0
 const pass = m => { passed++; console.log('PASS: ' + m) }
@@ -128,15 +129,18 @@ async function run() {
 
   const list = await answer({ jsonrpc: '2.0', id: 3, method: 'tools/list' }, {}, '1.0')
   assert.deepStrictEqual(list.result.tools.map(t => t.name),
-    ['isabelle_check', 'isabelle_state', 'isabelle_try', 'isabelle_sledgehammer', 'isabelle_find_theorems'])
+    ['isabelle_check', 'isabelle_state', 'isabelle_try', 'isabelle_sledgehammer', 'isabelle_context',
+      'isabelle_profile', 'isabelle_find_theorems'])
   for (const t of list.result.tools) {
     assert.strictEqual(t.inputSchema.type, 'object')
     for (const r of t.inputSchema.required) assert.ok(t.inputSchema.properties[r], `${t.name}.${r}`)
   }
-  pass('tools/list lists the five tools, each with a schema covering its required arguments')
+  pass('tools/list lists the seven tools, each with a schema covering its required arguments')
 
+  /* Required unless a handle (`from`) names the theory instead. */
   for (const t of list.result.tools) {
-    assert.ok(t.inputSchema.required.includes('path') && !t.inputSchema.properties.file, t.name)
+    assert.ok(t.inputSchema.properties.path && !t.inputSchema.properties.file, t.name)
+    assert.ok(t.inputSchema.required.includes('path') || t.inputSchema.properties.from, t.name)
   }
   pass('the theory is a `path`, which Claude Code\'s panel shows with a running call')
 
@@ -293,7 +297,7 @@ async function run() {
     clientInfo: { name: 'test', version: '0' } })
   assert.strictEqual(rInit.result.serverInfo.version, '9.9', 'initialize reaches the window')
   const rList = await r.call('tools/list', {})
-  assert.strictEqual(rList.result.tools.length, 5)
+  assert.strictEqual(rList.result.tools.length, TOOL_DEFS.length)
   const rCall = await r.call('tools/call', { name: 'isabelle_state', arguments: { path: 'B.thy', line: 3 } })
   assert.strictEqual(rCall.result.content[0].text, 'isabelle_state on B.thy')
   assert.deepStrictEqual(calls[calls.length - 1], ['isabelle_state', { path: 'B.thy', line: 3 }])
@@ -386,7 +390,7 @@ async function run() {
   const lost = relay({ ...env, ISABELLE_VSCODE_WORKSPACE: os.tmpdir() })
   const lInit = await lost.call('initialize', { protocolVersion: '2025-06-18' })
   assert.strictEqual(lInit.result.serverInfo.name, 'isabelle')
-  assert.strictEqual((await lost.call('tools/list', {})).result.tools.length, 5)
+  assert.strictEqual((await lost.call('tools/list', {})).result.tools.length, TOOL_DEFS.length)
   const lCall = await lost.call('tools/call', { name: 'isabelle_check', arguments: { path: 'A.thy' } })
   assert.strictEqual(lCall.result.isError, true)
   assert.strictEqual(lCall.result.content[0].text, NO_WINDOW)
@@ -418,6 +422,47 @@ async function run() {
     'e: Try this: by (smt (verit) foo) (> 1.0 s, timed out)\nvampire: No proof found'),
     ['by (metis append_Nil2 rev_rev_ident)', 'by simp', 'by (smt (verit) foo)'])
   pass('Sledgehammer\'s proofs are read without their timings')
+
+  // --- profile ---
+  const cmd = (line, command, source, proof, seconds, group, group_line) =>
+    ({ line, command, source, proof, seconds, group, group_line })
+  const commands = [
+    cmd(0, 'theory', 'theory T', false, 3.0, 'theory at line 1', 0),
+    cmd(4, 'datatype', 'datatype t = A | B', false, 1.5, 'datatype at line 5', 4),
+    cmd(6, 'lemma', 'lemma foo: "P"', false, 0.01, 'foo', 6),
+    cmd(7, 'apply', 'apply auto', true, 2.0, 'foo', 6),
+    cmd(8, 'by', 'by (metis bar)', true, 4.0, 'foo', 6),
+    cmd(10, 'lemma', 'lemma baz: "Q"', false, 0.01, 'baz', 10),
+    cmd(11, 'by', 'by simp', true, 0.5, 'baz', 10),
+    cmd(13, 'lemma', 'lemma qux: "R"', false, 0.01, 'qux', 13),
+    cmd(14, 'by', 'by (simp add: foo)', true, 0.05, 'qux', 13),
+  ]
+  const opts = { by: 'lemma', kinds: 'proofs', match: [], exclude: [], limit: 10, minS: 0.1 }
+  const status = { name: 'T.thy', pending: false, percentage: 100 }
+  const byLemma = formatProfile(commands, opts, status)
+  assert.match(byLemma, /^T\.thy: 11\.1 s in all, over 9 commands; checked\./)
+  assert.match(byLemma, /6\.00 s {2}foo \(line 7\); slowest: line 9, by \(metis bar\) \(4\.00 s\)\n\s+0\.50 s {2}baz/)
+  assert.ok(!/qux/.test(byLemma), 'below min_s')
+  assert.match(byLemma, /not counted: 5 commands outside proofs, 4\.53 s/)
+  const excluding = formatProfile(commands, { ...opts, exclude: ['foo'] }, status)
+  assert.ok(!/ foo \(line/.test(excluding), 'a lemma excluded by its name')
+  assert.match(excluding, /qux|baz/)
+  assert.match(excluding, /excluded: 2 commands, 6\.00 s \(exclude: foo\)/)
+  /* foo is a name, so it is not looked for in qux's `by (simp add: foo)` */
+  assert.ok(/0\.05 s {2}qux/.test(formatProfile(commands, { ...opts, exclude: ['foo'], minS: 0 }, status)))
+  const byText = formatProfile(commands, { ...opts, exclude: ['metis'] }, status)
+  assert.match(byText, /2\.00 s {2}foo \(line 7\); slowest: line 8, apply auto/, 'text excludes the command with it')
+  const matching = formatProfile(commands, { ...opts, match: ['baz'] }, status)
+  assert.match(matching, /baz/)
+  assert.ok(!/ foo \(line/.test(matching), 'match keeps only the lemma named')
+  const all = formatProfile(commands, { ...opts, kinds: 'all', by: 'command' }, status)
+  assert.match(all, /slowest commands:\n\s+4\.00 s {2}line 9: by \(metis bar\) {2}\(in foo\)\n\s+3\.00 s {2}line 1: theory T/)
+  assert.ok(!/not counted/.test(all))
+  const ranged = formatProfile(commands, { ...opts, fromLine: 10 }, status)
+  assert.ok(!/ foo \(line/.test(ranged) && /baz/.test(ranged), 'a range of lines')
+  assert.match(formatProfile(commands, opts, { ...status, pending: true, percentage: 40 }),
+    /still being checked \(40%\): the times so far/)
+  pass('a profile groups by lemma, leaves out what is excluded by name or text, and sums up what it left out')
 
   console.log(`\n${passed} checks passed`)
   console.log('SUITE63_OK')

@@ -45,9 +45,13 @@ to that notation.
 |---|---|
 | `isabelle_check` | Checks a theory and returns its errors and warnings. Each error comes with the goal the failing command worked on. Also reports the counts of `sorry` and `oops`, and lines with literal Unicode. The theory doesn't have to be open in an editor. It waits for the prover; with `wait: false` it answers at once with how far the prover is ([long checks](#long-checks)). |
 | `isabelle_state` | The goals at a line, the goals of the enclosing proof levels, and the messages there, as the infoview shows them. |
-| `isabelle_try` | Tries up to 12 proof candidates at once on the goal at a line, without editing the file. Candidates can be `by ...`, `apply ...`, a `proof ... qed` block, or `thm`, `term`, `value` and `find_theorems`. Each candidate reports `proved`, `goals_left`, `no_subgoals`, `error`, `timeout` or `output`. |
+| `isabelle_try` | Tries up to 12 proof candidates at once on the goal at a line, or [from a handle](#going-on-from-a-state), without editing the file. Candidates can be `by ...`, `apply ...`, a `proof ... qed` block, [an outline with `sorry`](#outlines), or `thm`, `term`, `value`, `find_theorems`, `quickcheck` and `nitpick`. Each candidate reports `proved`, `proved_with_sorry`, `goals_left`, `no_subgoals`, `error`, `timeout` or `output`, with its time. |
 | `isabelle_sledgehammer` | Runs Sledgehammer and returns the proofs it found, after checking each one again. |
+| `isabelle_context` | The definitions of the constants in a goal, each with the fact to unfold it by; the variables and facts of the proof; and the library facts Sledgehammer's relevance filter ranks highest for the goal. |
+| `isabelle_profile` | The slowest lemmas of a theory, or its slowest commands. |
 | `isabelle_find_theorems` | `find_theorems` in the context of a line. |
+
+`isabelle_check` also lists every `sorry` and `oops` with the goals it skips.
 
 ### Long checks
 
@@ -111,6 +115,73 @@ a step before writing it into the file:
 A plain proposition is quoted automatically. Structured statements such as
 `"A x" if "B x" for x` or `fixes x assumes "..." shows "..."` are passed on as they are.
 
+### Outlines
+
+A candidate may leave steps out with `sorry`, to test the outline of a bigger proof
+before its steps:
+
+```
+proof (induct xs)
+  case Nil
+  show ?case sorry
+next
+  case (Cons x xs)
+  then show ?case sorry
+qed
+```
+
+It comes back `proved_with_sorry`, with the goals each `sorry` skips: the holes to fill in
+next. `oops` is refused, since it gives up the proof.
+
+Each candidate reports its time. A proof that takes a second or more is marked slow, a
+candidate of several steps names its slowest steps, and of several proofs the fastest
+is named, so that a slow proof is replaced before it goes into the file.
+
+### Going on from a state
+
+Each candidate that reaches a state comes back with a handle, like `h7`. Passed as `from`
+instead of `path` and `line`, the next candidates run on that state: an agent can go
+through an `apply` proof a step or two at a time, go back to an earlier handle and try
+another way, or try several ways from one handle at once. The answer shows the steps from
+the line the chain started at, ready to write into the file.
+
+The prover keeps the 256 newest handles, until it restarts. If the theory changed above the
+line a chain started at, a call with its handle says that its state is from before the edit.
+
+Goals left in a handle's state also come back stated on their own, as a goal at the line
+the chain started at: variables fixed since then are bound with `\<And>`, and facts added
+since then (by `obtain`, `assume`, `case`, `have`) become premises. Each statement is
+printed so that it reads back as the same goal. Sledgehammer does not take a handle; it
+takes such a statement as its `goal`, and the proof it finds is then tried from the
+handle, with a `using` for those facts that the answer suggests.
+
+### Context
+
+`isabelle_context` answers what an agent otherwise guesses at, for the goal at a line or
+of a handle:
+
+- **Definitions**: the constants in the goal that have a specification, the theory's own
+  first, each with its rules and the fact to use: `foo_def` for a definition, `foo.simps`
+  for a `fun` or `primrec`, `foo.intros` for an inductive predicate.
+- **Facts of the proof**: the variables of the goal with their types, and the facts in
+  scope: assumptions, `this`, named facts.
+- **Relevant facts**: the facts that Sledgehammer's relevance filter (MePo) ranks highest
+  for the first goal, with their statements (20 by default, `limit`; `relevant: false`
+  leaves them out). This needs a logic with Sledgehammer, such as HOL.
+
+### Profiling
+
+`isabelle_profile` waits until a theory is checked, as `isabelle_check` does, and lists the
+lemmas that took longest, each with its slowest command; `by: "command"` lists commands
+instead. It counts the commands of proofs, which an agent can make faster; `kinds: "all"`
+adds imports, definitions, packages and the like. Times are per command, so proofs that
+run in parallel add up to more than the time the theory took.
+
+`exclude` leaves out what an agent judged cannot be made faster, and `match` keeps only what
+it names, to check a lemma again after a change. Both take lemma names, matched exactly,
+or other text, matched in the first line of a command; never line numbers, which move
+with every edit. What `exclude` and `kinds` leave out is summed up at the end.
+
 ### The simplifier
 
 The full simplifier trace is far too long for an agent to read, so `isabelle_try` reports
@@ -149,8 +220,9 @@ them display a line with the running call:
 - `isabelle_check`: the percentage and the command the prover runs, for example
   `checking Foo.thy, running line 57: by (simp add: loopy_def) (42%)`.
 - `isabelle_state`: whether the prover has reached the line yet.
-- `isabelle_try`, `isabelle_sledgehammer` and `isabelle_find_theorems`: what they try or
-  search, at which line, and the seconds taken so far.
+- `isabelle_try`, `isabelle_sledgehammer`, `isabelle_context` and `isabelle_find_theorems`:
+  what they try or search, at which line or from which handle, and the seconds taken so far.
+- `isabelle_profile`: how far the check is, as `isabelle_check` reports it.
 
 Claude Code in a terminal shows this line under the running call. The Claude Code panel
 in VS Code shows no progress for any tool, but labels a running call with its `path`
