@@ -349,7 +349,9 @@ async function run() {
   assert.match(outline.text, /hole 1, the sorry at line 3 of the candidate, goals:\n[\s\S]*length \(\[\] @ ys\)/)
   assert.match(outline.text, /hole 2, the sorry at line 6 of the candidate, goals:\n[\s\S]*length \(\(x # xs\) @ ys\)/)
   assert.match(outline.text, /ERROR \(\d+ ms\): oops\n\s+gives the proof up/)
-  assert.match(outline.text, /PROVED \(\d+ ms(, slow: prefer a faster proof)?\): apply \(induct xs\)[\s\S]*slowest steps:\n\s+\d{4,} ms, line 2: ML_val/)
+  // The step sleeps 1 s, but a sleep may wake a little early and ms are rounded down (999
+  // ms on a macOS runner); any step listed took 100 ms or more.
+  assert.match(outline.text, /PROVED \(\d+ ms(, slow: prefer a faster proof)?\): apply \(induct xs\)[\s\S]*slowest steps:\n\s+\d{3,} ms, line 2: ML_val/)
   pass('an outline with sorry comes back with the goal of each hole; a slow step is named')
 
   const counter = await call('isabelle_try', { path: file, line: at('lemma rr'), goal: 'rev xs = xs',
