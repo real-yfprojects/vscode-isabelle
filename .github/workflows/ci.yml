@@ -5,7 +5,9 @@
 #   build        the tree compiles and the pure suites pass, on all three platforms
 #   integration  a real prover starts and the regression passes, on all three platforms and
 #                for every supported release (Isabelle2025-2, Isabelle2026), the extended
-#                server's suites included -- in shards, two per platform, three on macOS
+#                server's suites included -- in shards, two per platform, three on macOS.
+#                Each shard installs the release as a user would, and one per platform
+#                and release checks that the extension finds that installation unaided
 #   server-jar   the extended server builds from its pinned commit, for each release
 #   package      the .vsix builds, with every release's extended server compiled into it
 #
@@ -119,59 +121,128 @@ jobs:
           merge-multiple: true
           path: server
 
-      # ~2 GB unpacked. Worth caching both to keep the job quick and to avoid pulling a
-      # gigabyte off a university server on every push.
+      # The release as downloaded, cached rather than downloaded on every push: the
+      # bundles are 1.0-1.6 GB, and a university server should not serve them to every
+      # run. The archive, not the unpacked tree: the installation is what is under test
+      # (below), and an archive is the smaller entry -- the unpacked trees of six bundles
+      # were enough to have GitHub evict main's entries under its 10 GB limit.
       #
       # Restored everywhere, saved on main only. A run reads the caches of its own ref and
       # of main, so with the plain actions/cache every branch and release tag saved its own
-      # 1.2-1.6 GB copy; those pushed the repository past GitHub's 10 GB limit, and the
-      # least recently used entries -- main's among them -- were evicted, so most runs
-      # missed and downloaded again. One copy per platform, on main, is ~4 GB.
-      - name: Restore the Isabelle distribution
+      # copy, and the least recently used entries -- main's among them -- were evicted.
+      - name: Restore the Isabelle download
         id: isabelle-cache
         uses: actions/cache/restore@v4
         with:
-          path: ~/isabelle-dist
-          key: isabelle-${{ matrix.os }}-${{ matrix.bundle }}
+          path: ~/isabelle-download
+          key: isabelle-download-${{ matrix.os }}-${{ matrix.bundle }}
 
-      - name: Download and unpack Isabelle
+      - name: Download Isabelle
         if: steps.isabelle-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          mkdir -p ~/isabelle-dist
+          mkdir -p ~/isabelle-download
           # A command tested by `if` does not trip set -e, so a dead mirror only
           # moves on to the next one; the final test fails the step if none served.
           release='${{ matrix.release }}'
           mirrors="ISABELLE_MIRRORS_${release//-/_}"
           ok=
           for base in ${!mirrors}; do
-            if curl -fL --retry 2 --retry-delay 10 --connect-timeout 30 \
-                 "$base/${{ matrix.bundle }}?token=Isabelle" -o /tmp/isabelle-bundle; then
+            if curl -fL --retry 4 --retry-delay 15 --retry-all-errors --connect-timeout 30 \
+                 "$base/${{ matrix.bundle }}?token=Isabelle" -o ~/isabelle-download/part; then
               ok=1; break
             fi
             echo "::warning::$base did not serve ${{ matrix.bundle }}, trying the next mirror"
           done
           test -n "$ok"
-          case "${{ matrix.bundle }}" in
-            # The Windows bundle is a self-extracting 7z, so 7z unpacks it without running
-            # it. 7-Zip is preinstalled on the runner.
-            *.exe) 7z x -y -o"$HOME/isabelle-dist" /tmp/isabelle-bundle > /dev/null ;;
-            *)     tar -xzf /tmp/isabelle-bundle -C ~/isabelle-dist ;;
-          esac
-          rm /tmp/isabelle-bundle
+          mv ~/isabelle-download/part ~/isabelle-download/${{ matrix.bundle }}
 
-      # Found rather than hardcoded: the Linux bundle unpacks to a plain directory, the
-      # macOS one to an .app with the distribution nested inside, and the Windows one to
-      # whatever the archive happens to hold. bin/isabelle beside etc/symbols is what the
-      # extension itself looks for (isDistribution), so this locates the same thing.
+      - name: Save the Isabelle download
+        if: steps.isabelle-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/isabelle-download
+          key: isabelle-download-${{ matrix.os }}-${{ matrix.bundle }}
+
+      # As Isabelle's installation instructions have it, into the place each platform's
+      # installer or instructions suggest -- which is where the extension's search has to
+      # find it (suite74, below):
+      #
+      #   macOS    the .app unpacked into /Applications (what dragging it there does)
+      #   Linux    the folder unpacked into the home directory
+      #   Windows  the self-extracting installer, run from Downloads, where a browser saves
+      #            it, with its defaults. Two kinds:
+      #            - up to Isabelle2025-2, the 7zsd module with a config block: -y takes its
+      #              defaults without asking, -ai runs its AutoInstall
+      #              (`Isabelle2025-2.exe -init`, which initializes the bundled Cygwin)
+      #              instead of its RunProgram, which would open jEdit. Its InstallPath is
+      #              %UserDesktop%.
+      #            - from Isabelle2026, plain 7-Zip's 7z.sfx: it offers the folder the .exe
+      #              is in, which -y takes, and does nothing else. The Cygwin stays
+      #              uninitialized -- symlinks stripped, a marker file `uninitialized` --
+      #              until Isabelle2026.exe first runs, or the extension sets it up itself
+      #              (cygwinUninitialized), which suite74 then has to have done.
+      #            Before, CI unpacked the bundle with 7z and called Environment.cygwin_init
+      #            by hand, so a server started from a real installation was never tested.
+      - name: Install Isabelle
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          release='${{ matrix.release }}'
+          archive=~/isabelle-download/${{ matrix.bundle }}
+          case "${{ runner.os }}" in
+            macOS)
+              # An admin user, which the runner's is, can write to /Applications; sudo
+              # only should that change, as it leaves the files owned by root.
+              if [ -w /Applications ]; then tar -xzf "$archive" -C /Applications
+              else sudo tar -xzf "$archive" -C /Applications; fi
+              root="/Applications/$release.app" ;;
+            Linux)
+              tar -xzf "$archive" -C ~
+              root="$HOME/$release" ;;
+            Windows)
+              downloads="$(cygpath -u "$USERPROFILE")/Downloads"
+              mkdir -p "$downloads"
+              mv "$archive" "$downloads/"
+              cd "$downloads"
+              head -c 4000000 "${{ matrix.bundle }}" > "$RUNNER_TEMP/sfx-head"
+              if grep -aq ';!@Install@!' "$RUNNER_TEMP/sfx-head"; then
+                "./${{ matrix.bundle }}" -y -ai
+                # The installer waits for its AutoInstall by default; should it not, the
+                # launcher it started is still running under the same name. Not the marker
+                # file: cygwin_init deletes that first, before it has done anything.
+                for _ in $(seq 600); do
+                  tasklist //FI "IMAGENAME eq $release.exe" | grep -qi "$release.exe" || break
+                  sleep 1
+                done
+                root="$(cygpath -u "$USERPROFILE")/Desktop/$release"
+                if [ -e "$root/contrib/cygwin/isabelle/uninitialized" ]; then
+                  echo "the installer left Cygwin uninitialized"; exit 1
+                fi
+              else
+                "./${{ matrix.bundle }}" -y
+                root="$downloads/$release"
+                if [ ! -e "$root/contrib/cygwin/isabelle/uninitialized" ]; then
+                  echo "expected the installer to leave Cygwin for the extension to set up"; exit 1
+                fi
+              fi ;;
+          esac
+          [ -d "$root" ] || { echo "nothing installed at $root"; ls -la "$(dirname "$root")"; exit 1; }
+          echo "ISABELLE_INSTALLED=$root" >> "$GITHUB_ENV"
+
+      # Found rather than hardcoded: Linux and Windows install a plain directory, an
+      # Isabelle2025-2.app is the distribution itself, and an Isabelle2026.app has it in
+      # Contents/Resources (with symlinks at its root, which find does not follow).
+      # bin/isabelle beside etc/symbols is what the extension itself looks for
+      # (isDistribution), so this locates the same thing.
       - name: Locate the distribution
         run: |
           # No pipefail: `find | head -1` makes find die of SIGPIPE once head
           # has its line, and pipefail would report that as a failed step.
           set -eu
-          home=$(dirname "$(dirname "$(find ~/isabelle-dist -path '*/bin/isabelle' | head -1)")")
+          home=$(dirname "$(dirname "$(find "$ISABELLE_INSTALLED" -maxdepth 4 -path '*/bin/isabelle' | head -1)")")
           if [ -z "$home" ] || [ ! -f "$home/etc/symbols" ]; then
-            echo "no Isabelle distribution under ~/isabelle-dist"; find ~/isabelle-dist -maxdepth 2; exit 1
+            echo "no Isabelle distribution under $ISABELLE_INSTALLED"; find "$ISABELLE_INSTALLED" -maxdepth 2; exit 1
           fi
           echo "ISABELLE_POSIX=$home" >> "$GITHUB_ENV"
           # The extension is a Node app and wants a native path.
@@ -180,48 +251,6 @@ jobs:
           else
             echo "ISABELLE_HOME=$home" >> "$GITHUB_ENV"
           fi
-
-      # A released Windows bundle ships Cygwin uninitialized: symlinks are stripped into
-      # contrib/cygwin/isabelle/symlinks and a marker file `uninitialized` is left behind.
-      # Environment.cygwin_init restores them and runs rebaseall + postinstall, but it runs
-      # from the Java launcher -- and this extension starts the server by calling
-      # contrib/cygwin/bin/bash.exe directly, which bypasses it. A user never notices,
-      # because the installer already initialized the copy on disk. Here nothing has, so
-      # call it explicitly. It is a no-op once the marker is gone.
-      - name: Initialize Cygwin
-        if: runner.os == 'Windows'
-        run: |
-          set -eu
-          java=$(find "$ISABELLE_POSIX/contrib" -path '*x86_64-windows/bin/java.exe' | head -1)
-          jar=$(find "$ISABELLE_POSIX/contrib" -name isabelle_setup.jar | head -1)
-          [ -n "$java" ] && [ -n "$jar" ] || { echo "bundled JDK or setup jar missing"; exit 1; }
-          # Call Environment.cygwin_init directly, through Java's single-file source mode.
-          # Going via `Setup classpath` instead reaches it only as a side effect of
-          # Environment.init and then dies in Build.classpath with
-          # NoClassDefFoundError: dotty/tools/dotc/interfaces/SimpleReporter -- every
-          # Setup operation needs the Scala compiler, which the setup jar alone does not
-          # carry. Depending on a command that happens to do the useful work before
-          # crashing is not a fixture worth having.
-          src="$RUNNER_TEMP/CygwinInit.java"
-          cat > "$src" <<'JAVA'
-          public class CygwinInit {
-              public static void main(String[] args) throws Exception {
-                  isabelle.setup.Environment.cygwin_init(args[0], args[1]);
-              }
-          }
-          JAVA
-          "$java" -cp "$(cygpath -w "$jar")" "$(cygpath -w "$src")" \
-                  "$ISABELLE_HOME" "$ISABELLE_HOME\\contrib\\cygwin"
-          echo "Cygwin initialized"
-
-      # After Cygwin's initialization, so a restored Windows copy needs none; before the
-      # suites, so nothing they leave behind is cached.
-      - name: Save the Isabelle distribution
-        if: steps.isabelle-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v4
-        with:
-          path: ~/isabelle-dist
-          key: isabelle-${{ matrix.os }}-${{ matrix.bundle }}
 
       # The release ships prebuilt Pure and HOL images, which is what makes this job
       # affordable: building HOL from source would cost half an hour before the first
@@ -280,13 +309,36 @@ jobs:
           path: .vscode-test
           key: ${{ steps.editor.outputs.key }}
 
+      - name: Install xvfb
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      # Every other suite is handed ISABELLE_HOME, which the extension takes before it looks
+      # anywhere -- so for a long time nothing ran its search, and it could not find a macOS
+      # installation at all. This one is not: with no setting and no variable, the extension
+      # has to find the installation from "Install Isabelle" on its own, start a server from
+      # it and check a theory. Once per platform and release, as the search is the same in
+      # every shard -- and on every Windows shard, before the other suites: there it may
+      # also have to set up the Cygwin the Isabelle2026 installer leaves uninitialized, and
+      # two suites starting at once would both try.
+      - name: Find the installation unaided
+        if: matrix.shard == 1 || runner.os == 'Windows'
+        run: |
+          set -eu
+          export ISABELLE_TEST_EXPECT_HOME="$ISABELLE_HOME"
+          unset ISABELLE_HOME
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            xvfb-run -a node test/runAll.js suite74
+          else
+            node test/runAll.js suite74
+          fi
+
       - name: Integration suites
         env:
           ISABELLE_TEST_JOBS: 2
           ISABELLE_TEST_SHARD: ${{ matrix.shard }}/${{ matrix.shards }}
         run: |
           if [ "${{ runner.os }}" = "Linux" ]; then
-            sudo apt-get update && sudo apt-get install -y xvfb
             xvfb-run -a node test/runAll.js
           else
             node test/runAll.js
@@ -310,47 +362,48 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The integration job's Linux entry, and saved on main only for the same reason.
-      - name: Restore the Isabelle distribution
+      # The integration job's Linux download, under the same key, and saved on main only
+      # for the same reason.
+      - name: Restore the Isabelle download
         id: isabelle-cache
         uses: actions/cache/restore@v4
         with:
-          path: ~/isabelle-dist
-          key: isabelle-ubuntu-latest-${{ matrix.release }}_linux.tar.gz
+          path: ~/isabelle-download
+          key: isabelle-download-ubuntu-latest-${{ matrix.release }}_linux.tar.gz
 
-      - name: Download and unpack Isabelle
+      - name: Download Isabelle
         if: steps.isabelle-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          mkdir -p ~/isabelle-dist
+          mkdir -p ~/isabelle-download
           release='${{ matrix.release }}'
           mirrors="ISABELLE_MIRRORS_${release//-/_}"
           ok=
           for base in ${!mirrors}; do
-            if curl -fL --retry 2 --retry-delay 10 --connect-timeout 30 \
-                 "$base/${release}_linux.tar.gz?token=Isabelle" -o /tmp/isabelle-bundle; then
+            if curl -fL --retry 4 --retry-delay 15 --retry-all-errors --connect-timeout 30 \
+                 "$base/${release}_linux.tar.gz?token=Isabelle" -o ~/isabelle-download/part; then
               ok=1; break
             fi
             echo "::warning::$base did not serve the bundle, trying the next mirror"
           done
           test -n "$ok"
-          tar -xzf /tmp/isabelle-bundle -C ~/isabelle-dist
-          rm /tmp/isabelle-bundle
+          mv ~/isabelle-download/part ~/isabelle-download/${release}_linux.tar.gz
 
-      - name: Save the Isabelle distribution
+      - name: Save the Isabelle download
         if: steps.isabelle-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v4
         with:
-          path: ~/isabelle-dist
-          key: isabelle-ubuntu-latest-${{ matrix.release }}_linux.tar.gz
+          path: ~/isabelle-download
+          key: isabelle-download-ubuntu-latest-${{ matrix.release }}_linux.tar.gz
 
-      # The script only reads the distribution, so the cached copy stays pristine. It
-      # fetches the pinned commit itself; that commit must have been pushed.
+      # The script only reads the distribution. It fetches the pinned commit itself; that
+      # commit must have been pushed.
       - name: Build the extended server
         run: |
           set -eu
-          home=$(dirname "$(dirname "$(find ~/isabelle-dist -path '*/bin/isabelle' | head -1)")")
-          scripts/build-server-jar.sh "$home"
+          release='${{ matrix.release }}'
+          tar -xzf ~/isabelle-download/${release}_linux.tar.gz -C ~
+          scripts/build-server-jar.sh "$HOME/$release"
           ls -la server/*.jar
 
       - uses: actions/upload-artifact@v4

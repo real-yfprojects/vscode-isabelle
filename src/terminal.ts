@@ -11,14 +11,18 @@ import { findIsabelleHome, terminalOptions } from './isabelle'
 
 export const TERMINAL_PROFILE = 'isabelle.terminal'
 
+/** `prepare` sets up the distribution's Cygwin on Windows, if nothing has yet. */
 export function registerTerminal(
   context: vscode.ExtensionContext, report: (err: unknown) => void,
+  prepare: (home: string) => Promise<void> = async () => {},
 ): void {
   context.subscriptions.push(
-    vscode.commands.registerCommand('isabelle.openTerminal', () => {
+    vscode.commands.registerCommand('isabelle.openTerminal', async () => {
       let options: vscode.TerminalOptions
       try {
-        options = terminalOptions(findIsabelleHome())
+        const home = findIsabelleHome()
+        await prepare(home)
+        options = terminalOptions(home)
       } catch (err) {
         report(err)
         return
@@ -27,7 +31,11 @@ export function registerTerminal(
     }),
     vscode.window.registerTerminalProfileProvider(TERMINAL_PROFILE, {
       // VS Code shows a thrown error itself, naming the profile.
-      provideTerminalProfile: () => new vscode.TerminalProfile(terminalOptions(findIsabelleHome())),
+      provideTerminalProfile: async () => {
+        const home = findIsabelleHome()
+        await prepare(home)
+        return new vscode.TerminalProfile(terminalOptions(home))
+      },
     }),
   )
 }

@@ -40,8 +40,9 @@ export function refreshExtendedServer(): void {
   }
 }
 
+/** `found` is told when Check Isabelle finds a distribution, which activation may be waiting for. */
 export function registerWalkthrough(
-  context: vscode.ExtensionContext, report: (err: unknown) => void,
+  context: vscode.ExtensionContext, report: (err: unknown) => void, found: () => void = () => {},
 ): void {
   context.subscriptions.push(
     vscode.commands.registerCommand('isabelle.gettingStarted', async () => {
@@ -50,7 +51,7 @@ export function registerWalkthrough(
       refreshExtendedServer()
     }),
     vscode.commands.registerCommand('isabelle.checkInstallation', () =>
-      checkInstallation(context.extensionPath, report)),
+      checkInstallation(context.extensionPath, report, found)),
     vscode.commands.registerCommand('isabelle.revealFonts', () => revealFonts(report)),
     vscode.commands.registerCommand('isabelle.useIsabelleFont', useIsabelleFont),
     vscode.commands.registerCommand('isabelle.openTutorial', (section?: string) =>
@@ -80,7 +81,9 @@ function ensureTutorial(context: vscode.ExtensionContext): string {
   return dir
 }
 
-function checkInstallation(extensionPath: string, report: (err: unknown) => void): void {
+function checkInstallation(
+  extensionPath: string, report: (err: unknown) => void, found: () => void,
+): void {
   let home: string
   try {
     home = findIsabelleHome()
@@ -90,6 +93,7 @@ function checkInstallation(extensionPath: string, report: (err: unknown) => void
     return
   }
   setHomeFound(true)
+  found()
   let identifier = path.basename(home)
   try {
     identifier = fs.readFileSync(path.join(home, 'etc', 'ISABELLE_IDENTIFIER'), 'utf8').trim()

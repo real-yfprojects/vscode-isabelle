@@ -31,7 +31,7 @@ const REGRESSION = ['suite', 'suite2', 'suite4', 'suite6', 'suite12', 'suite15',
                     'suite44', 'suite45', 'suite46', 'suite47', 'suite48', 'suite49', 'suite50',
                     'suite51', 'suite52', 'suite53', 'suite54', 'suite60', 'suite61', 'suite62',
                     'suite63', 'suite64', 'suite65', 'suite66', 'suite67',
-                    'suite68', 'suite69', 'suite70', 'suite71']
+                    'suite68', 'suite69', 'suite70', 'suite71', 'suite72', 'suite73']
 
 /**
  * Suites that need the editor to have focus: they type through VS Code's `type` command,
@@ -86,7 +86,7 @@ function shard(suites, index, count, jobs) {
 const PURE = new Set(['suite25', 'suite27', 'suite28', 'suite29', 'suite31', 'suite32',
                     'suite34', 'suite38', 'suite41', 'suite42', 'suite44', 'suite46',
                     'suite48', 'suite49', 'suite60', 'suite63', 'suite66', 'suite67',
-                    'suite70'])
+                    'suite70', 'suite72'])
 
 /**
  * Suites that assert nothing the prover produces.
@@ -110,7 +110,7 @@ const NO_PROVER = new Set(['suite4', 'suite16', 'suite19', 'suite21', 'suite26',
  * theory in it activates the extension on startup, before the suite's first line. These
  * get a workspace without theories; each writes the one it needs, after activating.
  */
-const NO_THY_AT_START = new Set(['suite17', 'suite50', 'suite54'])
+const NO_THY_AT_START = new Set(['suite17', 'suite50', 'suite54', 'suite73'])
 
 function copyWorkspace(name) {
   const dest = fs.mkdtempSync(path.join(os.tmpdir(), `isa-ws-${name}-`))
