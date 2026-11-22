@@ -92,7 +92,8 @@ export const TOOL_DEFS: ToolDef[] = [
       'out comes back with the rewrite rules it applied most and the cycle they repeat in. ' +
       'A candidate may outline a proof with `sorry`, as in `proof (induct xs) case Nil show ' +
       '?case sorry next ... qed`: it comes back proved_with_sorry with the goals of each ' +
-      'sorry, the holes to fill in next. Each candidate reports its time, and one of several ' +
+      'sorry, the holes to fill in next, each with a handle of its own: a candidate `from` ' +
+      'it is a proof in place of that sorry. Each candidate reports its time, and one of several ' +
       'steps its slowest steps: prefer the fastest proof that checks. ' +
       'A candidate that reaches a state comes back with a handle: pass it as `from`, instead ' +
       'of path and line, to go on from that state -- step by step through a proof, back to ' +
@@ -246,7 +247,8 @@ export const SERVER_INSTRUCTIONS =
   'isabelle_sledgehammer, and write only a proof that came back `proved`, the fastest one. ' +
   'Test an intermediate step or a helper lemma with `goal` before writing it. Outline a ' +
   'bigger proof as one candidate with `sorry` for its steps: the goals of the holes come ' +
-  'back. A candidate\'s result has a handle: go on from it with `from`, step by step. ' +
+  'back, each hole with a handle to fill it from. A candidate\'s result has a handle: go ' +
+  'on from it with `from`, step by step. ' +
   'isabelle_context shows the definitions in a goal, the facts in scope and the relevant ' +
   'library facts; look facts up with it, isabelle_try ["thm name"] or ' +
   'isabelle_find_theorems instead of guessing names. isabelle_profile finds slow proofs. A ' +

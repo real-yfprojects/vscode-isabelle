@@ -131,7 +131,13 @@ qed
 ```
 
 It comes back `proved_with_sorry`, with the goals each `sorry` skips: the holes to fill in
-next. `oops` is refused, since it gives up the proof.
+next. Each hole has a [handle](#going-on-from-a-state) of its own, the state at its
+`sorry`: a proof tried `from` it is a proof in place of that `sorry`, with the facts the
+outline has there, such as the induction hypothesis that `then` chains. Each hole is also
+stated on its own, with those facts as premises, for Sledgehammer, and the `using ... by M`
+that a proof found that way becomes in place of the `sorry`. The handle of the outline as a
+whole is the theory after it, where there is no goal left. `oops` is refused, since it
+gives up the proof.
 
 Each candidate reports its time. A proof that takes a second or more is marked slow, a
 candidate of several steps names its slowest steps, and of several proofs the fastest

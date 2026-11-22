@@ -60,6 +60,12 @@ const LINES = [
   '  apply simp',
   '  done',
   '',
+  'fun dbl :: "nat \\<Rightarrow> nat" where',
+  '  "dbl 0 = 0"',
+  '| "dbl (Suc n) = Suc (Suc (dbl n))"',
+  'lemma dbl_add: "dbl n = n + n"',
+  '  by (induct n) auto',
+  '',
   'end',
 ]
 /** 1-based, as an agent counts. */
@@ -360,6 +366,25 @@ async function run() {
     'the slow step is not named:\n' + sleeper.slice(0, 1200))
   pass('an outline with sorry comes back with the goal of each hole; a slow step is named')
 
+  /* Each hole is a handle of its own: its goal stated with what the outline assumed there (the
+     induction hypothesis, chained by `then`), and a proof tried from it replaces the sorry.
+     The handle of the whole outline is the theory after it, with no goal. */
+  const hole2 = outline.text.slice(outline.text.indexOf('hole 2'), outline.text.indexOf('ERROR'))
+  assert.match(hole2, /stated on its own, with what the outline assumed there[^\n]*\n\s+1\. [\s\S]*length \(xs @ ys\) = length ys \+ length xs \\<Longrightarrow>\s+length \(\(x # xs\) @ ys\)/,
+    'the hole stated with its hypothesis:\n' + hole2)
+  assert.match(hole2, /a proof `by M` of it goes in place of the sorry as: (using .* )?by M/)
+  const holeId = (/handle (h\d+): try proofs for this hole/.exec(hole2) || [])[1]
+  assert.ok(holeId, 'the hole has a handle:\n' + hole2)
+  const filled = await call('isabelle_try', { from: holeId, candidates: ['by simp'] })
+  assert.match(filled.text, /PROVED \(\d+ ms\): by simp/, 'a proof of the hole from its handle:\n' + filled.text)
+  assert.match(filled.text, /the steps so far[^\n]*\n[\s\S]*then show \?case\n\s+by simp/,
+    'the steps: the outline up to the sorry, then the proof in its place')
+  const outlineEnd = /PROVED WITH 2 SORRY[\s\S]*?handle (h\d+): the theory after this closed proof, with no goal[^\n]*use their handles above/.exec(outline.text)
+  assert.ok(outlineEnd, 'the outline\'s own handle says it has no goal')
+  const noGoal = await call('isabelle_try', { from: outlineEnd[1], candidates: ['by simp'] })
+  assert.match(noGoal.text, new RegExp(`${outlineEnd[1]} is the theory after a closed proof: there is no goal`))
+  pass('each hole of an outline is a handle, with its goal stated on its own; a proof from it fills the hole')
+
   const counter = await call('isabelle_try', { path: file, line: at('lemma rr'), goal: 'rev xs = xs',
     candidates: ['quickcheck', 'nitpick'], timeout_s: 60 })
   assert.match(counter.text, /OUTPUT \(\d+ ms\): quickcheck\n[\s\S]*Quickcheck found a counterexample/)
@@ -434,6 +459,20 @@ async function run() {
   assert.match(ofRr.text, /rev :: [^\n]*\n\s+by rev\.simps:\n\s+rev \[\] = \[\]/, 'a primrec, by its simps')
   assert.match(ofRr.text, /variables: xs :: 'a list/)
   assert.match(ofRr.text, /relevance filter \(MePo\), best first:\n\s+\S+:\n/, 'some relevant facts')
+  // Each statement once, whatever its variables are called.
+  const statementsOf = text => text.slice(text.indexOf('relevance filter')).split('\n')
+    .filter(l => /^ {6}\S/.test(l)).map(l => {
+      const names = new Map()
+      return l.trim().replace(/\?[A-Za-z][\w']*(\.\d+)?/g, v => {
+        if (!names.has(v)) names.set(v, `?${names.size}`)
+        return names.get(v)
+      })
+    })
+  const rrFacts = statementsOf(ofRr.text)
+  assert.strictEqual(new Set(rrFacts).size, rrFacts.length, 'a relevant fact twice:\n' + ofRr.text)
+  const ofDbl = await call('isabelle_context', { path: file, line: at('lemma dbl_add'), relevant: false })
+  assert.match(ofDbl.text, /dbl :: nat \\<Rightarrow> nat\n\s+by dbl\.simps:\n\s+dbl 0 = 0/,
+    'a fun of this theory, by its simps (its spec rules have no name)')
   const ofF = await call('isabelle_context', { path: file, line: at('lemma f_cond'), goal: 'f m = 0',
     relevant: false })
   assert.match(ofF.text, /f :: nat \\<Rightarrow> nat\n\s+by f_def:\n\s+f \?n = 0/, 'a definition, by its _def')

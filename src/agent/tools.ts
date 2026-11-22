@@ -95,8 +95,11 @@ interface Candidate {
   stats: { rule: string; applied: number; condition_failed: number }[]
   cycle: string[]
   steps: Record<string, string>[]
-  /** The goals each sorry of an outline skips; absent from an older server. */
-  holes?: { line: string; goals: string }[]
+  /** The goals each sorry of an outline skips, the text before it, and the handle of the state
+      at it with its goals stated on their own (statement_1, ... or error_1, ...); handle and
+      prefix are absent from an older server. */
+  holes?: ({ line: string; goals: string; prefix?: string; handle?: string; using?: string;
+    mode?: string } & Record<string, string | undefined>)[]
   /** The slowest steps of a candidate of several, slowest first. */
   slow_steps?: { line: string; command: string; source: string; time_ms: string }[]
   /** The handle of the state the candidate reached, to go on from. */
@@ -105,7 +108,8 @@ interface Candidate {
   statements?: { statement?: string; error?: string }[]
   /** The facts the chain added, as `using ...`, for a proof of a statement tried here. */
   using?: string
-  /** "prove" where a proof goes on by `apply`, "state" in an Isar proof body. */
+  /** "prove" where a proof goes on by `apply`, "state" in an Isar proof body, "theory" after a
+      closed proof, where there is no goal. */
   mode?: string
 }
 
@@ -121,6 +125,8 @@ interface TryReply {
   goal_handle?: string
   /** How the goal was stated: "have ", "proof - have " in an apply proof, or "lemma ". */
   goal_keyword?: string
+  /** With `from`: the mode of the handle's state ("theory": no goal there). */
+  from_mode?: string
   candidates?: Candidate[]
 }
 
@@ -738,8 +744,16 @@ export class AgentTools {
     }
     for (const c of reply.candidates ?? []) {
       if (c.handle) this.remember(c.handle, { ...chain, script: join(prefix, c.text) })
+      // A hole's steps: the outline up to its sorry, which a proof from it replaces.
+      for (const h of c.holes ?? []) {
+        if (h.handle) this.remember(h.handle, { ...chain, script: h.prefix ? join(prefix, h.prefix) : prefix ?? '' })
+      }
     }
     const out = this.staleNote(from, origin)
+    if (from && reply.from_mode === 'theory' && !goal) {
+      out.push(`${from} is the theory after a closed proof: there is no goal to go on with. ` +
+        'State one there with `goal`, or go on from the handle of a hole or of goals left.', '')
+    }
     out.push(this.formatTry(reply,
       strings(args, 'watch_rules').length + strings(args, 'watch_patterns').length > 0,
       { line: chain.line, prefix }))
@@ -783,6 +797,21 @@ export class AgentTools {
       holes.forEach((h, i) => {
         out.push(`    hole ${i + 1}` + (multiline ? `, the sorry at line ${h.line} of the candidate` : '') +
           ', goals:', indent(h.goals, '      '))
+        const stated = Object.keys(h).map(k => /^(statement|error)_(\d+)$/.exec(k))
+          .filter((m): m is RegExpExecArray => m !== null)
+          .sort((a, b) => Number(a[2]) - Number(b[2]))
+        if (stated.length) {
+          out.push(`      stated on its own, with what the outline assumed there -- for ` +
+            `isabelle_sledgehammer or isabelle_try with it as \`goal\` at line ${chain?.line ?? '?'}:`)
+          stated.forEach(m => out.push(m[1] === 'statement'
+            ? indent(`${m[2]}. ${h[m[0]]}`, '        ')
+            : `        ${m[2]}. (not given: ${h[m[0]]})`))
+        }
+        if (h.handle) {
+          const using = h.using ? `${h.using} ` : ''
+          out.push(`      a proof \`by M\` of it goes in place of the sorry as: ${using}by M`,
+            `      handle ${h.handle}: try proofs for this hole with from: "${h.handle}"`)
+        }
       })
       const steps = c.slow_steps ?? []
       if (steps.length) {
@@ -813,7 +842,12 @@ export class AgentTools {
       } else if (watching && c.traced) {
         out.push('    no watched rule was applied (it never matched)')
       }
-      if (c.handle) out.push(`    handle ${c.handle}: go on from this state with from: "${c.handle}"`)
+      if (c.handle) {
+        out.push(c.mode === 'theory'
+          ? `    handle ${c.handle}: the theory after this closed proof, with no goal; state more ` +
+            `there with goal and from: "${c.handle}"` + (holes.length ? ' (for the holes, use their handles above)' : '')
+          : `    handle ${c.handle}: go on from this state with from: "${c.handle}"`)
+      }
       out.push('')
     }
     const proved = candidates.filter(c => c.outcome === 'proved')
@@ -833,6 +867,7 @@ export class AgentTools {
     const { from, origin, uri, position } = this.locate(client, args)
     await this.load(client, uri, token)
     const relevant = args.relevant !== false
+    const limit = Math.max(1, Math.round(num(args, 'limit') ?? 20))
     const reply = await this.ticking(progress,
       `looking up the context ${from ? `of ${from}` : `at line ${position.line + 1}`}`,
       () => client.sendRequest(AgentContext, {
@@ -840,7 +875,8 @@ export class AgentTools {
         from: from ?? '',
         goal: goalStatement(this.encode(str(args, 'goal') ?? '')),
         relevant,
-        limit: Math.max(1, Math.round(num(args, 'limit') ?? 20)),
+        // Some over: the same statement under several names is shown once (below).
+        limit: limit + 10,
         deadline_ms: 240000,
       }, token))
     if (reply.error) throw new ToolError(reply.error)
@@ -851,8 +887,23 @@ export class AgentTools {
     out.push('', 'variables and facts of the proof:', indent(reply.facts || '(none)'))
     if (relevant) {
       out.push('', 'facts most relevant to the first goal, by Sledgehammer\'s relevance filter (MePo), best first:')
-      if (reply.relevant?.length) {
-        for (const f of reply.relevant) out.push(`    ${f.name}:`, indent(f.statement, '      '))
+      /* HOL states some facts several times under other names (append.right_neutral, and
+         cvc_rewrites_fold(1), (4), (10) for the SMT reconstruction): the first, best ranked. */
+      const seen = new Set<string>()
+      const facts = (reply.relevant ?? []).filter(f => {
+        // Up to the names of its variables: ?xs @ [] = ?xs is ?a @ [] = ?a.
+        const names = new Map<string, string>()
+        const key = f.statement.replace(/\s+/g, ' ').trim()
+          .replace(/\?[A-Za-z][\w']*(\.\d+)?/g, v => {
+            if (!names.has(v)) names.set(v, `?${names.size}`)
+            return names.get(v) as string
+          })
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      }).slice(0, limit)
+      if (facts.length) {
+        for (const f of facts) out.push(`    ${f.name}:`, indent(f.statement, '      '))
       } else {
         out.push(`    (${reply.relevant_error ?? 'none'})`)
       }

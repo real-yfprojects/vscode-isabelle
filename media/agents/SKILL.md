@@ -42,8 +42,11 @@ you copy from their output can go into the file as it is.
    once, and a call goes on while the file is edited.
 5. Plan bigger proofs top-down. Try the outline as one candidate, with `sorry` for each
    step: `proof (induct xs) case Nil show ?case sorry next case (Cons x xs) show ?case
-   sorry qed`. It comes back `proved_with_sorry` with the goals of each hole; fill them
-   in one at a time. Test an intermediate step or a helper lemma with `goal` on
+   sorry qed`. It comes back `proved_with_sorry` with the goals of each hole, and each
+   hole with a handle of its own: `from` it, try proofs in place of that `sorry`, with the
+   facts the outline has there (the induction hypothesis, say). The hole also comes stated
+   on its own, for `isabelle_sledgehammer`. The outline's own handle is the theory after
+   it, with no goal. Test an intermediate step or a helper lemma with `goal` on
    `isabelle_try` or `isabelle_sledgehammer` before writing it. Inside a proof the goal
    sees the proof's fixed variables and assumptions.
 6. Run `isabelle_check` again after writing. It lists every `sorry` left with the goals
