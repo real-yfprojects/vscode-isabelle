@@ -208,16 +208,39 @@ jobs:
               head -c 4000000 "${{ matrix.bundle }}" > "$RUNNER_TEMP/sfx-head"
               if grep -aq ';!@Install@!' "$RUNNER_TEMP/sfx-head"; then
                 "./${{ matrix.bundle }}" -y -ai
-                # The installer waits for its AutoInstall by default; should it not, the
-                # launcher it started is still running under the same name. Not the marker
-                # file: cygwin_init deletes that first, before it has done anything.
+                root="$(cygpath -u "$USERPROFILE")/Desktop/$release"
+                # Done is when nothing runs from the installation any more. Neither the
+                # installer nor the launcher it starts is a signal: `-init` hands over to the
+                # launcher's JVM and returns, and that JVM goes on with cygwin_init, which
+                # runs Cygwin's dash, bash, find and chmod for minutes. Nor is the marker
+                # file: cygwin_init deletes it first, and postinstall makes every script
+                # mode 644 and only gives the executables their x back at its very end. A
+                # server started in between exits 126, from `exec isabelle java` in
+                # bin/isabelle (seen on two runs; on another the marker was still there).
                 for _ in $(seq 600); do
                   tasklist //FI "IMAGENAME eq $release.exe" | grep -qi "$release.exe" || break
                   sleep 1
                 done
-                root="$(cygpath -u "$USERPROFILE")/Desktop/$release"
+                root_win="$(cygpath -w "$root")"
+                running() {
+                  powershell -NoProfile -Command "Get-Process | Where-Object { \$_.Path -and \$_.Path.StartsWith('$root_win\\', 'OrdinalIgnoreCase') } | ForEach-Object { \$_.Name }" | tr -d '\r'
+                }
+                waited=0
+                while [ -n "$(running)" ]; do
+                  [ $((waited % 30)) -eq 0 ] && echo "still setting up Cygwin after ${waited}s: $(running | sort | uniq -c | tr -s ' \n' ' ')"
+                  if [ "$waited" -ge 600 ]; then echo "Cygwin's setup still running after ${waited}s"; exit 1; fi
+                  sleep 5; waited=$((waited + 5))
+                done
+                echo "Cygwin's setup ended after ${waited}s more"
                 if [ -e "$root/contrib/cygwin/isabelle/uninitialized" ]; then
                   echo "the installer left Cygwin uninitialized"; exit 1
+                fi
+                # What the server's start goes through, bin/isabelle running a tool, in the
+                # Cygwin the installer set up.
+                if ! "$root/contrib/cygwin/bin/bash.exe" -l -c '"$(cygpath -u "$1")/bin/isabelle" getenv -b ISABELLE_HOME' _ "$root_win"; then
+                  echo "bin/isabelle does not run in the installed Cygwin"
+                  "$root/contrib/cygwin/bin/bash.exe" -l -c 'ls -l "$(cygpath -u "$1")/bin/isabelle" "$(cygpath -u "$1")/lib/Tools/getenv"' _ "$root_win" || true
+                  exit 1
                 fi
               else
                 "./${{ matrix.bundle }}" -y

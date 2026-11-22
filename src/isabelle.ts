@@ -145,6 +145,26 @@ export function cygwinUninitialized(isabelleHome: string, platform = process.pla
     fs.existsSync(path.join(isabelleHome, 'contrib', 'cygwin', 'isabelle', 'uninitialized'))
 }
 
+/**
+ * What an exit code of the server process means beyond itself, if it means something.
+ *
+ * 126 is bash failing to run a file it found. On Windows that is Isabelle's Cygwin
+ * half set up: its postinstall makes every script mode 644 and gives the executables
+ * their x back only at its end, minutes later, so `exec isabelle java` in bin/isabelle
+ * fails until then. Up to Isabelle2025-2 the installer runs that setup itself and
+ * returns before it is done (CI saw it); an interrupted setup leaves it so for good.
+ */
+export function serverExitHint(code: number | null, platform = process.platform): string | undefined {
+  if (platform === 'win32' && code === 126) {
+    return 'The Isabelle server could not run one of Isabelle\'s scripts (exit code 126). ' +
+      'This happens while Isabelle\'s Cygwin is still being set up after installing, which ' +
+      'takes a few minutes: wait until no bash, find or chmod of Isabelle\'s is running, then ' +
+      'run "Isabelle: Restart Server". If it persists, that setup was interrupted; installing ' +
+      'Isabelle again repeats it.'
+  }
+  return undefined
+}
+
 /** The newest `<prefix>*` directory in the distribution's contrib/ with `rel` inside it. */
 function contribFile(isabelleHome: string, prefix: string, rel: string): string | undefined {
   const contrib = path.join(isabelleHome, 'contrib')

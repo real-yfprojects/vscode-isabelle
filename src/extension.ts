@@ -5,7 +5,7 @@ import * as vscode from 'vscode'
 import { CloseAction, ErrorAction, ErrorHandler, LanguageClient, LanguageClientOptions,
   ServerOptions, State } from 'vscode-languageclient/node'
 import { isRunning, killTree } from './process_tree'
-import { buildServerOptions, checkWholeTheory, cygwinUninitialized, extendedServer,
+import { buildServerOptions, checkWholeTheory, cygwinUninitialized, extendedServer, serverExitHint,
   findIsabelleHome, initCygwin, IsabelleNotFound, serverArguments, stageExtendedJar } from './isabelle'
 import { caretPerspective, checkingExtent } from './status_items'
 import { SymbolTable } from './symbols'
@@ -64,6 +64,8 @@ let isabelleHome: string | undefined
 let table: SymbolTable | undefined
 let renderer: SymbolRenderer | undefined
 let lastError: string | undefined
+/** What the last server process's exit says about its cause, if anything (serverExitHint). */
+let exitHint: string | undefined
 /* Panels and PIDE decorations subscribe to a specific LanguageClient, so their
    registrations live and die with it rather than with the extension. */
 let clientScope: vscode.Disposable[] = []
@@ -211,9 +213,12 @@ async function startClient(): Promise<void> {
     if (child.pid === undefined) {
       throw new Error(`Launching the Isabelle server using ${executable.command} failed.`)
     }
+    exitHint = undefined
     child.on('exit', (code, signal) => {
       if (code !== null) log(`Server process exited with code ${code}.`)
       if (signal !== null) log(`Server process exited with signal ${signal}.`)
+      exitHint = serverExitHint(code)
+      if (exitHint) log(exitHint)
     })
     serverProcess = child
     return child
@@ -243,9 +248,11 @@ async function startClient(): Promise<void> {
       const verdict = closeVerdict({ everRunning, restarts: closes, logic: label })
       closes += 1
       if (verdict.restart) return { action: CloseAction.Restart }
-      log(verdict.message)
-      status?.setServer('failed', verdict.message)
-      return { action: CloseAction.DoNotRestart, message: verdict.message }
+      // A known cause says more than the policy's guess (a session build, for a first start).
+      const message = exitHint ?? verdict.message
+      log(message)
+      status?.setServer('failed', message)
+      return { action: CloseAction.DoNotRestart, message }
     },
   }
 

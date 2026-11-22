@@ -14,7 +14,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { serverPath, toCygwinPath, buildServerOptions, stageExtendedJar, serverArguments,
-        checkWholeTheory } = require('../out/isabelle.js')
+        checkWholeTheory, serverExitHint } = require('../out/isabelle.js')
 const { buildLine, BuildProgress } = require('../out/build_progress.js')
 
 let passed = 0
@@ -168,6 +168,14 @@ async function run() {
   assert.strictEqual(whole(), true)
   await cfg().update('checkWholeTheory', undefined, W)
   pass('checkWholeTheory decides, and falls back to the deprecated continuousChecking')
+
+  // A Windows server that exits 126 ran into a Cygwin whose setup is not done (scripts
+  // without their x yet); anywhere else, and for any other code, nothing is claimed.
+  assert.match(serverExitHint(126, 'win32'), /exit code 126[\s\S]*Cygwin is still being set up/)
+  assert.strictEqual(serverExitHint(126, 'linux'), undefined)
+  assert.strictEqual(serverExitHint(1, 'win32'), undefined)
+  assert.strictEqual(serverExitHint(null, 'win32'), undefined)
+  pass('an exit 126 on Windows is explained as a Cygwin still being set up')
 
   // The extent shown is the one the server gets, wherever it was set.
   await cfg().update('serverOptions', ['vscode_caret_perspective=20'], W)

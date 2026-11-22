@@ -58,12 +58,12 @@ async function drive() {
   editor.selection = new vscode.Selection(8, 2, 8, 2)
 
   const state = await until('the server to start', 300, async () => {
+    // Failed is final: no restart follows a first start that failed, and waiting out the
+    // timeout would only hide why (an exit 126 on Windows once waited 300 s in silence).
+    const status = await vscode.commands.executeCommand('isabelle.statusBarState')
+    if (status?.server === 'failed') throw new Error(`the server did not start: ${status.tooltip}`)
     const commands = await vscode.commands.getCommands(true)
-    if (!commands.includes('isabelle.serverState')) {
-      const status = await vscode.commands.executeCommand('isabelle.statusBarState')
-      if (status?.server === 'failed') throw new Error(`Isabelle was not found: ${status.tooltip}`)
-      return undefined
-    }
+    if (!commands.includes('isabelle.serverState')) return undefined
     const s = await vscode.commands.executeCommand('isabelle.serverState')
     if (s.state === 'StartFailed') throw new Error(`the server failed to start: ${s.lastError}`)
     return s.state === 'Running' && s
