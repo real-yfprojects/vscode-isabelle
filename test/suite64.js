@@ -68,9 +68,13 @@ const at = prefix => LINES.findIndex(l => l.startsWith(prefix)) + 1
 /** ML that sleeps for `seconds`, in Isabelle2025-2 and Isabelle2026 alike: OS.Process, which
     the first sleeps with, is no longer visible to Isabelle/ML in the second, and Time.sleep,
     which replaced it, is new there. Method.sleep is in both, and sleeps once applied -- to
-    a theorem that is not a closure state (Drule.dummy_thm is one: RUNTIME skips it). */
+    a theorem that is not a closure state (Drule.dummy_thm is one: RUNTIME skips it).
+    In steps of 50 ms up to a deadline from the clock: on the macOS runners one sleep of
+    1 s sometimes returned at once, and the slow step it stood for came back under 100 ms. */
 const SLEEP = seconds =>
-  `ignore (Method.sleep (Time.fromSeconds ${seconds}) (\\<^context>, Drule.asm_rl))`
+  `(let val d = Time.+ (Time.now (), Time.fromSeconds ${seconds}) in ` +
+  'while Time.< (Time.now (), d) do ' +
+  'ignore (Method.sleep (Time.fromMilliseconds 50) (\\<^context>, Drule.asm_rl)) end)'
 
 /** A theory whose second command takes the prover `seconds` to run, as a loop would, then
     ends. The sleep is on line 5, the lemma after it on line 7. */
@@ -349,9 +353,11 @@ async function run() {
   assert.match(outline.text, /hole 1, the sorry at line 3 of the candidate, goals:\n[\s\S]*length \(\[\] @ ys\)/)
   assert.match(outline.text, /hole 2, the sorry at line 6 of the candidate, goals:\n[\s\S]*length \(\(x # xs\) @ ys\)/)
   assert.match(outline.text, /ERROR \(\d+ ms\): oops\n\s+gives the proof up/)
-  // The step sleeps 1 s, but a sleep may wake a little early and ms are rounded down (999
-  // ms on a macOS runner); any step listed took 100 ms or more.
-  assert.match(outline.text, /PROVED \(\d+ ms(, slow: prefer a faster proof)?\): apply \(induct xs\)[\s\S]*slowest steps:\n\s+\d{3,} ms, line 2: ML_val/)
+  // The step sleeps until a second has passed (SLEEP). On a failure, the candidate's own
+  // block: the runner's log shows only the first lines of the whole answer.
+  const sleeper = outline.text.slice(Math.max(0, outline.text.indexOf('apply (induct xs)') - 60))
+  assert.match(outline.text, /PROVED \(\d+ ms(, slow: prefer a faster proof)?\): apply \(induct xs\)[\s\S]*slowest steps:\n\s+\d{4,} ms, line 2: ML_val/,
+    'the slow step is not named:\n' + sleeper.slice(0, 1200))
   pass('an outline with sorry comes back with the goal of each hole; a slow step is named')
 
   const counter = await call('isabelle_try', { path: file, line: at('lemma rr'), goal: 'rev xs = xs',
