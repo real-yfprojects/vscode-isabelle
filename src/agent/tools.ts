@@ -852,8 +852,15 @@ export class AgentTools {
     }
     const proved = candidates.filter(c => c.outcome === 'proved')
     if (proved.length > 1) {
-      const fastest = proved.reduce((a, b) => Number(b.time_ms) < Number(a.time_ms) ? b : a)
-      out.push(`Fastest proof: ${fastest.text} (${fastest.time_ms} ms)`)
+      /* Only where it is clearly faster: a few ms either way is noise (an agent saw 38 ms
+         against 46, and 24 ms for the same proof on the next call). */
+      const ms = (c: Candidate) => Number(c.time_ms)
+      const fastest = proved.reduce((a, b) => ms(b) < ms(a) ? b : a)
+      const slowest = Math.max(...proved.map(ms))
+      out.push(slowest - ms(fastest) >= 50 && slowest >= 1.5 * ms(fastest)
+        ? `Fastest proof: ${fastest.text} (${fastest.time_ms} ms)`
+        : `The ${proved.length} proofs take about as long (${ms(fastest)}-${slowest} ms); ` +
+          'times this short vary from call to call, so pick by what reads best.')
     }
     return out.join('\n').trimEnd()
   }

@@ -164,8 +164,18 @@ async function phase(mode, theory) {
     () => doc.lineAt(TRY0 + 1).text === '  ' + proof, 30000,
     () => doc.getText(new vscode.Range(TRY0 - 1, 0, TRY0 + 3, 0)))
   assert.strictEqual(doc.lineAt(TRY0).text, '  try0', 'try0 stays (padding_command)')
-  const caret = vscode.window.activeTextEditor.selection.active
-  assert.deepStrictEqual([caret.line, caret.character], [TRY0 + 1, 2 + proof.length],
+  /* The caret moves after the text: applyDocumentEdit applies the edit, then waits for
+     showTextDocument, then sets the selection. A macOS runner was still in between when the
+     text showed up (caret left at TRY0, 4), twice. */
+  const caretAt = () => {
+    const c = vscode.window.activeTextEditor?.selection.active
+    return c ? [c.line, c.character] : undefined
+  }
+  await until(`the caret after the proof (${mode})`, () => {
+    const c = caretAt()
+    return c && c[0] === TRY0 + 1 && c[1] === 2 + proof.length
+  }, 15000, () => JSON.stringify(caretAt()))
+  assert.deepStrictEqual(caretAt(), [TRY0 + 1, 2 + proof.length],
     'the caret is after the inserted proof')
   pass(`${mode}: taking try0's proof "${proof}" puts it under try0, with the caret after it`)
 

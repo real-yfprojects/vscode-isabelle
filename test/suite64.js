@@ -385,6 +385,28 @@ async function run() {
   assert.match(noGoal.text, new RegExp(`${outlineEnd[1]} is the theory after a closed proof: there is no goal`))
   pass('each hole of an outline is a handle, with its goal stated on its own; a proof from it fills the hole')
 
+  /* Induction on a goal under \<And>: the hypothesis is a fact with a schematic variable,
+     length (xs @ ?ys) = ..., which no literal can name. It is a premise for all ys, and the
+     using names it. */
+  const general = await call('isabelle_try', { path: file, line: at('lemma app'),
+    goal: '\\<And>ys. length (xs @ ys) = length ys + length xs',
+    candidates: ['proof (induct xs)\n  case Nil\n  show ?case sorry\nnext\n  case (Cons x xs)\n  show ?case sorry\nqed'] })
+  const ghole = general.text.slice(general.text.indexOf('hole 2'))
+  assert.match(ghole, /stated on its own[^\n]*\n\s+1\. [\s\S]*\(\\<And>ys\.\s+length \(xs @ ys\) = length ys \+ length xs\) \\<Longrightarrow>/,
+    'the schematic hypothesis as a premise for all ys:\n' + ghole)
+  // Once: the case has it both as an assumption and as Cons.hyps, with ?ys.
+  assert.strictEqual(ghole.split('(\\<And>ys. length (xs @ ys)').length, 2, 'the hypothesis once:\n' + ghole)
+  const gusing = /goes in place of the sorry as: (using .+?) by M/.exec(ghole)
+  assert.ok(gusing, 'a using for the hypothesis:\n' + ghole)
+  const gid = /handle (h\d+): try proofs for this hole/.exec(ghole)[1]
+  const gfilled = await call('isabelle_try', { from: gid, candidates: [`${gusing[1]} by simp`] })
+  assert.match(gfilled.text, /PROVED/, 'the hint\'s using proves the hole:\n' + gfilled.text)
+  const gctx = await call('isabelle_context', { from: gid, relevant: false })
+  assert.match(gctx.text, /local facts:[\s\S]*Cons\.\w+:/, gctx.text)
+  assert.ok(!/unnamed/.test(gctx.text), 'no unnamed facts:\n' + gctx.text)
+  assert.ok(!/prems:\s*\n\s*\S+:/.test(gctx.text) && !/prems:\s*$/m.test(gctx.text), 'no empty prems:\n' + gctx.text)
+  pass('a hole under an induction hypothesis with a schematic variable is stated for all its values')
+
   const counter = await call('isabelle_try', { path: file, line: at('lemma rr'), goal: 'rev xs = xs',
     candidates: ['quickcheck', 'nitpick'], timeout_s: 60 })
   assert.match(counter.text, /OUTPUT \(\d+ ms\): quickcheck\n[\s\S]*Quickcheck found a counterexample/)
