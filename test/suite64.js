@@ -547,6 +547,13 @@ async function run() {
   const hammered = await call('isabelle_sledgehammer', { path: file, line: at('  by blast'), timeout_s: 20 })
   if (/that check:/.test(hammered.text)) {
     assert.match(hammered.text, /by /)
+    assert.ok(!/premises included/.test(hammered.text), 'no note on a goal without premises')
+    // A goal with premises, as a hole is stated: its proofs need the hole's using there.
+    const premised = await call('isabelle_sledgehammer', { path: file, line: at('lemma rr'),
+      goal: '(x::nat) > 3 \\<Longrightarrow> x \\<noteq> 0', timeout_s: 20 })
+    if (/that check:/.test(premised.text)) {
+      assert.match(premised.text, /premises included[\s\S]*write the `using` isabelle_try gave/)
+    }
     pass('isabelle_sledgehammer finds proofs and checks them')
   } else {
     console.log('NOTE: Sledgehammer found nothing that checks here (provers missing?)')

@@ -1007,6 +1007,14 @@ export class AgentTools {
     if (bad.length) {
       out.push('', 'Found but not checking:', ...bad.map(c => `  ${c.text}  [${c.outcome}]`))
     }
+    /* A goal with premises is most often a hole or a goal left, stated on its own: there the
+       premises are facts of the proof, which a proof found for the statement must be given
+       (two agents in a row missed it, though isabelle_try's answer has the using). */
+    if (good.length && /\\<Longrightarrow>|==>/.test(goal)) {
+      out.push('', 'These prove the goal as stated, premises included. In the proof it came ' +
+        'from (a hole, or goals left at a handle), its premises are facts there: write the ' +
+        '`using` isabelle_try gave for it before the method.')
+    }
     return out.join('\n')
   }
 
